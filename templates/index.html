@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RACM - Risk and Control Matrix</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        audit: {
+                            green: '#10b981',
+                            amber: '#f59e0b',
+                            red: '#ef4444',
+                            grey: '#6b7280',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Jspreadsheet CSS -->
+    <link rel="stylesheet" href="https://bossanova.uk/jspreadsheet/v4/jexcel.css" type="text/css" />
+    <link rel="stylesheet" href="https://jsuites.net/v4/jsuites.css" type="text/css" />
+
+    <style>
+        /* Override Jspreadsheet styles to match theme */
+        .jexcel_content {
+            font-family: inherit;
+        }
+        .jexcel tbody td {
+            font-size: 13px;
+        }
+        .jexcel thead td {
+            background: #1e40af !important;
+            color: white !important;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .jexcel tbody tr:hover td {
+            background-color: #f8fafc;
+        }
+        .jexcel_container {
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            border: 1px solid rgb(15 23 42 / 0.05);
+        }
+
+        /* Toast animations */
+        .toast {
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body class="h-full">
+    <div class="min-h-full">
+        <!-- Navigation -->
+        <nav class="bg-white border-b border-slate-200">
+            <div class="flex h-16 items-center justify-between px-4 sm:px-6">
+                <!-- Left: Logo + Nav Links -->
+                <div class="flex items-center">
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <div class="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center">
+                            <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-slate-900 leading-tight">RACM</span>
+                            <span class="text-xs text-slate-500 -mt-0.5">Audit Toolkit</span>
+                        </div>
+                    </div>
+                    <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
+                        <a href="/" class="bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
+                            Risk Matrix
+                        </a>
+                        <a href="/flowchart" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Flowcharts
+                        </a>
+                        <a href="/kanban" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Plan
+                        </a>
+                    </div>
+                </div>
+                <!-- Right: AI Chat Toggle -->
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleChat()" class="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-500 transition-colors">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                        AI Assistant
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main class="py-8">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <!-- Header -->
+                <div class="md:flex md:items-center md:justify-between mb-6">
+                    <div class="min-w-0 flex-1">
+                        <h1 class="text-2xl font-bold leading-7 text-slate-900 sm:truncate sm:text-3xl sm:tracking-tight">
+                            Risk and Control Matrix
+                        </h1>
+                        <p class="mt-1 text-sm text-slate-500">
+                            Document risks, controls, and their effectiveness
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Toolbar -->
+                <div class="mb-4 flex flex-wrap items-center gap-3">
+                    <button onclick="saveData()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 transition-colors">
+                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                        Save
+                    </button>
+                    <button onclick="exportExcel()" class="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors">
+                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Export Excel
+                    </button>
+                    <label class="inline-flex items-center rounded-md bg-slate-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 transition-colors cursor-pointer">
+                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Import Excel
+                        <input type="file" id="fileInput" onchange="importExcel(event)" accept=".xlsx,.xls" class="hidden">
+                    </label>
+                    <div class="h-6 w-px bg-slate-300"></div>
+                    <button onclick="addRow()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
+                        <svg class="-ml-0.5 mr-1.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Row
+                    </button>
+                    <button onclick="mergeSelected()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
+                        <svg class="-ml-0.5 mr-1.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z" />
+                        </svg>
+                        Merge Cells
+                    </button>
+                </div>
+
+                <!-- Spreadsheet -->
+                <div class="bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5 overflow-hidden">
+                    <div id="spreadsheet"></div>
+                </div>
+
+                <!-- Toast notifications -->
+                <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Task Modal -->
+    <div id="taskModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50">
+                <h3 id="taskModalTitle" class="text-lg font-semibold text-slate-900">Add Task</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="taskId">
+                <input type="hidden" id="taskRow">
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                    <input type="text" id="taskTitle" placeholder="Task title..." class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                    <textarea id="taskDescription" placeholder="What needs to be done?" rows="3" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                        <select id="taskPriority" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                        <input type="date" id="taskDueDate" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Assignee</label>
+                    <input type="text" id="taskAssignee" placeholder="Who is responsible?" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                </div>
+
+                <div id="taskStatus" class="hidden rounded-md bg-blue-50 p-3">
+                    <p class="text-sm text-blue-700">Status: <span id="taskStatusText" class="font-medium"></span></p>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+                <a id="viewOnBoardLink" href="/kanban" target="_blank" class="hidden">
+                    <button type="button" class="rounded-md bg-cyan-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-500">View on Board</button>
+                </a>
+                <button onclick="closeTaskModal()" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Cancel</button>
+                <button onclick="saveTask()" class="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">Save Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Panel -->
+    <div id="chatPanel" class="fixed inset-y-0 right-0 w-full sm:w-[420px] max-w-full bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+        <!-- Chat Header -->
+        <div class="flex items-center justify-between px-4 py-4 border-b border-slate-200 bg-violet-600 flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
+                    <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="text-base font-semibold text-white">AI Audit Assistant</h2>
+                    <p class="text-xs text-violet-200">Powered by Claude</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="clearChat()" class="rounded-md p-2 text-violet-200 hover:text-white hover:bg-white/10 transition-colors" title="Clear chat">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+                <button onclick="toggleChat()" class="rounded-md p-2 text-violet-200 hover:text-white hover:bg-white/10 transition-colors">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+            <div class="flex gap-3">
+                <div class="flex-shrink-0 h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center">
+                    <svg class="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <div class="flex-1 bg-white rounded-lg p-3 shadow-sm ring-1 ring-slate-900/5">
+                    <p class="text-sm text-slate-700">Hi! I'm your AI audit assistant. I can help you:</p>
+                    <ul class="mt-2 text-sm text-slate-600 space-y-1">
+                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Add risks and controls to the RACM</li>
+                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Create flowcharts for walkthroughs</li>
+                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Create tasks on the audit plan</li>
+                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Analyze and summarize your audit data</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div id="typingIndicator" class="hidden px-4 py-2 bg-slate-50">
+            <div class="flex items-center gap-2 text-sm text-slate-500">
+                <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Claude is thinking...
+            </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="p-4 border-t border-slate-200 bg-white">
+            <div class="flex gap-2">
+                <input type="text" id="chatInput" placeholder="Ask about your audit..." onkeypress="handleChatKeypress(event)" class="flex-1 rounded-lg border-slate-300 shadow-sm focus:border-violet-500 focus:ring-violet-500 text-sm">
+                <button id="chatSend" onclick="sendMessage()" class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Backdrop -->
+    <div id="chatBackdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden" onclick="toggleChat()"></div>
+
+    <!-- Jspreadsheet JS -->
+    <script src="https://bossanova.uk/jspreadsheet/v4/jexcel.js"></script>
+    <script src="https://jsuites.net/v4/jsuites.js"></script>
+
+    <!-- SheetJS for Excel import/export -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+
+    <script>
+        let table;
+
+        // Initialize spreadsheet
+        async function init() {
+            const response = await fetch('/api/data');
+            const data = await response.json();
+
+            table = jspreadsheet(document.getElementById('spreadsheet'), {
+                data: data,
+                columns: [
+                    { width: 80 },
+                    { width: 180 },
+                    { width: 180 },
+                    { width: 100 },
+                    { width: 80 },
+                    { width: 100 },
+                    { width: 120 },
+                    { width: 150 },
+                ],
+                columnResize: true,
+                rowResize: true,
+                columnDrag: true,
+                minDimensions: [8, 10],
+                tableOverflow: true,
+                tableWidth: '100%',
+                style: {
+                    'A1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                    'B1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                    'C1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                    'D1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                    'E1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                    'F1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                    'G1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                    'H1': 'font-weight: bold; background-color: #1e40af; color: white;',
+                },
+                updateTable: function(instance, cell, col, row, val, label, cellName) {
+                    // Flowchart column (G = index 6)
+                    if (col == 6 && row > 0) {
+                        if (val && val.trim()) {
+                            cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="text-primary-600 hover:text-primary-800 underline text-sm">' + val + '</a>';
+                        } else {
+                            const riskId = instance.jexcel.getValueFromCoords(0, row);
+                            if (riskId && riskId.trim()) {
+                                cell.innerHTML = '<span class="create-flowchart text-cyan-600 hover:text-cyan-800 cursor-pointer text-sm" data-row="' + row + '">+ Create</span>';
+                            }
+                        }
+                    }
+                    // Task column (H = index 7)
+                    if (col == 7 && row > 0) {
+                        if (val && val.trim()) {
+                            cell.innerHTML = '<span class="edit-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-task="' + val + '" data-row="' + row + '">Edit Task</span>';
+                        } else {
+                            const riskId = instance.jexcel.getValueFromCoords(0, row);
+                            if (riskId && riskId.trim()) {
+                                cell.innerHTML = '<span class="create-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-row="' + row + '">+ Add Task</span>';
+                            }
+                        }
+                    }
+                    // Status column styling (F = index 5)
+                    if (col == 5 && row > 0) {
+                        const status = val ? val.toLowerCase() : '';
+                        if (status.includes('effective') && !status.includes('ineffective')) {
+                            cell.style.backgroundColor = '#d1fae5';
+                            cell.style.color = '#065f46';
+                        } else if (status.includes('improvement')) {
+                            cell.style.backgroundColor = '#fef3c7';
+                            cell.style.color = '#92400e';
+                        } else if (status.includes('ineffective')) {
+                            cell.style.backgroundColor = '#fee2e2';
+                            cell.style.color = '#991b1b';
+                        }
+                    }
+                },
+                contextMenu: function(obj, x, y, e) {
+                    let items = [];
+                    items.push({ title: 'Merge cells', onclick: function() { mergeSelected(); } });
+                    items.push({ title: 'Unmerge cells', onclick: function() { unmergeSelected(); } });
+                    items.push({ type: 'line' });
+                    items.push({ title: 'Insert row above', onclick: function() { obj.insertRow(1, y, true); } });
+                    items.push({ title: 'Insert row below', onclick: function() { obj.insertRow(1, y); } });
+                    items.push({ title: 'Delete row', onclick: function() { obj.deleteRow(y); } });
+                    items.push({ type: 'line' });
+                    items.push({ title: 'Bold', onclick: function() { applyStyle('font-weight: bold;'); } });
+                    items.push({ title: 'Highlight Yellow', onclick: function() { applyStyle('background-color: #fef3c7;'); } });
+                    items.push({ title: 'Highlight Green', onclick: function() { applyStyle('background-color: #d1fae5;'); } });
+                    items.push({ title: 'Highlight Red', onclick: function() { applyStyle('background-color: #fee2e2;'); } });
+                    items.push({ title: 'Clear style', onclick: function() { clearStyle(); } });
+                    return items;
+                }
+            });
+        }
+
+        // Save data to server
+        async function saveData() {
+            const data = table.getData();
+            await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            showToast('Data saved successfully!', 'success');
+        }
+
+        // Export to Excel
+        function exportExcel() {
+            const data = table.getData();
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "RACM");
+            XLSX.writeFile(wb, "risk_control_matrix.xlsx");
+            showToast('Exported to Excel!', 'success');
+        }
+
+        // Import from Excel
+        function importExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                table.setData(data);
+                showToast('Imported from Excel!', 'success');
+            };
+            reader.readAsBinaryString(file);
+            event.target.value = '';
+        }
+
+        function addRow() { table.insertRow(); }
+
+        function mergeSelected() {
+            const sel = table.selectedCell;
+            if (sel && sel.length === 4) {
+                const x1 = Math.min(sel[0], sel[2]);
+                const y1 = Math.min(sel[1], sel[3]);
+                const x2 = Math.max(sel[0], sel[2]);
+                const y2 = Math.max(sel[1], sel[3]);
+                const colspan = x2 - x1 + 1;
+                const rowspan = y2 - y1 + 1;
+                const cell = jspreadsheet.getColumnNameFromId([x1, y1]);
+                table.setMerge(cell, colspan, rowspan);
+            } else {
+                showToast('Please select multiple cells to merge', 'warning');
+            }
+        }
+
+        function unmergeSelected() {
+            const sel = table.selectedCell;
+            if (sel) {
+                const cell = jspreadsheet.getColumnNameFromId([sel[0], sel[1]]);
+                table.removeMerge(cell);
+            }
+        }
+
+        function applyStyle(style) {
+            const sel = table.selectedCell;
+            if (sel && sel.length === 4) {
+                const x1 = Math.min(sel[0], sel[2]);
+                const y1 = Math.min(sel[1], sel[3]);
+                const x2 = Math.max(sel[0], sel[2]);
+                const y2 = Math.max(sel[1], sel[3]);
+                for (let y = y1; y <= y2; y++) {
+                    for (let x = x1; x <= x2; x++) {
+                        const cell = jspreadsheet.getColumnNameFromId([x, y]);
+                        const current = table.getStyle(cell) || '';
+                        table.setStyle(cell, current + style);
+                    }
+                }
+            }
+        }
+
+        function clearStyle() {
+            const sel = table.selectedCell;
+            if (sel && sel.length === 4) {
+                const x1 = Math.min(sel[0], sel[2]);
+                const y1 = Math.min(sel[1], sel[3]);
+                const x2 = Math.max(sel[0], sel[2]);
+                const y2 = Math.max(sel[1], sel[3]);
+                for (let y = y1; y <= y2; y++) {
+                    for (let x = x1; x <= x2; x++) {
+                        const cell = jspreadsheet.getColumnNameFromId([x, y]);
+                        table.setStyle(cell, '');
+                    }
+                }
+            }
+        }
+
+        // Toast notifications
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast rounded-lg shadow-lg p-4 flex items-center gap-3 ${
+                type === 'success' ? 'bg-emerald-600 text-white' :
+                type === 'error' ? 'bg-red-600 text-white' :
+                type === 'warning' ? 'bg-amber-500 text-white' :
+                'bg-slate-700 text-white'
+            }`;
+
+            const icons = {
+                success: '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />',
+                error: '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />',
+                warning: '<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />',
+                info: '<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />'
+            };
+
+            toast.innerHTML = `
+                <svg class="h-5 w-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">${icons[type] || icons.info}</svg>
+                <p class="text-sm font-medium flex-1">${message}</p>
+                <button onclick="this.parentElement.remove()" class="text-white/70 hover:text-white">
+                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // Initialize on load
+        init();
+
+        // Handle click events for spreadsheet links
+        document.getElementById('spreadsheet').addEventListener('click', function(e) {
+            if (e.target.classList.contains('create-flowchart')) {
+                const row = parseInt(e.target.getAttribute('data-row'));
+                const riskId = table.getValueFromCoords(0, row);
+                if (riskId) {
+                    const flowchartName = riskId.replace(/\s+/g, '-').toLowerCase() + '-walkthrough';
+                    table.setValueFromCoords(6, row, flowchartName);
+                    window.open('/flowchart/' + encodeURIComponent(flowchartName), '_blank');
+                    saveData();
+                }
+            }
+            if (e.target.classList.contains('create-task')) {
+                const row = parseInt(e.target.getAttribute('data-row'));
+                openTaskModal(row, null);
+            }
+            if (e.target.classList.contains('edit-task')) {
+                const row = parseInt(e.target.getAttribute('data-row'));
+                const taskId = e.target.getAttribute('data-task');
+                openTaskModal(row, taskId);
+            }
+        });
+
+        // Task Modal Functions
+        async function openTaskModal(row, taskId) {
+            const riskId = table.getValueFromCoords(0, row);
+            const riskDesc = table.getValueFromCoords(1, row);
+            const controlDesc = table.getValueFromCoords(2, row);
+
+            document.getElementById('taskRow').value = row;
+            document.getElementById('taskId').value = taskId || '';
+
+            if (taskId) {
+                document.getElementById('taskModalTitle').textContent = 'Edit Task';
+                const response = await fetch(`/api/kanban/default/task/${taskId}`);
+                const task = await response.json();
+                if (task) {
+                    document.getElementById('taskTitle').value = task.title || '';
+                    document.getElementById('taskDescription').value = task.description || '';
+                    document.getElementById('taskPriority').value = task.priority || 'medium';
+                    document.getElementById('taskAssignee').value = task.assignee || '';
+                    document.getElementById('taskDueDate').value = task.dueDate || '';
+                    document.getElementById('taskStatus').classList.remove('hidden');
+                    document.getElementById('taskStatusText').textContent = task.columnTitle || 'Unknown';
+                    document.getElementById('viewOnBoardLink').classList.remove('hidden');
+                }
+            } else {
+                document.getElementById('taskModalTitle').textContent = 'Add Task';
+                document.getElementById('taskTitle').value = `Test: ${riskId} - ${controlDesc || riskDesc}`.substring(0, 100);
+                document.getElementById('taskDescription').value = `Risk: ${riskDesc}\nControl: ${controlDesc}`;
+                document.getElementById('taskPriority').value = 'medium';
+                document.getElementById('taskAssignee').value = '';
+                document.getElementById('taskDueDate').value = '';
+                document.getElementById('taskStatus').classList.add('hidden');
+                document.getElementById('viewOnBoardLink').classList.add('hidden');
+            }
+
+            document.getElementById('taskModal').classList.remove('hidden');
+            document.getElementById('taskModal').classList.add('flex');
+        }
+
+        function closeTaskModal() {
+            document.getElementById('taskModal').classList.add('hidden');
+            document.getElementById('taskModal').classList.remove('flex');
+        }
+
+        async function saveTask() {
+            const row = parseInt(document.getElementById('taskRow').value);
+            const taskId = document.getElementById('taskId').value;
+            const title = document.getElementById('taskTitle').value.trim();
+            const description = document.getElementById('taskDescription').value.trim();
+            const priority = document.getElementById('taskPriority').value;
+            const assignee = document.getElementById('taskAssignee').value.trim();
+            const dueDate = document.getElementById('taskDueDate').value;
+
+            if (!title) {
+                showToast('Please enter a title', 'warning');
+                return;
+            }
+
+            const riskId = table.getValueFromCoords(0, row);
+            const taskData = { title, description, priority, assignee, dueDate, riskId, racmRow: row };
+
+            if (taskId) {
+                await fetch(`/api/kanban/default/task/${taskId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(taskData)
+                });
+                showToast('Task updated!', 'success');
+            } else {
+                const response = await fetch('/api/kanban/default/task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(taskData)
+                });
+                const result = await response.json();
+                table.setValueFromCoords(7, row, result.taskId);
+                await saveData();
+                showToast('Task created!', 'success');
+            }
+            closeTaskModal();
+        }
+
+        document.getElementById('taskModal').addEventListener('click', function(e) {
+            if (e.target === this) closeTaskModal();
+        });
+
+        // ==================== Chat Functions ====================
+        let chatOpen = false;
+
+        function toggleChat() {
+            chatOpen = !chatOpen;
+            const panel = document.getElementById('chatPanel');
+            const backdrop = document.getElementById('chatBackdrop');
+
+            if (chatOpen) {
+                panel.classList.remove('translate-x-full');
+                backdrop.classList.remove('hidden');
+                document.getElementById('chatInput').focus();
+            } else {
+                panel.classList.add('translate-x-full');
+                backdrop.classList.add('hidden');
+            }
+        }
+
+        function handleChatKeypress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            addChatMessage(message, 'user');
+            input.value = '';
+
+            document.getElementById('typingIndicator').classList.remove('hidden');
+            document.getElementById('chatSend').disabled = true;
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    addChatMessage(data.error, 'error');
+                } else {
+                    addChatMessage(data.response, 'assistant');
+                    if (data.data_version !== undefined) {
+                        await refreshSpreadsheet();
+                    }
+                }
+            } catch (error) {
+                addChatMessage('Failed to connect: ' + error.message, 'error');
+            }
+
+            document.getElementById('typingIndicator').classList.add('hidden');
+            document.getElementById('chatSend').disabled = false;
+        }
+
+        async function refreshSpreadsheet() {
+            const response = await fetch('/api/data');
+            const data = await response.json();
+            table.setData(data);
+        }
+
+        function addChatMessage(content, type) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'flex gap-3';
+
+            if (type === 'user') {
+                messageDiv.innerHTML = `
+                    <div class="flex-1"></div>
+                    <div class="bg-violet-600 text-white rounded-lg p-3 max-w-[80%]">
+                        <p class="text-sm">${escapeHtml(content)}</p>
+                    </div>
+                    <div class="flex-shrink-0 h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center">
+                        <svg class="h-4 w-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                    </div>
+                `;
+            } else if (type === 'error') {
+                messageDiv.innerHTML = `
+                    <div class="flex-shrink-0 h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
+                        <svg class="h-4 w-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <div class="flex-1 bg-red-50 border border-red-200 rounded-lg p-3">
+                        <p class="text-sm text-red-700">${escapeHtml(content)}</p>
+                    </div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <div class="flex-shrink-0 h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center">
+                        <svg class="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <div class="flex-1 bg-white rounded-lg p-3 shadow-sm ring-1 ring-slate-900/5">
+                        <div class="text-sm text-slate-700 prose prose-sm max-w-none">${formatMarkdown(content)}</div>
+                    </div>
+                `;
+            }
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatMarkdown(text) {
+            let html = escapeHtml(text);
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/`(.*?)`/g, '<code class="bg-slate-100 px-1 rounded text-xs">$1</code>');
+            html = html.replace(/\n\n/g, '</p><p class="mt-2">');
+            html = html.replace(/\n/g, '<br>');
+            html = html.replace(/^- (.*?)(<br>|$)/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>)+/g, '<ul class="list-disc list-inside mt-1 space-y-1">$&</ul>');
+            return `<p>${html}</p>`;
+        }
+
+        async function clearChat() {
+            document.getElementById('chatMessages').innerHTML = `
+                <div class="flex gap-3">
+                    <div class="flex-shrink-0 h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center">
+                        <svg class="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <div class="flex-1 bg-white rounded-lg p-3 shadow-sm ring-1 ring-slate-900/5">
+                        <p class="text-sm text-slate-700">Chat cleared. How can I help with your audit?</p>
+                    </div>
+                </div>
+            `;
+            await fetch('/api/chat/clear', { method: 'POST' });
+        }
+
+        // Escape key closes chat
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && chatOpen) toggleChat();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flowchart Editor</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        audit: {
+                            green: '#10b981',
+                            amber: '#f59e0b',
+                            red: '#ef4444',
+                            grey: '#6b7280',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Drawflow CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
+
+    <style>
+        /* Drawflow canvas styling */
+        #drawflow {
+            flex: 1;
+            background: white;
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .drawflow-node {
+            min-width: 180px;
+            max-width: 250px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .drawflow-node:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .drawflow-node.selected {
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+        }
+
+        .drawflow-node .drawflow_content_node {
+            padding: 12px;
+            text-align: center;
+        }
+
+        /* Node type specific styles */
+        .drawflow-node.start .drawflow_content_node {
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            border-radius: 25px;
+        }
+        .drawflow-node.process .drawflow_content_node {
+            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+        }
+        .drawflow-node.decision .drawflow_content_node {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+        }
+        .drawflow-node.end .drawflow_content_node {
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            border-radius: 25px;
+        }
+        .drawflow-node.control .drawflow_content_node {
+            background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+            border: 2px dashed #8b5cf6;
+        }
+        .drawflow-node.risk .drawflow_content_node {
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            border: 2px solid #ef4444;
+        }
+        .drawflow-node.document .drawflow_content_node {
+            background: linear-gradient(135deg, #cffafe, #a5f3fc);
+            border-bottom: 3px solid #06b6d4;
+        }
+        .drawflow-node.system .drawflow_content_node {
+            background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+            border: 1px solid #64748b;
+        }
+        .drawflow-node.note .drawflow_content_node {
+            background: linear-gradient(135deg, #fef9c3, #fef08a);
+            border-left: 4px solid #eab308;
+            text-align: left;
+        }
+
+        .drawflow .connection .main-path {
+            stroke: #64748b;
+            stroke-width: 2px;
+        }
+        .drawflow .connection.selected .main-path {
+            stroke: #2563eb;
+        }
+
+        /* Node content styles */
+        .node-title {
+            font-size: 10px;
+            font-weight: 600;
+            color: #64748b;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .node-input {
+            border: none;
+            background: rgba(255,255,255,0.7);
+            text-align: center;
+            width: 100%;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 6px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+        }
+        .node-input:focus {
+            outline: none;
+            background: white;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        }
+        .node-textarea {
+            border: none;
+            background: rgba(255,255,255,0.7);
+            width: 100%;
+            font-size: 12px;
+            padding: 6px;
+            border-radius: 4px;
+            resize: vertical;
+            min-height: 40px;
+            font-family: inherit;
+        }
+        .node-textarea:focus {
+            outline: none;
+            background: white;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        }
+        .note .node-textarea {
+            text-align: left;
+            min-height: 60px;
+        }
+        .node-select {
+            border: none;
+            background: rgba(255,255,255,0.7);
+            width: 100%;
+            font-size: 11px;
+            padding: 4px;
+            border-radius: 4px;
+            margin-top: 6px;
+        }
+
+        /* Toast animations */
+        .toast {
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body class="h-full overflow-hidden">
+    <div class="h-full flex flex-col">
+        <!-- Navigation -->
+        <nav class="bg-white border-b border-slate-200 flex-shrink-0">
+            <div class="flex h-16 items-center justify-between px-4 sm:px-6">
+                <div class="flex items-center">
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <div class="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center">
+                            <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-slate-900 leading-tight">RACM</span>
+                            <span class="text-xs text-slate-500 -mt-0.5">Audit Toolkit</span>
+                        </div>
+                    </div>
+                    <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
+                        <a href="/" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Risk Matrix
+                        </a>
+                        <a href="/flowchart" class="bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
+                            Flowcharts
+                        </a>
+                        <a href="/kanban" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Plan
+                        </a>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="text" id="flowchartName" placeholder="Flowchart name..." value="{{ flowchart_id or '' }}" class="rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm w-48">
+                    <button onclick="saveFlowchart()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 transition-colors">
+                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                        Save
+                    </button>
+                    <button onclick="loadFlowchart()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
+                        Load
+                    </button>
+                    <button onclick="exportData()" class="inline-flex items-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors">
+                        Export
+                    </button>
+                    <button onclick="clearCanvas()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
+                        Clear
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar -->
+            <div class="w-56 bg-white border-r border-slate-200 p-4 overflow-y-auto flex-shrink-0">
+                <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Flow Nodes</h3>
+
+                <div class="space-y-2">
+                    <div class="node-item p-3 bg-emerald-50 border border-emerald-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="start">
+                        <span class="text-sm font-medium text-emerald-700">Start</span>
+                    </div>
+                    <div class="node-item p-3 bg-blue-50 border border-blue-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="process">
+                        <span class="text-sm font-medium text-blue-700">Process Step</span>
+                    </div>
+                    <div class="node-item p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="decision">
+                        <span class="text-sm font-medium text-amber-700">Decision</span>
+                    </div>
+                    <div class="node-item p-3 bg-red-50 border border-red-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="end">
+                        <span class="text-sm font-medium text-red-700">End</span>
+                    </div>
+                </div>
+
+                <div class="my-4 border-t border-slate-200"></div>
+                <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Audit Elements</h3>
+
+                <div class="space-y-2">
+                    <div class="node-item p-3 bg-violet-50 border border-violet-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="control">
+                        <span class="text-sm font-medium text-violet-700">Control Point</span>
+                    </div>
+                    <div class="node-item p-3 bg-red-50 border border-red-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="risk">
+                        <span class="text-sm font-medium text-red-700">Risk</span>
+                    </div>
+                    <div class="node-item p-3 bg-cyan-50 border border-cyan-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="document">
+                        <span class="text-sm font-medium text-cyan-700">Document</span>
+                    </div>
+                    <div class="node-item p-3 bg-slate-100 border border-slate-300 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="system">
+                        <span class="text-sm font-medium text-slate-700">System</span>
+                    </div>
+                    <div class="node-item p-3 bg-yellow-50 border border-yellow-300 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="note">
+                        <span class="text-sm font-medium text-yellow-800">Note</span>
+                    </div>
+                </div>
+
+                <div class="my-4 border-t border-slate-200"></div>
+                <div class="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
+                    <p class="font-medium text-slate-700 mb-2">Tips:</p>
+                    <ul class="space-y-1">
+                        <li>- Drag nodes to canvas</li>
+                        <li>- Connect via dots</li>
+                        <li>- Click to edit text</li>
+                        <li>- Delete key removes</li>
+                        <li>- Scroll to zoom</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Canvas -->
+            <div id="drawflow" class="flex-1" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+        </div>
+
+        <!-- Zoom controls -->
+        <div class="fixed bottom-6 right-6 flex gap-1 bg-white rounded-lg shadow-lg p-1 ring-1 ring-slate-200">
+            <button onclick="zoomOut()" class="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded-md transition-colors text-lg">−</button>
+            <button onclick="zoomReset()" class="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            </button>
+            <button onclick="zoomIn()" class="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-100 rounded-md transition-colors text-lg">+</button>
+        </div>
+
+        <!-- Toast notifications -->
+        <div id="toast-container" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2"></div>
+    </div>
+
+    <!-- Drawflow JS -->
+    <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
+
+    <script>
+        const container = document.getElementById('drawflow');
+        const editor = new Drawflow(container);
+        editor.reroute = true;
+        editor.reroute_fix_curvature = true;
+        editor.force_first_input = false;
+        editor.start();
+
+        const initialFlowchartId = "{{ flowchart_id or '' }}";
+        if (initialFlowchartId) {
+            setTimeout(() => loadFlowchart(), 500);
+        }
+
+        // Node templates
+        const nodeTemplates = {
+            start: `<div class="node-title">START</div><input type="text" class="node-input" value="Process Start" df-name>`,
+            process: `<div class="node-title">PROCESS</div><input type="text" class="node-input" value="Process Step" df-name><textarea class="node-textarea" placeholder="Description..." df-description></textarea>`,
+            decision: `<div class="node-title">DECISION</div><input type="text" class="node-input" value="Decision Point?" df-name><textarea class="node-textarea" placeholder="Criteria..." df-description></textarea>`,
+            end: `<div class="node-title">END</div><input type="text" class="node-input" value="Process End" df-name>`,
+            control: `<div class="node-title">CONTROL</div><input type="text" class="node-input" value="Control Name" df-name><textarea class="node-textarea" placeholder="Control description..." df-description></textarea><select class="node-select" df-status><option value="effective">Effective</option><option value="needs-improvement">Needs Improvement</option><option value="ineffective">Ineffective</option><option value="not-tested">Not Tested</option></select>`,
+            risk: `<div class="node-title">RISK</div><input type="text" class="node-input" value="Risk Title" df-name><textarea class="node-textarea" placeholder="Risk description..." df-description></textarea><select class="node-select" df-rating><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>`,
+            document: `<div class="node-title">DOCUMENT</div><input type="text" class="node-input" value="Document Name" df-name><textarea class="node-textarea" placeholder="Description / Reference..." df-description></textarea>`,
+            system: `<div class="node-title">SYSTEM</div><input type="text" class="node-input" value="System Name" df-name><textarea class="node-textarea" placeholder="System details..." df-description></textarea>`,
+            note: `<div class="node-title">NOTE</div><textarea class="node-textarea" placeholder="Enter your note here..." df-note style="min-height: 80px;"></textarea>`,
+        };
+
+        const nodeConfig = {
+            start: { inputs: 0, outputs: 1 },
+            process: { inputs: 1, outputs: 1 },
+            decision: { inputs: 1, outputs: 2 },
+            end: { inputs: 1, outputs: 0 },
+            control: { inputs: 1, outputs: 1 },
+            risk: { inputs: 1, outputs: 1 },
+            document: { inputs: 1, outputs: 1 },
+            system: { inputs: 1, outputs: 1 },
+            note: { inputs: 0, outputs: 0 },
+        };
+
+        function allowDrop(ev) { ev.preventDefault(); }
+        function drag(ev) { ev.dataTransfer.setData("node", ev.target.closest('[data-node]').getAttribute('data-node')); }
+
+        function drop(ev) {
+            ev.preventDefault();
+            const nodeType = ev.dataTransfer.getData("node");
+            addNode(nodeType, ev.clientX, ev.clientY);
+        }
+
+        function addNode(type, posX, posY) {
+            const rect = container.getBoundingClientRect();
+            const x = (posX - rect.left) / editor.zoom - editor.precanvas.getBoundingClientRect().left / editor.zoom;
+            const y = (posY - rect.top) / editor.zoom - editor.precanvas.getBoundingClientRect().top / editor.zoom;
+            const config = nodeConfig[type];
+            editor.addNode(type, config.inputs, config.outputs, x, y, type, { name: '', description: '', status: '', rating: '', note: '' }, nodeTemplates[type]);
+        }
+
+        function zoomIn() { editor.zoom_in(); }
+        function zoomOut() { editor.zoom_out(); }
+        function zoomReset() { editor.zoom_reset(); }
+
+        async function saveFlowchart() {
+            const name = document.getElementById('flowchartName').value.trim();
+            if (!name) { showToast('Please enter a flowchart name', 'warning'); return; }
+            const data = editor.export();
+            await fetch(`/api/flowchart/${encodeURIComponent(name)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            showToast('Flowchart saved!', 'success');
+            window.history.pushState({}, '', `/flowchart/${encodeURIComponent(name)}`);
+        }
+
+        async function loadFlowchart() {
+            const name = document.getElementById('flowchartName').value.trim();
+            if (!name) { showToast('Please enter a flowchart name', 'warning'); return; }
+            const response = await fetch(`/api/flowchart/${encodeURIComponent(name)}`);
+            const data = await response.json();
+            if (data && data.drawflow) {
+                editor.import(data);
+                showToast('Flowchart loaded!', 'success');
+                window.history.pushState({}, '', `/flowchart/${encodeURIComponent(name)}`);
+            } else {
+                showToast('Flowchart not found', 'error');
+            }
+        }
+
+        function exportData() {
+            const data = editor.export();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const name = document.getElementById('flowchartName').value.trim() || 'flowchart';
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${name}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Exported!', 'success');
+        }
+
+        function clearCanvas() {
+            if (confirm('Clear the entire flowchart?')) {
+                editor.clear();
+                showToast('Canvas cleared', 'info');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast rounded-lg shadow-lg px-4 py-3 flex items-center gap-2 ${
+                type === 'success' ? 'bg-emerald-600 text-white' :
+                type === 'error' ? 'bg-red-600 text-white' :
+                type === 'warning' ? 'bg-amber-500 text-white' :
+                'bg-slate-700 text-white'
+            }`;
+            toast.innerHTML = `<p class="text-sm font-medium">${message}</p>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (editor.node_selected) {
+                    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+                    editor.removeNodeId('node-' + editor.node_selected);
+                }
+            }
+            if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                saveFlowchart();
+            }
+        });
+    </script>
+</body>
+</html>
