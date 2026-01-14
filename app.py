@@ -192,7 +192,7 @@ def increment_data_version() -> int:
     """Increment and return new data version (thread-safe)."""
     global _data_version
     with _data_version_lock:
-        _increment_data_version()
+        _data_version += 1
         return _data_version
 
 @app.route('/')
