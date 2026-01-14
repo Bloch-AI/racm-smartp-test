@@ -682,9 +682,6 @@
                 }
             });
 
-            console.log('Issue table initialized:', issueTable ? 'OK' : 'FAILED');
-            console.log('Issues data:', issuesData);
-
             // Hide issues container after initialization (RACM is default view)
             issuesContainer.style.display = 'none';
 
@@ -1286,7 +1283,6 @@
                 }
             }
             await Promise.all(promises);
-            console.log('Test doc cache populated:', testDocCache);
             // Force complete re-render by setting data again
             table.setData(data);
             // Also load risk attachment counts
@@ -1314,7 +1310,6 @@
                 }
             }
             await Promise.all(promises);
-            console.log('Risk attachment cache populated:', riskAttachmentCache);
             // Re-render
             table.setData(data);
         }
@@ -1432,7 +1427,6 @@
                 }
             }
             await Promise.all(promises);
-            console.log('Issue doc cache populated:', issueDocCache);
             // Force re-render
             issueTable.setData(data);
         }
@@ -1493,7 +1487,6 @@
         }
 
         // Override saveTestDocument to handle both test docs and issue docs
-        const originalSaveTestDocument = saveTestDocument;
         saveTestDocument = async function() {
             if (currentIssueDoc) {
                 // Save issue documentation

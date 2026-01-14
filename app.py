@@ -3,9 +3,15 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import json
 import os
+import re
 import uuid
+import threading
 import anthropic
 import mimetypes
+
+# Constants
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
+MAX_CHAT_HISTORY = 20  # Maximum messages to retain in chat history
 
 # Text extraction imports
 try:
@@ -144,6 +150,18 @@ def allowed_file(filename):
 # Initialize database
 db = get_db()
 
+
+# ==================== Error Response Helpers ====================
+
+def error_response(message: str, status_code: int = 400):
+    """Return a standardized JSON error response."""
+    return jsonify({'error': message}), status_code
+
+
+def not_found_response(entity: str = 'Resource'):
+    """Return a standardized 404 response."""
+    return jsonify({'error': f'{entity} not found'}), 404
+
 # Seed initial data if database is empty
 def seed_initial_data():
     """Add sample data if database is empty."""
@@ -159,8 +177,23 @@ def seed_initial_data():
 
 seed_initial_data()
 
-# Data version for frontend refresh detection
-data_version = 0
+# Data version for frontend refresh detection (thread-safe)
+_data_version = 0
+_data_version_lock = threading.Lock()
+
+
+def get_data_version() -> int:
+    """Get current data version (thread-safe)."""
+    with _data_version_lock:
+        return _data_version
+
+
+def increment_data_version() -> int:
+    """Increment and return new data version (thread-safe)."""
+    global _data_version
+    with _data_version_lock:
+        _increment_data_version()
+        return _data_version
 
 @app.route('/')
 def index():
@@ -179,7 +212,7 @@ def get_data():
 @app.route('/api/data', methods=['POST'])
 def save_data():
     """Save all spreadsheet data from multi-tab view."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
 
     # Handle both old format (array) and new format (object with racm/issues)
@@ -193,7 +226,7 @@ def save_data():
         if 'issues' in data:
             db.save_issues_from_spreadsheet(data['issues'])
 
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'saved'})
 
 # ==================== Risks API (for direct access) ====================
@@ -207,12 +240,12 @@ def get_risks():
 def get_risk(risk_id):
     """Get a single risk."""
     risk = db.get_risk(risk_id)
-    return jsonify(risk) if risk else ('Not found', 404)
+    return jsonify(risk) if risk else not_found_response('Risk')
 
 @app.route('/api/risks', methods=['POST'])
 def create_risk():
     """Create a new risk."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
     new_id = db.create_risk(
         risk_id=data.get('risk_id'),
@@ -222,25 +255,24 @@ def create_risk():
         frequency=data.get('frequency', ''),
         status=data.get('status', 'Not Tested')
     )
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'created', 'id': new_id})
 
 @app.route('/api/risks/<risk_id>', methods=['PUT'])
 def update_risk(risk_id):
     """Update a risk."""
-    global data_version
+    # Thread-safe data version update
     db.update_risk(risk_id, **request.json)
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'updated'})
 
 @app.route('/api/risks/<risk_id>', methods=['DELETE'])
 def delete_risk(risk_id):
     """Delete a risk."""
-    global data_version
     if db.delete_risk(risk_id):
-        data_version += 1
+        increment_data_version()
         return jsonify({'status': 'deleted'})
-    return ('Not found', 404)
+    return not_found_response('Risk')
 
 # ==================== Flowchart API ====================
 
@@ -258,9 +290,9 @@ def get_flowchart(flowchart_id):
 @app.route('/api/flowchart/<flowchart_id>', methods=['POST'])
 def save_flowchart(flowchart_id):
     """Save a flowchart."""
-    global data_version
+    # Thread-safe data version update
     db.save_flowchart(flowchart_id, request.json)
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'saved'})
 
 @app.route('/api/flowcharts', methods=['GET'])
@@ -284,7 +316,7 @@ def get_test_document(risk_code, doc_type):
 @app.route('/api/test-document/<risk_code>/<doc_type>', methods=['POST'])
 def save_test_document(risk_code, doc_type):
     """Save a test document."""
-    global data_version
+    # Thread-safe data version update
     if doc_type not in ('de_testing', 'oe_testing'):
         return jsonify({'error': 'Invalid document type'}), 400
     data = request.json
@@ -292,7 +324,7 @@ def save_test_document(risk_code, doc_type):
     doc_id = db.save_test_document_by_risk_code(risk_code, doc_type, content)
     if doc_id is None:
         return jsonify({'error': 'Risk not found'}), 404
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'saved', 'id': doc_id})
 
 @app.route('/api/test-document/<risk_code>/<doc_type>/exists', methods=['GET'])
@@ -319,7 +351,7 @@ def get_kanban(board_id):
 @app.route('/api/kanban/<board_id>', methods=['POST'])
 def save_kanban(board_id):
     """Save kanban board from legacy format."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
 
     # Clear existing tasks and recreate from the board data
@@ -335,13 +367,13 @@ def save_kanban(board_id):
                               assignee=item.get('assignee', ''),
                               column_id=col['id'])
 
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'saved'})
 
 @app.route('/api/kanban/<board_id>/task', methods=['POST'])
 def create_kanban_task(board_id):
     """Create a new task on the kanban board."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
 
     task_id = db.create_task(
@@ -353,7 +385,7 @@ def create_kanban_task(board_id):
         risk_id=data.get('riskId', None)
     )
 
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'created', 'taskId': str(task_id)})
 
 @app.route('/api/kanban/<board_id>/task/<task_id>', methods=['GET'])
@@ -375,7 +407,7 @@ def get_kanban_task(board_id, task_id):
 @app.route('/api/kanban/<board_id>/task/<task_id>', methods=['PUT'])
 def update_kanban_task(board_id, task_id):
     """Update a specific task."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
     db.update_task(int(task_id), **{
         'title': data.get('title'),
@@ -384,7 +416,7 @@ def update_kanban_task(board_id, task_id):
         'assignee': data.get('assignee'),
         'column_id': data.get('column')
     })
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'updated'})
 
 # ==================== Tasks API (direct access) ====================
@@ -398,12 +430,12 @@ def get_tasks():
 def get_task(task_id):
     """Get a single task."""
     task = db.get_task(task_id)
-    return jsonify(task) if task else ('Not found', 404)
+    return jsonify(task) if task else not_found_response('Task')
 
 @app.route('/api/tasks', methods=['POST'])
 def create_task():
     """Create a new task."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
     task_id = db.create_task(
         title=data.get('title'),
@@ -413,7 +445,7 @@ def create_task():
         column_id=data.get('column_id', 'planning'),
         risk_id=data.get('risk_id')
     )
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'created', 'id': task_id})
 
 # ==================== AI Query API ====================
@@ -450,12 +482,12 @@ def get_issues():
 def get_issue(issue_id):
     """Get a single issue."""
     issue = db.get_issue(issue_id)
-    return jsonify(issue) if issue else ('Not found', 404)
+    return jsonify(issue) if issue else not_found_response('Issue')
 
 @app.route('/api/issues', methods=['POST'])
 def create_issue():
     """Create a new issue."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
     issue_id = db.create_issue(
         risk_id=data.get('risk_id', ''),
@@ -466,26 +498,24 @@ def create_issue():
         assigned_to=data.get('assigned_to', ''),
         due_date=data.get('due_date')
     )
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'created', 'issue_id': issue_id})
 
 @app.route('/api/issues/<issue_id>', methods=['PUT'])
 def update_issue(issue_id):
     """Update an issue."""
-    global data_version
     if db.update_issue(issue_id, **request.json):
-        data_version += 1
+        increment_data_version()
         return jsonify({'status': 'updated'})
-    return ('Not found', 404)
+    return not_found_response('Issue')
 
 @app.route('/api/issues/<issue_id>', methods=['DELETE'])
 def delete_issue(issue_id):
     """Delete an issue."""
-    global data_version
     if db.delete_issue(issue_id):
-        data_version += 1
+        increment_data_version()
         return jsonify({'status': 'deleted'})
-    return ('Not found', 404)
+    return not_found_response('Issue')
 
 @app.route('/api/issues/<issue_id>/documentation', methods=['GET'])
 def get_issue_documentation(issue_id):
@@ -497,13 +527,12 @@ def get_issue_documentation(issue_id):
 @app.route('/api/issues/<issue_id>/documentation', methods=['POST'])
 def save_issue_documentation(issue_id):
     """Save documentation for an issue."""
-    global data_version
     data = request.json
     documentation = data.get('documentation', '')
     if db.save_issue_documentation(issue_id, documentation):
-        data_version += 1
+        increment_data_version()
         return jsonify({'status': 'saved'})
-    return ('Issue not found', 404)
+    return not_found_response('Issue')
 
 @app.route('/api/issues/<issue_id>/documentation/exists', methods=['GET'])
 def issue_documentation_exists(issue_id):
@@ -511,6 +540,66 @@ def issue_documentation_exists(issue_id):
     return jsonify({'exists': db.has_issue_documentation(issue_id)})
 
 # ==================== Issue Attachments API ====================
+
+def _process_file_upload(file):
+    """Process uploaded file and return file info dict.
+
+    Returns dict with: filepath, original_filename, unique_filename, file_size, mime_type, extracted_text
+    Raises ValueError on validation errors.
+    Cleans up file on extraction failure.
+    """
+    if file.filename == '':
+        raise ValueError('No file selected')
+
+    if not allowed_file(file.filename):
+        raise ValueError(f'File type not allowed. Allowed: {", ".join(ALLOWED_EXTENSIONS)}')
+
+    # Generate unique filename
+    original_filename = secure_filename(file.filename)
+    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
+    unique_filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
+
+    # Save file
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+    file.save(filepath)
+
+    try:
+        file_size = os.path.getsize(filepath)
+        mime_type = mimetypes.guess_type(original_filename)[0] or 'application/octet-stream'
+        extracted_text = extract_text_from_file(filepath, mime_type)
+
+        return {
+            'filepath': filepath,
+            'original_filename': original_filename,
+            'unique_filename': unique_filename,
+            'file_size': file_size,
+            'mime_type': mime_type,
+            'extracted_text': extracted_text
+        }
+    except Exception:
+        # Clean up file on failure
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        raise
+
+
+def _format_attachment_list(attachments: list, entity_type: str, entity_id: str) -> str:
+    """Format attachment list for AI tool response."""
+    if not attachments:
+        return f"No file attachments found for {entity_type} {entity_id}."
+
+    result = f"## File Attachments for {entity_type.title()} {entity_id}\n\n"
+    for att in attachments:
+        size_kb = att['file_size'] / 1024
+        size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
+        result += f"- **ID: {att['id']}** - {att['original_filename']} ({size_str})\n"
+        result += f"  Type: {att['mime_type']}\n"
+        if att.get('description'):
+            result += f"  Description: {att['description']}\n"
+        result += f"  Uploaded: {att['uploaded_at']}\n\n"
+
+    return result
+
 
 @app.route('/api/issues/<issue_id>/attachments', methods=['GET'])
 def get_issue_attachments(issue_id):
@@ -521,55 +610,34 @@ def get_issue_attachments(issue_id):
 @app.route('/api/issues/<issue_id>/attachments', methods=['POST'])
 def upload_issue_attachment(issue_id):
     """Upload a file attachment for an issue."""
-    global data_version
-
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+    try:
+        file_info = _process_file_upload(request.files['file'])
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
-    if not allowed_file(file.filename):
-        return jsonify({'error': f'File type not allowed. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
-
-    # Generate unique filename
-    original_filename = secure_filename(file.filename)
-    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
-    unique_filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
-
-    # Save file
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-    file.save(filepath)
-    file_size = os.path.getsize(filepath)
-
-    # Get MIME type
-    mime_type = mimetypes.guess_type(original_filename)[0] or 'application/octet-stream'
-
-    # Get description from form data
     description = request.form.get('description', '')
-
-    # Extract text content from file
-    extracted_text = extract_text_from_file(filepath, mime_type)
 
     # Save to database
     attachment_id = db.add_attachment(
         issue_id=issue_id,
-        filename=unique_filename,
-        original_filename=original_filename,
-        file_size=file_size,
-        mime_type=mime_type,
+        filename=file_info['unique_filename'],
+        original_filename=file_info['original_filename'],
+        file_size=file_info['file_size'],
+        mime_type=file_info['mime_type'],
         description=description,
-        extracted_text=extracted_text
+        extracted_text=file_info['extracted_text']
     )
 
-    data_version += 1
+    increment_data_version()
     return jsonify({
         'status': 'uploaded',
         'id': attachment_id,
-        'filename': original_filename,
-        'size': file_size,
-        'text_extracted': len(extracted_text) > 0 and not extracted_text.startswith('[')
+        'filename': file_info['original_filename'],
+        'size': file_info['file_size'],
+        'text_extracted': len(file_info['extracted_text']) > 0 and not file_info['extracted_text'].startswith('[')
     })
 
 @app.route('/api/attachments/<int:attachment_id>', methods=['GET'])
@@ -577,7 +645,7 @@ def download_attachment(attachment_id):
     """Download an attachment file."""
     attachment = db.get_attachment(attachment_id)
     if not attachment:
-        return ('Attachment not found', 404)
+        return not_found_response('Attachment')
 
     return send_from_directory(
         app.config['UPLOAD_FOLDER'],
@@ -589,10 +657,9 @@ def download_attachment(attachment_id):
 @app.route('/api/attachments/<int:attachment_id>', methods=['DELETE'])
 def delete_attachment(attachment_id):
     """Delete an attachment."""
-    global data_version
     attachment = db.get_attachment(attachment_id)
     if not attachment:
-        return ('Attachment not found', 404)
+        return not_found_response('Attachment')
 
     # Delete file from disk
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], attachment['filename'])
@@ -601,7 +668,7 @@ def delete_attachment(attachment_id):
 
     # Delete from database
     db.delete_attachment(attachment_id)
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'deleted'})
 
 # ==================== Risk Attachments API ====================
@@ -615,60 +682,39 @@ def get_risk_attachments(risk_id):
 @app.route('/api/risks/<risk_id>/attachments', methods=['POST'])
 def upload_risk_attachment(risk_id):
     """Upload a file attachment for a risk."""
-    global data_version
-
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+    try:
+        file_info = _process_file_upload(request.files['file'])
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
-    if not allowed_file(file.filename):
-        return jsonify({'error': f'File type not allowed. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
-
-    # Generate unique filename
-    original_filename = secure_filename(file.filename)
-    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
-    unique_filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
-
-    # Save file
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-    file.save(filepath)
-    file_size = os.path.getsize(filepath)
-
-    # Get MIME type
-    mime_type = mimetypes.guess_type(original_filename)[0] or 'application/octet-stream'
-
-    # Get description and category from form data
     description = request.form.get('description', '')
     category = request.form.get('category', 'planning')
     # Validate category
     if category not in ('planning', 'de', 'oe'):
         category = 'planning'
 
-    # Extract text content from file
-    extracted_text = extract_text_from_file(filepath, mime_type)
-
     # Save to database
     attachment_id = db.add_risk_attachment(
         risk_id=risk_id,
-        filename=unique_filename,
-        original_filename=original_filename,
-        file_size=file_size,
-        mime_type=mime_type,
+        filename=file_info['unique_filename'],
+        original_filename=file_info['original_filename'],
+        file_size=file_info['file_size'],
+        mime_type=file_info['mime_type'],
         description=description,
         category=category,
-        extracted_text=extracted_text
+        extracted_text=file_info['extracted_text']
     )
 
-    data_version += 1
+    increment_data_version()
     return jsonify({
         'status': 'uploaded',
         'id': attachment_id,
-        'filename': original_filename,
-        'size': file_size,
-        'text_extracted': len(extracted_text) > 0 and not extracted_text.startswith('[')
+        'filename': file_info['original_filename'],
+        'size': file_info['file_size'],
+        'text_extracted': len(file_info['extracted_text']) > 0 and not file_info['extracted_text'].startswith('[')
     })
 
 @app.route('/api/risk-attachments/<int:attachment_id>', methods=['GET'])
@@ -676,7 +722,7 @@ def download_risk_attachment(attachment_id):
     """Download a risk attachment file."""
     attachment = db.get_risk_attachment(attachment_id)
     if not attachment:
-        return ('Attachment not found', 404)
+        return not_found_response('Attachment')
 
     return send_from_directory(
         app.config['UPLOAD_FOLDER'],
@@ -688,10 +734,9 @@ def download_risk_attachment(attachment_id):
 @app.route('/api/risk-attachments/<int:attachment_id>', methods=['DELETE'])
 def delete_risk_attachment(attachment_id):
     """Delete a risk attachment."""
-    global data_version
     attachment = db.get_risk_attachment(attachment_id)
     if not attachment:
-        return ('Attachment not found', 404)
+        return not_found_response('Attachment')
 
     # Delete file from disk
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], attachment['filename'])
@@ -700,13 +745,13 @@ def delete_risk_attachment(attachment_id):
 
     # Delete from database
     db.delete_risk_attachment(attachment_id)
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'deleted'})
 
 @app.route('/api/issues/from-risk/<risk_id>', methods=['POST'])
 def create_issue_from_risk(risk_id):
     """Create an issue from a RACM risk (used when checkbox is ticked)."""
-    global data_version
+    # Thread-safe data version update
     risk = db.get_risk(risk_id)
     if not risk:
         return jsonify({'error': 'Risk not found'}), 404
@@ -724,7 +769,7 @@ def create_issue_from_risk(risk_id):
         severity='Medium',
         status='Open'
     )
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'created', 'issue_id': issue_id})
 
 # ==================== Export/Import ====================
@@ -737,16 +782,32 @@ def export_data():
 @app.route('/api/import', methods=['POST'])
 def import_data():
     """Import data from JSON."""
-    global data_version
+    # Thread-safe data version update
     data = request.json
     clear = request.args.get('clear', 'false').lower() == 'true'
     db.import_all(data, clear_existing=clear)
-    data_version += 1
+    increment_data_version()
     return jsonify({'status': 'imported'})
 
 # ==================== Chat API ====================
 
 chat_history = []
+_chat_history_lock = threading.Lock()
+
+
+def add_to_chat_history(message: dict):
+    """Add message to chat history with bounds (thread-safe)."""
+    with _chat_history_lock:
+        chat_history.append(message)
+        # Trim to max size
+        while len(chat_history) > MAX_CHAT_HISTORY:
+            chat_history.pop(0)
+
+
+def get_recent_chat_history(count: int = 10) -> list:
+    """Get recent chat messages (thread-safe)."""
+    with _chat_history_lock:
+        return chat_history[-count:]
 
 @app.route('/api/chat/status', methods=['GET'])
 def chat_status():
@@ -755,7 +816,7 @@ def chat_status():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    global data_version
+    # Thread-safe data version update
     data = request.json
     user_message = data.get('message', '')
     api_key = ANTHROPIC_API_KEY
@@ -1014,11 +1075,11 @@ Be concise and professional."""
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
-        chat_history.append({"role": "user", "content": user_message})
-        messages = chat_history[-10:]
+        add_to_chat_history({"role": "user", "content": user_message})
+        messages = get_recent_chat_history(10)
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=CLAUDE_MODEL,
             max_tokens=2048,
             system=system_prompt,
             tools=tools,
@@ -1044,7 +1105,7 @@ Be concise and professional."""
             messages.append({"role": "user", "content": tool_results})
 
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=CLAUDE_MODEL,
                 max_tokens=2048,
                 system=system_prompt,
                 tools=tools,
@@ -1056,8 +1117,8 @@ Be concise and professional."""
             if hasattr(content, 'text'):
                 final_response += content.text
 
-        chat_history.append({"role": "assistant", "content": final_response})
-        return jsonify({'response': final_response, 'data_version': data_version})
+        add_to_chat_history({"role": "assistant", "content": final_response})
+        return jsonify({'response': final_response, 'data_version': get_data_version()})
 
     except anthropic.AuthenticationError:
         return jsonify({'error': 'Invalid API key'})
@@ -1069,7 +1130,7 @@ Be concise and professional."""
 
 def execute_tool(tool_name, tool_input):
     """Execute a tool and return the result."""
-    global data_version
+    # Thread-safe data version update
 
     if tool_name == "add_racm_row":
         db.create_risk(
@@ -1080,7 +1141,7 @@ def execute_tool(tool_name, tool_input):
             frequency=tool_input.get('frequency', ''),
             status=tool_input.get('status', 'Not Tested')
         )
-        data_version += 1
+        increment_data_version()
         return f"Successfully added RACM row: {tool_input.get('risk_id')} - {tool_input.get('risk_description')}"
 
     elif tool_name == "create_kanban_task":
@@ -1093,7 +1154,7 @@ def execute_tool(tool_name, tool_input):
             column_id=tool_input.get('column', 'planning'),
             risk_id=risk_id if risk_id else None
         )
-        data_version += 1
+        increment_data_version()
         linked_msg = f" Linked to RACM row {risk_id}." if risk_id else ""
         return f"Successfully created task '{tool_input.get('title')}' (ID: {task_id}).{linked_msg}"
 
@@ -1101,7 +1162,7 @@ def execute_tool(tool_name, tool_input):
         risk_id = tool_input.get('risk_id', '').upper()
         new_status = tool_input.get('new_status', '')
         if db.update_risk(risk_id, status=new_status):
-            data_version += 1
+            increment_data_version()
             return f"Successfully updated {risk_id} status to '{new_status}'"
         return f"Risk ID '{risk_id}' not found"
 
@@ -1185,7 +1246,7 @@ def execute_tool(tool_name, tool_input):
             y_pos += 150
 
         db.save_flowchart(name, drawflow_data, risk_id if risk_id else None)
-        data_version += 1
+        increment_data_version()
 
         linked_msg = f" Linked to RACM row {risk_id}." if risk_id else ""
         return f"Successfully created flowchart '{name}' with {len(steps)} nodes.{linked_msg} View at: /flowchart/{name}"
@@ -1206,7 +1267,6 @@ def execute_tool(tool_name, tool_input):
             return f"The {doc_type} document for {risk_code} exists but is empty."
 
         # Strip HTML tags for cleaner AI reading
-        import re
         text_content = re.sub(r'<[^>]+>', '', content)
         text_content = re.sub(r'\s+', ' ', text_content).strip()
 
@@ -1232,7 +1292,7 @@ def execute_tool(tool_name, tool_input):
         if doc_id is None:
             return f"Risk {risk_code} not found. Cannot create document."
 
-        data_version += 1
+        increment_data_version()
         doc_type_label = "Design Effectiveness Testing" if doc_type == "de_testing" else "Operational Effectiveness Testing"
         return f"Successfully created/updated {doc_type_label} document for {risk_code}."
 
@@ -1274,7 +1334,6 @@ def execute_tool(tool_name, tool_input):
             return f"Issue {issue_id} exists but has no documentation yet."
 
         # Strip HTML tags for cleaner AI reading
-        import re
         text_content = re.sub(r'<[^>]+>', '', doc)
         text_content = re.sub(r'\s+', ' ', text_content).strip()
 
@@ -1292,47 +1351,19 @@ def execute_tool(tool_name, tool_input):
             documentation = f"<p>{documentation}</p>"
 
         if db.save_issue_documentation(issue_id, documentation):
-            data_version += 1
+            increment_data_version()
             return f"Successfully saved documentation for issue {issue_id}."
         return f"Issue {issue_id} not found."
 
     elif tool_name == "list_issue_attachments":
         issue_id = tool_input.get('issue_id', '').upper()
         attachments = db.get_attachments_for_issue(issue_id)
-
-        if not attachments:
-            return f"No file attachments found for issue {issue_id}."
-
-        result = f"## File Attachments for Issue {issue_id}\n\n"
-        for att in attachments:
-            size_kb = att['file_size'] / 1024
-            size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
-            result += f"- **{att['original_filename']}** ({size_str})\n"
-            result += f"  Type: {att['mime_type']}\n"
-            if att['description']:
-                result += f"  Description: {att['description']}\n"
-            result += f"  Uploaded: {att['uploaded_at']}\n\n"
-
-        return result
+        return _format_attachment_list(attachments, 'issue', issue_id)
 
     elif tool_name == "list_risk_attachments":
         risk_id = tool_input.get('risk_id', '').upper()
         attachments = db.get_attachments_for_risk(risk_id)
-
-        if not attachments:
-            return f"No file attachments found for risk {risk_id}."
-
-        result = f"## File Attachments for Risk {risk_id}\n\n"
-        for att in attachments:
-            size_kb = att['file_size'] / 1024
-            size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
-            result += f"- **{att['original_filename']}** ({size_str})\n"
-            result += f"  Type: {att['mime_type']}\n"
-            if att['description']:
-                result += f"  Description: {att['description']}\n"
-            result += f"  Uploaded: {att['uploaded_at']}\n\n"
-
-        return result
+        return _format_attachment_list(attachments, 'risk', risk_id)
 
     elif tool_name == "read_attachment_content":
         attachment_id = tool_input.get('attachment_id')

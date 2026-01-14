@@ -11,6 +11,8 @@ Can be imported as a module into larger projects.
 
 import sqlite3
 import json
+import re
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -31,6 +33,19 @@ class RACMDatabase:
         conn.row_factory = sqlite3.Row  # Return dicts instead of tuples
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
+
+    @contextmanager
+    def _connection(self):
+        """Context manager for database connections."""
+        conn = self._get_conn()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _init_db(self):
         """Initialize database schema."""
@@ -542,7 +557,6 @@ class RACMDatabase:
         for row in rows:
             content = row['content'] or ''
             # Strip HTML tags for word count approximation
-            import re
             text_only = re.sub(r'<[^>]+>', '', content)
             word_count = len(text_only.split()) if text_only.strip() else 0
             result.append({
@@ -878,14 +892,33 @@ class RACMDatabase:
 
     def execute_query(self, sql: str, params: tuple = ()) -> List[Dict]:
         """Execute a raw SQL query (for AI-generated queries).
-        READ-ONLY - only SELECT statements allowed."""
-        if not sql.strip().upper().startswith('SELECT'):
+        READ-ONLY - only SELECT statements allowed.
+        Validates query to prevent SQL injection attacks."""
+        sql_clean = sql.strip()
+        sql_upper = sql_clean.upper()
+
+        # Must start with SELECT
+        if not sql_upper.startswith('SELECT'):
             raise ValueError("Only SELECT queries allowed")
 
-        conn = self._get_conn()
-        rows = conn.execute(sql, params).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        # Block dangerous keywords that could modify data
+        dangerous_keywords = [
+            'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
+            'TRUNCATE', 'EXEC', 'EXECUTE', 'GRANT', 'REVOKE', 'ATTACH',
+            'DETACH', 'PRAGMA', 'VACUUM', 'REINDEX'
+        ]
+        for keyword in dangerous_keywords:
+            # Check for keyword as whole word (not part of column name)
+            if re.search(rf'\b{keyword}\b', sql_upper):
+                raise ValueError(f"Query contains forbidden keyword: {keyword}")
+
+        # Block statement terminators that could chain queries
+        if ';' in sql_clean[:-1]:  # Allow trailing semicolon
+            raise ValueError("Multiple statements not allowed")
+
+        with self._connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [dict(row) for row in rows]
 
     def get_schema(self) -> str:
         """Return database schema for AI context."""
@@ -895,11 +928,18 @@ DATABASE SCHEMA:
 TABLE risks (RACM - Risk and Control Matrix):
   - id: INTEGER PRIMARY KEY
   - risk_id: TEXT (e.g., 'R001', 'R002')
-  - risk_description: TEXT
-  - control_description: TEXT
+  - risk: TEXT (risk description)
+  - control_id: TEXT
   - control_owner: TEXT
-  - frequency: TEXT (Daily, Weekly, Monthly, Quarterly, Ongoing)
-  - status: TEXT (Effective, Needs Improvement, Ineffective, Not Tested)
+  - design_effectiveness_testing: TEXT
+  - design_effectiveness_conclusion: TEXT
+  - operational_effectiveness_test: TEXT
+  - operational_effectiveness_conclusion: TEXT
+  - status: TEXT (Not Complete, Effective, Not Effective)
+  - ready_for_review: INTEGER (0 or 1)
+  - reviewer: TEXT
+  - raise_issue: INTEGER (0 or 1)
+  - closed: INTEGER (0 or 1)
   - created_at: TIMESTAMP
   - updated_at: TIMESTAMP
 
@@ -944,11 +984,36 @@ TABLE issues (Issue Log - linked to RACM risks):
   - created_at: TIMESTAMP
   - updated_at: TIMESTAMP
 
+TABLE issue_attachments (Evidence files for issues):
+  - id: INTEGER PRIMARY KEY
+  - issue_id: TEXT
+  - filename: TEXT
+  - original_filename: TEXT
+  - file_size: INTEGER
+  - mime_type: TEXT
+  - description: TEXT
+  - extracted_text: TEXT
+  - uploaded_at: TIMESTAMP
+
+TABLE risk_attachments (Evidence files for risks):
+  - id: INTEGER PRIMARY KEY
+  - risk_id: TEXT
+  - category: TEXT (planning, de, oe)
+  - filename: TEXT
+  - original_filename: TEXT
+  - file_size: INTEGER
+  - mime_type: TEXT
+  - description: TEXT
+  - extracted_text: TEXT
+  - uploaded_at: TIMESTAMP
+
 RELATIONSHIPS:
   - tasks.risk_id -> risks.id (many tasks can link to one risk)
   - flowcharts.risk_id -> risks.id (flowchart can document a risk's control)
   - test_documents.risk_id -> risks.id (each risk can have DE and OE testing docs)
   - issues.risk_id -> risks.risk_id (issues are raised against RACM risks)
+  - issue_attachments.issue_id -> issues.issue_id
+  - risk_attachments.risk_id -> risks.risk_id
 """
 
     def get_full_context(self) -> Dict:
