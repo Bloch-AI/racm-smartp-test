@@ -446,6 +446,62 @@ class RACMDatabase:
         doc = self.get_test_document_by_risk_code(risk_code, doc_type)
         return doc is not None and bool(doc.get('content', '').strip())
 
+    def get_all_test_documents_metadata(self) -> List[Dict]:
+        """Get metadata about all test documents (without full content).
+        Returns list of {risk_code, doc_type, has_content, word_count, updated_at}."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT r.risk_id as risk_code, td.doc_type, td.content, td.updated_at
+            FROM test_documents td
+            JOIN risks r ON td.risk_id = r.id
+            ORDER BY r.risk_id, td.doc_type
+        """).fetchall()
+        conn.close()
+
+        result = []
+        for row in rows:
+            content = row['content'] or ''
+            # Strip HTML tags for word count approximation
+            import re
+            text_only = re.sub(r'<[^>]+>', '', content)
+            word_count = len(text_only.split()) if text_only.strip() else 0
+            result.append({
+                'risk_code': row['risk_code'],
+                'doc_type': row['doc_type'],
+                'has_content': bool(content.strip()),
+                'word_count': word_count,
+                'updated_at': row['updated_at']
+            })
+        return result
+
+    def get_flowchart_with_details(self, name: str) -> Optional[Dict]:
+        """Get flowchart with parsed node details for AI consumption."""
+        fc = self.get_flowchart(name)
+        if not fc:
+            return None
+
+        # Extract node details from Drawflow data
+        data = fc.get('data', {})
+        nodes = []
+        try:
+            drawflow_data = data.get('drawflow', {}).get('Home', {}).get('data', {})
+            for node_id, node in drawflow_data.items():
+                nodes.append({
+                    'id': node_id,
+                    'type': node.get('name', 'unknown'),
+                    'label': node.get('data', {}).get('name', ''),
+                    'description': node.get('data', {}).get('description', '')
+                })
+        except (AttributeError, KeyError):
+            pass
+
+        return {
+            'name': fc['name'],
+            'risk_id': fc.get('risk_id'),
+            'nodes': nodes,
+            'updated_at': fc.get('updated_at')
+        }
+
     # ==================== AI QUERY HELPERS ====================
 
     def execute_query(self, sql: str, params: tuple = ()) -> List[Dict]:
@@ -489,27 +545,41 @@ TABLE tasks (Kanban board items):
 TABLE flowcharts (Process diagrams):
   - id: INTEGER PRIMARY KEY
   - name: TEXT (unique identifier)
-  - data: JSON (Drawflow format)
+  - data: JSON (Drawflow format with nodes)
   - risk_id: INTEGER (FK to risks.id)
+  - created_at: TIMESTAMP
+  - updated_at: TIMESTAMP
+
+TABLE test_documents (Working papers - DE/OE testing documentation):
+  - id: INTEGER PRIMARY KEY
+  - risk_id: INTEGER (FK to risks.id)
+  - doc_type: TEXT ('de_testing' or 'oe_testing')
+  - content: TEXT (HTML/rich text content)
   - created_at: TIMESTAMP
   - updated_at: TIMESTAMP
 
 RELATIONSHIPS:
   - tasks.risk_id -> risks.id (many tasks can link to one risk)
   - flowcharts.risk_id -> risks.id (flowchart can document a risk's control)
+  - test_documents.risk_id -> risks.id (each risk can have DE and OE testing docs)
 """
 
     def get_full_context(self) -> Dict:
         """Get full database context for AI."""
+        flowcharts = self.get_all_flowcharts()
+        test_docs = self.get_all_test_documents_metadata()
+
         return {
             'schema': self.get_schema(),
             'risk_summary': self.get_risk_summary(),
             'task_summary': self.get_task_summary(),
-            'flowchart_count': len(self.get_all_flowcharts()),
+            'flowchart_count': len(flowcharts),
+            'test_doc_count': len(test_docs),
             'risks': self.get_all_risks(),
             'tasks': self.get_all_tasks(),
             'flowcharts': [{'name': f['name'], 'risk_id': f['risk_id']}
-                          for f in self.get_all_flowcharts()]
+                          for f in flowcharts],
+            'test_documents': test_docs  # Metadata only - use tools to read full content
         }
 
     # ==================== IMPORT/EXPORT ====================

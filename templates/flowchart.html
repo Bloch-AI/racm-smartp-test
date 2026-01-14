@@ -47,6 +47,14 @@
             background-image:
                 radial-gradient(circle, #d4d4d4 1px, transparent 1px);
             background-size: 24px 24px;
+            overflow: auto !important;
+        }
+        /* Enable scrolling on the parent precanvas */
+        #drawflow .drawflow {
+            overflow: auto !important;
+        }
+        #drawflow .parent-drawflow {
+            overflow: auto !important;
         }
 
         /* ========== OVERRIDE ALL DRAWFLOW DEFAULTS ========== */
@@ -331,7 +339,7 @@
         }
     </style>
 </head>
-<body class="h-full overflow-hidden">
+<body class="h-full">
     <div class="h-full flex flex-col">
         <!-- Navigation -->
         <nav class="bg-white border-b border-slate-200 flex-shrink-0">
@@ -382,7 +390,7 @@
         </nav>
 
         <!-- Main content -->
-        <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 flex overflow-auto">
             <!-- Sidebar -->
             <div class="w-56 bg-white border-r border-slate-200 p-4 overflow-y-auto flex-shrink-0">
                 <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Flow Nodes</h3>

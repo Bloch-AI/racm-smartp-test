@@ -120,25 +120,31 @@
 
         /* Quill editor styling */
         #testDocEditor {
-            height: 100%;
-            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            height: 50vh;
+            min-height: 300px;
         }
-        #testDocEditor .ql-container {
-            font-size: 14px;
-            font-family: inherit;
-        }
-        #testDocEditor .ql-editor {
-            min-height: 350px;
-        }
-        .ql-toolbar.ql-snow {
+        #testDocEditor .ql-toolbar.ql-snow {
+            flex-shrink: 0;
             border-top: none;
             border-left: none;
             border-right: none;
             background: #f8fafc;
         }
-        .ql-container.ql-snow {
+        #testDocEditor .ql-container.ql-snow {
+            font-size: 14px;
+            font-family: inherit;
+            flex: 1;
+            overflow: hidden;
             border: none;
             border-top: 1px solid #e2e8f0;
+        }
+        #testDocEditor .ql-editor {
+            height: 100%;
+            max-height: 100%;
+            overflow-y: scroll !important;
+            padding: 16px;
         }
 
         /* Toast animations */
@@ -311,13 +317,13 @@
     </div>
 
     <!-- Test Document Editor Modal -->
-    <div id="testDocModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
-            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex-shrink-0">
+    <div id="testDocModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center overflow-y-auto py-8">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col" style="max-height: calc(100vh - 4rem);">
+            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex-shrink-0 rounded-t-xl">
                 <h3 id="testDocModalTitle" class="text-lg font-semibold text-slate-900">Design Effectiveness Testing</h3>
                 <p id="testDocModalSubtitle" class="text-sm text-slate-500 mt-1">Risk: R001</p>
             </div>
-            <div class="flex-1 overflow-hidden flex flex-col min-h-0">
+            <div class="flex-1 overflow-y-auto flex flex-col min-h-0">
                 <input type="hidden" id="testDocRiskCode">
                 <input type="hidden" id="testDocType">
                 <div id="testDocEditor" class="flex-1 min-h-[400px]"></div>

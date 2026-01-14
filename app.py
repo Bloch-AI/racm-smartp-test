@@ -346,6 +346,7 @@ def chat():
 - Total Tasks: {context['task_summary']['total']}
 - Tasks by Stage: {json.dumps(context['task_summary']['by_column'])}
 - Flowcharts: {context['flowchart_count']}
+- Test Documents (Working Papers): {context['test_doc_count']}
 
 ## Current RACM Data:
 {json.dumps(context['risks'], indent=2)}
@@ -353,11 +354,25 @@ def chat():
 ## Current Tasks:
 {json.dumps(context['tasks'], indent=2)}
 
+## Flowcharts (metadata):
+{json.dumps(context['flowcharts'], indent=2)}
+
+## Test Documents (metadata - use read_test_document to get full content):
+{json.dumps(context['test_documents'], indent=2)}
+
 ## Your Capabilities:
 1. Answer questions about the audit data
 2. Use tools to ADD new rows to RACM, CREATE Kanban tasks, or UPDATE data
 3. Execute SQL queries to analyze data
-4. When asked to add/create something, USE THE APPROPRIATE TOOL
+4. READ working papers (test documents) and flowcharts when relevant to the question
+5. CREATE or UPDATE test documents (working papers) for DE/OE testing
+
+## IMPORTANT - Seamless Document Access:
+When the user asks about testing, findings, or documentation for a specific risk:
+- FIRST check the test_documents metadata above to see if documents exist
+- If they exist, use read_test_document to fetch the full content BEFORE answering
+- Similarly, use read_flowchart to get process details when relevant
+- The user should get complete answers without having to ask you to fetch documents
 
 Be concise and professional."""
 
@@ -449,6 +464,42 @@ Be concise and professional."""
                     }
                 },
                 "required": ["name", "steps"]
+            }
+        },
+        {
+            "name": "read_test_document",
+            "description": "Read the full content of a test document (working paper) for a specific risk. Use this to get DE or OE testing documentation before answering questions about testing.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_code": {"type": "string", "description": "Risk ID (e.g., 'R001')"},
+                    "doc_type": {"type": "string", "enum": ["de_testing", "oe_testing"], "description": "Type of testing document"}
+                },
+                "required": ["risk_code", "doc_type"]
+            }
+        },
+        {
+            "name": "create_test_document",
+            "description": "Create or update a test document (working paper) with testing procedures, findings, and evidence.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_code": {"type": "string", "description": "Risk ID (e.g., 'R001')"},
+                    "doc_type": {"type": "string", "enum": ["de_testing", "oe_testing"], "description": "Type of testing document"},
+                    "content": {"type": "string", "description": "The document content (can include HTML formatting)"}
+                },
+                "required": ["risk_code", "doc_type", "content"]
+            }
+        },
+        {
+            "name": "read_flowchart",
+            "description": "Read the details of a flowchart including all nodes, steps, and descriptions. Use this to understand process flows before answering questions.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Flowchart name"}
+                },
+                "required": ["name"]
             }
         }
     ]
@@ -630,6 +681,78 @@ def execute_tool(tool_name, tool_input):
 
         linked_msg = f" Linked to RACM row {risk_id}." if risk_id else ""
         return f"Successfully created flowchart '{name}' with {len(steps)} nodes.{linked_msg} View at: /flowchart/{name}"
+
+    elif tool_name == "read_test_document":
+        risk_code = tool_input.get('risk_code', '').upper()
+        doc_type = tool_input.get('doc_type', '')
+
+        if doc_type not in ('de_testing', 'oe_testing'):
+            return f"Invalid doc_type '{doc_type}'. Must be 'de_testing' or 'oe_testing'."
+
+        doc = db.get_test_document_by_risk_code(risk_code, doc_type)
+        if not doc:
+            return f"No {doc_type} document found for risk {risk_code}."
+
+        content = doc.get('content', '')
+        if not content.strip():
+            return f"The {doc_type} document for {risk_code} exists but is empty."
+
+        # Strip HTML tags for cleaner AI reading
+        import re
+        text_content = re.sub(r'<[^>]+>', '', content)
+        text_content = re.sub(r'\s+', ' ', text_content).strip()
+
+        doc_type_label = "Design Effectiveness Testing" if doc_type == "de_testing" else "Operational Effectiveness Testing"
+        return f"## {doc_type_label} Document for {risk_code}\n\n{text_content}"
+
+    elif tool_name == "create_test_document":
+        risk_code = tool_input.get('risk_code', '').upper()
+        doc_type = tool_input.get('doc_type', '')
+        content = tool_input.get('content', '')
+
+        if doc_type not in ('de_testing', 'oe_testing'):
+            return f"Invalid doc_type '{doc_type}'. Must be 'de_testing' or 'oe_testing'."
+
+        if not content.strip():
+            return "Cannot create an empty document. Please provide content."
+
+        # Wrap plain text in HTML paragraph if needed
+        if not content.strip().startswith('<'):
+            content = f"<p>{content}</p>"
+
+        doc_id = db.save_test_document_by_risk_code(risk_code, doc_type, content)
+        if doc_id is None:
+            return f"Risk {risk_code} not found. Cannot create document."
+
+        data_version += 1
+        doc_type_label = "Design Effectiveness Testing" if doc_type == "de_testing" else "Operational Effectiveness Testing"
+        return f"Successfully created/updated {doc_type_label} document for {risk_code}."
+
+    elif tool_name == "read_flowchart":
+        name = tool_input.get('name', '')
+        fc = db.get_flowchart_with_details(name)
+
+        if not fc:
+            return f"Flowchart '{name}' not found."
+
+        nodes = fc.get('nodes', [])
+        if not nodes:
+            return f"Flowchart '{name}' exists but has no nodes."
+
+        result = f"## Flowchart: {name}\n"
+        if fc.get('risk_id'):
+            result += f"Linked to Risk: {fc['risk_id']}\n"
+        result += f"\n### Process Steps ({len(nodes)} nodes):\n"
+
+        for node in nodes:
+            node_type = node.get('type', 'unknown')
+            label = node.get('label', 'Unnamed')
+            desc = node.get('description', '')
+            result += f"\n- **[{node_type.upper()}]** {label}"
+            if desc:
+                result += f"\n  {desc}"
+
+        return result
 
     return "Unknown tool"
 
