@@ -37,18 +37,18 @@
     </script>
 
     <!-- Jspreadsheet CSS -->
-    <link rel="stylesheet" href="https://bossanova.uk/jspreadsheet/v4/jexcel.css" type="text/css" />
-    <link rel="stylesheet" href="https://jsuites.net/v4/jsuites.css" type="text/css" />
+    <link rel="stylesheet" href="https://bossanova.uk/jspreadsheet/v4/jspreadsheet.css" type="text/css" />
+    <link rel="stylesheet" href="https://jsuites.net/v5/jsuites.css" type="text/css" />
 
     <style>
         /* Override Jspreadsheet styles to match theme */
-        .jexcel_content {
+        .jexcel_content, .jspreadsheet_content {
             font-family: inherit;
         }
-        .jexcel tbody td {
+        .jexcel tbody td, .jspreadsheet tbody td {
             font-size: 13px;
         }
-        .jexcel thead td {
+        .jexcel thead tr:first-child td, .jspreadsheet thead tr:first-child td {
             background: #1e40af !important;
             color: white !important;
             font-weight: 600;
@@ -56,14 +56,54 @@
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
-        .jexcel tbody tr:hover td {
+        /* Filter row - second row in thead */
+        .jexcel thead tr.jexcel_filter td, .jspreadsheet thead tr.jexcel_filter td {
+            background: #f1f5f9 !important;
+            color: #334155 !important;
+            font-weight: normal;
+            text-transform: none;
+            padding: 4px 6px;
+        }
+        .jexcel thead tr.jexcel_filter td input,
+        .jspreadsheet thead tr.jexcel_filter td input {
+            width: 100% !important;
+            padding: 6px 8px !important;
+            border: 1px solid #cbd5e1 !important;
+            border-radius: 4px !important;
+            font-size: 12px !important;
+            background: white !important;
+            color: #334155 !important;
+            box-sizing: border-box;
+        }
+        .jexcel thead tr.jexcel_filter td input:focus,
+        .jspreadsheet thead tr.jexcel_filter td input:focus {
+            border-color: #3b82f6 !important;
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+        }
+        .jexcel tbody tr:hover td, .jspreadsheet tbody tr:hover td {
             background-color: #f8fafc;
         }
-        .jexcel_container {
+        .jexcel_container, .jspreadsheet_container {
             border-radius: 0.75rem;
             overflow: hidden;
             box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
             border: 1px solid rgb(15 23 42 / 0.05);
+        }
+        /* Filter row styling */
+        .jexcel_filter, .jspreadsheet_filter {
+            background-color: #f8fafc !important;
+        }
+        .jexcel_filter td, .jspreadsheet_filter td {
+            background-color: #f8fafc !important;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .jexcel_filter input, .jspreadsheet_filter input {
+            width: 100%;
+            padding: 4px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 12px;
         }
 
         /* Toast animations */
@@ -120,8 +160,8 @@
         </nav>
 
         <!-- Main content -->
-        <main class="py-8">
-            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <main class="py-6">
+            <div class="mx-auto px-4 sm:px-6">
                 <!-- Header -->
                 <div class="md:flex md:items-center md:justify-between mb-6">
                     <div class="min-w-0 flex-1">
@@ -310,8 +350,8 @@
     <div id="chatBackdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden" onclick="toggleChat()"></div>
 
     <!-- Jspreadsheet JS -->
-    <script src="https://bossanova.uk/jspreadsheet/v4/jexcel.js"></script>
-    <script src="https://jsuites.net/v4/jsuites.js"></script>
+    <script src="https://bossanova.uk/jspreadsheet/v4/jspreadsheet.js"></script>
+    <script src="https://jsuites.net/v5/jsuites.js"></script>
 
     <!-- SheetJS for Excel import/export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
@@ -322,39 +362,43 @@
         // Initialize spreadsheet
         async function init() {
             const response = await fetch('/api/data');
-            const data = await response.json();
+            let data = await response.json();
 
-            table = jspreadsheet(document.getElementById('spreadsheet'), {
+            // Skip header row if first row contains header text
+            console.log('First row before skip:', data[0]);
+            if (data.length > 0 && data[0][0] && typeof data[0][0] === 'string' &&
+                data[0][0].toUpperCase().includes('RISK')) {
+                data = data.slice(1);
+                console.log('Header row skipped. First row now:', data[0]);
+            }
+
+            const container = document.getElementById('spreadsheet');
+            const containerWidth = container.parentElement.offsetWidth - 2;
+
+            table = jspreadsheet(container, {
                 data: data,
                 columns: [
-                    { width: 80 },
-                    { width: 180 },
-                    { width: 180 },
-                    { width: 100 },
-                    { width: 80 },
-                    { width: 100 },
-                    { width: 120 },
-                    { width: 150 },
+                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'Risk ID' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.18), title: 'Risk Description' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.18), title: 'Control Description' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'Control Owner' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'Frequency' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'Status' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.12), title: 'Flowchart' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.14), title: 'Task' },
                 ],
                 columnResize: true,
                 rowResize: true,
                 columnDrag: true,
                 minDimensions: [8, 10],
                 tableOverflow: true,
-                tableWidth: '100%',
-                style: {
-                    'A1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                    'B1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                    'C1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                    'D1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                    'E1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                    'F1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                    'G1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                    'H1': 'font-weight: bold; background-color: #1e40af; color: white;',
-                },
+                tableWidth: containerWidth + 'px',
+                tableHeight: 'auto',
+                filters: true,
+                search: true,
                 updateTable: function(instance, cell, col, row, val, label, cellName) {
                     // Flowchart column (G = index 6)
-                    if (col == 6 && row > 0) {
+                    if (col == 6) {
                         if (val && val.trim()) {
                             cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="text-primary-600 hover:text-primary-800 underline text-sm">' + val + '</a>';
                         } else {
@@ -365,7 +409,7 @@
                         }
                     }
                     // Task column (H = index 7)
-                    if (col == 7 && row > 0) {
+                    if (col == 7) {
                         if (val && val.trim()) {
                             cell.innerHTML = '<span class="edit-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-task="' + val + '" data-row="' + row + '">Edit Task</span>';
                         } else {
@@ -376,7 +420,7 @@
                         }
                     }
                     // Status column styling (F = index 5)
-                    if (col == 5 && row > 0) {
+                    if (col == 5) {
                         const status = val ? val.toLowerCase() : '';
                         if (status.includes('effective') && !status.includes('ineffective')) {
                             cell.style.backgroundColor = '#d1fae5';
@@ -450,26 +494,71 @@
         function addRow() { table.insertRow(); }
 
         function mergeSelected() {
-            const sel = table.selectedCell;
-            if (sel && sel.length === 4) {
+            // Get highlighted cells from the table
+            const highlighted = table.getSelectedColumns();
+            const selected = table.getSelectedRows();
+
+            // Try to get selection from selectedCell property
+            let sel = table.selectedCell;
+
+            // If selectedCell doesn't have proper range, try to get from DOM
+            if (!sel || sel.length < 4) {
+                const selectedCells = document.querySelectorAll('#spreadsheet .jexcel tbody td.highlight');
+                if (selectedCells.length > 1) {
+                    let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+                    selectedCells.forEach(cell => {
+                        const x = parseInt(cell.dataset.x);
+                        const y = parseInt(cell.dataset.y);
+                        if (!isNaN(x) && !isNaN(y)) {
+                            minX = Math.min(minX, x);
+                            minY = Math.min(minY, y);
+                            maxX = Math.max(maxX, x);
+                            maxY = Math.max(maxY, y);
+                        }
+                    });
+                    if (minX !== Infinity) {
+                        sel = [minX, minY, maxX, maxY];
+                    }
+                }
+            }
+
+            if (sel && sel.length >= 4) {
                 const x1 = Math.min(sel[0], sel[2]);
                 const y1 = Math.min(sel[1], sel[3]);
                 const x2 = Math.max(sel[0], sel[2]);
                 const y2 = Math.max(sel[1], sel[3]);
                 const colspan = x2 - x1 + 1;
                 const rowspan = y2 - y1 + 1;
-                const cell = jspreadsheet.getColumnNameFromId([x1, y1]);
-                table.setMerge(cell, colspan, rowspan);
+
+                if (colspan === 1 && rowspan === 1) {
+                    showToast('Please select multiple cells to merge', 'warning');
+                    return;
+                }
+
+                const cellName = jspreadsheet.getColumnNameFromId([x1, y1]);
+                table.setMerge(cellName, colspan, rowspan);
+                showToast('Cells merged!', 'success');
             } else {
-                showToast('Please select multiple cells to merge', 'warning');
+                showToast('Please select multiple cells to merge (click and drag)', 'warning');
             }
         }
 
         function unmergeSelected() {
-            const sel = table.selectedCell;
-            if (sel) {
-                const cell = jspreadsheet.getColumnNameFromId([sel[0], sel[1]]);
-                table.removeMerge(cell);
+            let sel = table.selectedCell;
+            if (!sel || sel.length < 2) {
+                const selectedCell = document.querySelector('#spreadsheet .jexcel tbody td.highlight');
+                if (selectedCell) {
+                    const x = parseInt(selectedCell.dataset.x);
+                    const y = parseInt(selectedCell.dataset.y);
+                    if (!isNaN(x) && !isNaN(y)) {
+                        sel = [x, y];
+                    }
+                }
+            }
+            if (sel && sel.length >= 2) {
+                const cellName = jspreadsheet.getColumnNameFromId([sel[0], sel[1]]);
+                table.removeMerge(cellName);
+                showToast('Cells unmerged!', 'success');
             }
         }
 
@@ -543,6 +632,23 @@
 
         // Initialize on load
         init();
+
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                if (table) {
+                    const container = document.getElementById('spreadsheet');
+                    const containerWidth = container.parentElement.offsetWidth - 2;
+                    // Update table width
+                    const tableEl = container.querySelector('.jexcel_container');
+                    if (tableEl) {
+                        tableEl.style.width = containerWidth + 'px';
+                    }
+                }
+            }, 150);
+        });
 
         // Handle click events for spreadsheet links
         document.getElementById('spreadsheet').addEventListener('click', function(e) {
