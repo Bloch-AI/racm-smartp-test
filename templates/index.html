@@ -468,8 +468,9 @@
                     // DE Testing column (E = index 4)
                     if (col == 4) {
                         if (riskId && riskId.trim()) {
-                            // Check if document exists via data attribute (set during init)
-                            const hasDoc = cell.dataset.hasDoc === 'true';
+                            // Check if document exists via cache (data attribute gets wiped on refresh)
+                            const cacheKey = `${riskId}_de_testing`;
+                            const hasDoc = testDocCache[cacheKey] === true;
                             if (hasDoc) {
                                 cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">📄 Edit</span>';
                             } else {
@@ -480,7 +481,8 @@
                     // OE Testing column (G = index 6)
                     if (col == 6) {
                         if (riskId && riskId.trim()) {
-                            const hasDoc = cell.dataset.hasDoc === 'true';
+                            const cacheKey = `${riskId}_oe_testing`;
+                            const hasDoc = testDocCache[cacheKey] === true;
                             if (hasDoc) {
                                 cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">📄 Edit</span>';
                             } else {
@@ -905,23 +907,17 @@
         }
 
         async function loadTestDocStatus() {
-            // Load document status for all rows to enable proper rendering
+            // Load document status for all rows into cache, then refresh table
             const data = table.getData();
             for (let row = 0; row < data.length; row++) {
                 const riskCode = data[row][0];
                 if (riskCode && riskCode.trim()) {
-                    // Check DE Testing (col 4) and OE Testing (col 6)
-                    const deExists = await checkTestDocExists(riskCode, 'de_testing');
-                    const oeExists = await checkTestDocExists(riskCode, 'oe_testing');
-
-                    // Set data attributes on cells
-                    const deCell = table.getCellFromCoords(4, row);
-                    const oeCell = table.getCellFromCoords(6, row);
-                    if (deCell) deCell.dataset.hasDoc = deExists.toString();
-                    if (oeCell) oeCell.dataset.hasDoc = oeExists.toString();
+                    // Pre-populate cache for DE and OE Testing columns
+                    await checkTestDocExists(riskCode, 'de_testing');
+                    await checkTestDocExists(riskCode, 'oe_testing');
                 }
             }
-            // Refresh the table to update the cell rendering
+            // Refresh the table to update the cell rendering (uses cache)
             table.refresh();
         }
 
