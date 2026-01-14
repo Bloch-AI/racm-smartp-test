@@ -125,6 +125,40 @@ def list_flowcharts():
     flowcharts = db.get_all_flowcharts()
     return jsonify([f['name'] for f in flowcharts])
 
+# ==================== Test Documents API ====================
+
+@app.route('/api/test-document/<risk_code>/<doc_type>', methods=['GET'])
+def get_test_document(risk_code, doc_type):
+    """Get a test document by risk code and type (de_testing or oe_testing)."""
+    if doc_type not in ('de_testing', 'oe_testing'):
+        return jsonify({'error': 'Invalid document type'}), 400
+    doc = db.get_test_document_by_risk_code(risk_code, doc_type)
+    if doc:
+        return jsonify({'content': doc['content'], 'id': doc['id']})
+    return jsonify({'content': '', 'id': None})
+
+@app.route('/api/test-document/<risk_code>/<doc_type>', methods=['POST'])
+def save_test_document(risk_code, doc_type):
+    """Save a test document."""
+    global data_version
+    if doc_type not in ('de_testing', 'oe_testing'):
+        return jsonify({'error': 'Invalid document type'}), 400
+    data = request.json
+    content = data.get('content', '')
+    doc_id = db.save_test_document_by_risk_code(risk_code, doc_type, content)
+    if doc_id is None:
+        return jsonify({'error': 'Risk not found'}), 404
+    data_version += 1
+    return jsonify({'status': 'saved', 'id': doc_id})
+
+@app.route('/api/test-document/<risk_code>/<doc_type>/exists', methods=['GET'])
+def test_document_exists(risk_code, doc_type):
+    """Check if a test document exists."""
+    if doc_type not in ('de_testing', 'oe_testing'):
+        return jsonify({'error': 'Invalid document type'}), 400
+    exists = db.has_test_document(risk_code, doc_type)
+    return jsonify({'exists': exists})
+
 # ==================== Kanban API ====================
 
 @app.route('/kanban')

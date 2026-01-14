@@ -79,11 +79,23 @@ class RACMDatabase:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            -- Test Documents (stores Quill rich text for DE/OE Testing)
+            CREATE TABLE IF NOT EXISTS test_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                risk_id INTEGER NOT NULL REFERENCES risks(id) ON DELETE CASCADE,
+                doc_type TEXT NOT NULL CHECK (doc_type IN ('de_testing', 'oe_testing')),
+                content TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(risk_id, doc_type)
+            );
+
             -- Index for common queries
             CREATE INDEX IF NOT EXISTS idx_risks_status ON risks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_column ON tasks(column_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_risk ON tasks(risk_id);
             CREATE INDEX IF NOT EXISTS idx_flowcharts_risk ON flowcharts(risk_id);
+            CREATE INDEX IF NOT EXISTS idx_test_docs_risk ON test_documents(risk_id);
         """)
         conn.commit()
         conn.close()
@@ -350,6 +362,89 @@ class RACMDatabase:
         deleted = cursor.rowcount > 0
         conn.close()
         return deleted
+
+    # ==================== TEST DOCUMENTS ====================
+
+    def get_test_document(self, risk_id: int, doc_type: str) -> Optional[Dict]:
+        """Get a test document by risk ID and type (de_testing or oe_testing)."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT * FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+            (risk_id, doc_type)
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_test_document_by_risk_code(self, risk_code: str, doc_type: str) -> Optional[Dict]:
+        """Get a test document by risk code (e.g., 'R001') and type."""
+        conn = self._get_conn()
+        # First get the risk ID
+        risk_row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_code,)).fetchone()
+        if not risk_row:
+            conn.close()
+            return None
+        risk_id = risk_row['id']
+        row = conn.execute(
+            "SELECT * FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+            (risk_id, doc_type)
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def save_test_document(self, risk_id: int, doc_type: str, content: str) -> int:
+        """Save/update a test document. Returns the ID."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO test_documents (risk_id, doc_type, content, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(risk_id, doc_type) DO UPDATE SET
+                content = excluded.content,
+                updated_at = CURRENT_TIMESTAMP
+        """, (risk_id, doc_type, content))
+        conn.commit()
+        row = conn.execute(
+            "SELECT id FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+            (risk_id, doc_type)
+        ).fetchone()
+        doc_id = row['id'] if row else cursor.lastrowid
+        conn.close()
+        return doc_id
+
+    def save_test_document_by_risk_code(self, risk_code: str, doc_type: str, content: str) -> Optional[int]:
+        """Save/update a test document by risk code. Returns the ID or None if risk not found."""
+        conn = self._get_conn()
+        risk_row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_code,)).fetchone()
+        conn.close()
+        if not risk_row:
+            return None
+        return self.save_test_document(risk_row['id'], doc_type, content)
+
+    def delete_test_document(self, risk_id: int, doc_type: str) -> bool:
+        """Delete a test document."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "DELETE FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+            (risk_id, doc_type)
+        )
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def get_test_documents_for_risk(self, risk_id: int) -> Dict[str, str]:
+        """Get all test documents for a risk. Returns dict with doc_type as key."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT doc_type, content FROM test_documents WHERE risk_id = ?",
+            (risk_id,)
+        ).fetchall()
+        conn.close()
+        return {row['doc_type']: row['content'] for row in rows}
+
+    def has_test_document(self, risk_code: str, doc_type: str) -> bool:
+        """Check if a test document exists for a risk."""
+        doc = self.get_test_document_by_risk_code(risk_code, doc_type)
+        return doc is not None and bool(doc.get('content', '').strip())
 
     # ==================== AI QUERY HELPERS ====================
 

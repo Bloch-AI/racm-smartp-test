@@ -40,6 +40,9 @@
     <link rel="stylesheet" href="https://bossanova.uk/jspreadsheet/v4/jspreadsheet.css" type="text/css" />
     <link rel="stylesheet" href="https://jsuites.net/v5/jsuites.css" type="text/css" />
 
+    <!-- Quill.js CSS -->
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+
     <style>
         /* Override Jspreadsheet styles to match theme */
         .jexcel_content, .jspreadsheet_content {
@@ -113,6 +116,29 @@
             border: 1px solid #cbd5e1;
             border-radius: 4px;
             font-size: 12px;
+        }
+
+        /* Quill editor styling */
+        #testDocEditor {
+            height: 100%;
+            min-height: 400px;
+        }
+        #testDocEditor .ql-container {
+            font-size: 14px;
+            font-family: inherit;
+        }
+        #testDocEditor .ql-editor {
+            min-height: 350px;
+        }
+        .ql-toolbar.ql-snow {
+            border-top: none;
+            border-left: none;
+            border-right: none;
+            background: #f8fafc;
+        }
+        .ql-container.ql-snow {
+            border: none;
+            border-top: 1px solid #e2e8f0;
         }
 
         /* Toast animations */
@@ -284,6 +310,25 @@
         </div>
     </div>
 
+    <!-- Test Document Editor Modal -->
+    <div id="testDocModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex-shrink-0">
+                <h3 id="testDocModalTitle" class="text-lg font-semibold text-slate-900">Design Effectiveness Testing</h3>
+                <p id="testDocModalSubtitle" class="text-sm text-slate-500 mt-1">Risk: R001</p>
+            </div>
+            <div class="flex-1 overflow-hidden flex flex-col min-h-0">
+                <input type="hidden" id="testDocRiskCode">
+                <input type="hidden" id="testDocType">
+                <div id="testDocEditor" class="flex-1 min-h-[400px]"></div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 flex-shrink-0">
+                <button onclick="closeTestDocModal()" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Cancel</button>
+                <button onclick="saveTestDocument()" class="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">Save Document</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Chat Panel -->
     <div id="chatPanel" class="fixed inset-y-0 right-0 w-full sm:w-[420px] max-w-full bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
         <!-- Chat Header -->
@@ -365,6 +410,9 @@
     <!-- SheetJS for Excel import/export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 
+    <!-- Quill.js for rich text editing -->
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+
     <script>
         let table;
 
@@ -415,12 +463,36 @@
                 filters: true,
                 search: true,
                 updateTable: function(instance, cell, col, row, val, label, cellName) {
+                    const riskId = instance.jexcel.getValueFromCoords(0, row);
+
+                    // DE Testing column (E = index 4)
+                    if (col == 4) {
+                        if (riskId && riskId.trim()) {
+                            // Check if document exists via data attribute (set during init)
+                            const hasDoc = cell.dataset.hasDoc === 'true';
+                            if (hasDoc) {
+                                cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">📄 Edit</span>';
+                            } else {
+                                cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">+ Create</span>';
+                            }
+                        }
+                    }
+                    // OE Testing column (G = index 6)
+                    if (col == 6) {
+                        if (riskId && riskId.trim()) {
+                            const hasDoc = cell.dataset.hasDoc === 'true';
+                            if (hasDoc) {
+                                cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">📄 Edit</span>';
+                            } else {
+                                cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">+ Create</span>';
+                            }
+                        }
+                    }
                     // Flowchart column (N = index 13)
                     if (col == 13) {
                         if (val && val.trim()) {
                             cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="text-primary-600 hover:text-primary-800 underline text-sm">' + val + '</a>';
                         } else {
-                            const riskId = instance.jexcel.getValueFromCoords(0, row);
                             if (riskId && riskId.trim()) {
                                 cell.innerHTML = '<span class="create-flowchart text-cyan-600 hover:text-cyan-800 cursor-pointer text-sm" data-row="' + row + '">+ Create</span>';
                             }
@@ -431,7 +503,6 @@
                         if (val && val.trim()) {
                             cell.innerHTML = '<span class="edit-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-task="' + val + '" data-row="' + row + '">Edit Task</span>';
                         } else {
-                            const riskId = instance.jexcel.getValueFromCoords(0, row);
                             if (riskId && riskId.trim()) {
                                 cell.innerHTML = '<span class="create-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-row="' + row + '">+ Add Task</span>';
                             }
@@ -474,6 +545,8 @@
                     return items;
                 }
             });
+
+            return table;
         }
 
         // Save data to server
@@ -675,7 +748,10 @@
         }
 
         // Initialize on load
-        init();
+        init().then(() => {
+            // Load test document status after table is ready
+            setTimeout(() => loadTestDocStatus(), 500);
+        });
 
         // Handle window resize
         let resizeTimeout;
@@ -714,6 +790,13 @@
                 const row = parseInt(e.target.getAttribute('data-row'));
                 const taskId = e.target.getAttribute('data-task');
                 openTaskModal(row, taskId);
+            }
+            // Test Document handlers
+            if (e.target.classList.contains('create-test-doc') || e.target.classList.contains('edit-test-doc')) {
+                const row = parseInt(e.target.getAttribute('data-row'));
+                const docType = e.target.getAttribute('data-type');
+                const riskCode = e.target.getAttribute('data-risk');
+                openTestDocModal(row, riskCode, docType);
             }
         });
 
@@ -800,6 +883,128 @@
 
         document.getElementById('taskModal').addEventListener('click', function(e) {
             if (e.target === this) closeTaskModal();
+        });
+
+        // ==================== Test Document Editor Functions ====================
+        let quillEditor = null;
+        let testDocCache = {}; // Cache for document existence status
+
+        async function checkTestDocExists(riskCode, docType) {
+            const cacheKey = `${riskCode}_${docType}`;
+            if (testDocCache[cacheKey] !== undefined) {
+                return testDocCache[cacheKey];
+            }
+            try {
+                const response = await fetch(`/api/test-document/${encodeURIComponent(riskCode)}/${docType}/exists`);
+                const data = await response.json();
+                testDocCache[cacheKey] = data.exists;
+                return data.exists;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function loadTestDocStatus() {
+            // Load document status for all rows to enable proper rendering
+            const data = table.getData();
+            for (let row = 0; row < data.length; row++) {
+                const riskCode = data[row][0];
+                if (riskCode && riskCode.trim()) {
+                    // Check DE Testing (col 4) and OE Testing (col 6)
+                    const deExists = await checkTestDocExists(riskCode, 'de_testing');
+                    const oeExists = await checkTestDocExists(riskCode, 'oe_testing');
+
+                    // Set data attributes on cells
+                    const deCell = table.getCellFromCoords(4, row);
+                    const oeCell = table.getCellFromCoords(6, row);
+                    if (deCell) deCell.dataset.hasDoc = deExists.toString();
+                    if (oeCell) oeCell.dataset.hasDoc = oeExists.toString();
+                }
+            }
+            // Refresh the table to update the cell rendering
+            table.refresh();
+        }
+
+        async function openTestDocModal(row, riskCode, docType) {
+            const riskDesc = table.getValueFromCoords(1, row);
+            const typeLabel = docType === 'de_testing' ? 'Design Effectiveness Testing' : 'Operational Effectiveness Testing';
+
+            document.getElementById('testDocModalTitle').textContent = typeLabel;
+            document.getElementById('testDocModalSubtitle').textContent = `Risk: ${riskCode} - ${riskDesc || 'No description'}`;
+            document.getElementById('testDocRiskCode').value = riskCode;
+            document.getElementById('testDocType').value = docType;
+
+            // Initialize Quill if not already done
+            if (!quillEditor) {
+                quillEditor = new Quill('#testDocEditor', {
+                    theme: 'snow',
+                    placeholder: 'Document your testing procedures, findings, and evidence...',
+                    modules: {
+                        toolbar: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'color': [] }, { 'background': [] }],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            [{ 'indent': '-1'}, { 'indent': '+1' }],
+                            ['blockquote', 'code-block'],
+                            ['link'],
+                            ['clean']
+                        ]
+                    }
+                });
+            }
+
+            // Load existing content
+            try {
+                const response = await fetch(`/api/test-document/${encodeURIComponent(riskCode)}/${docType}`);
+                const data = await response.json();
+                if (data.content) {
+                    quillEditor.root.innerHTML = data.content;
+                } else {
+                    quillEditor.root.innerHTML = '';
+                }
+            } catch (e) {
+                quillEditor.root.innerHTML = '';
+            }
+
+            document.getElementById('testDocModal').classList.remove('hidden');
+            document.getElementById('testDocModal').classList.add('flex');
+        }
+
+        function closeTestDocModal() {
+            document.getElementById('testDocModal').classList.add('hidden');
+            document.getElementById('testDocModal').classList.remove('flex');
+        }
+
+        async function saveTestDocument() {
+            const riskCode = document.getElementById('testDocRiskCode').value;
+            const docType = document.getElementById('testDocType').value;
+            const content = quillEditor.root.innerHTML;
+
+            try {
+                const response = await fetch(`/api/test-document/${encodeURIComponent(riskCode)}/${docType}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                const data = await response.json();
+
+                if (data.status === 'saved') {
+                    showToast('Document saved successfully!', 'success');
+                    // Update cache and refresh cells
+                    testDocCache[`${riskCode}_${docType}`] = content.trim().length > 0;
+                    await loadTestDocStatus();
+                    closeTestDocModal();
+                } else {
+                    showToast('Error saving document: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (e) {
+                showToast('Error saving document: ' + e.message, 'error');
+            }
+        }
+
+        document.getElementById('testDocModal').addEventListener('click', function(e) {
+            if (e.target === this) closeTestDocModal();
         });
 
         // ==================== Chat Functions ====================
