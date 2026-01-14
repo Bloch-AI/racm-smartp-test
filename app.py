@@ -249,11 +249,10 @@ def create_risk():
     data = request.json
     new_id = db.create_risk(
         risk_id=data.get('risk_id'),
-        risk_description=data.get('risk_description', ''),
-        control_description=data.get('control_description', ''),
+        risk=data.get('risk', data.get('risk_description', '')),
+        control_id=data.get('control_id', data.get('control_description', '')),
         control_owner=data.get('control_owner', ''),
-        frequency=data.get('frequency', ''),
-        status=data.get('status', 'Not Tested')
+        status=data.get('status', 'Not Complete')
     )
     increment_data_version()
     return jsonify({'status': 'created', 'id': new_id})
