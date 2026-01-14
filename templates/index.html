@@ -519,6 +519,17 @@
             return currentTab === 'racm' ? table : issueTable;
         }
 
+        // Check if a row has any populated cells
+        function isRowPopulated(row) {
+            return row.some(cell => cell !== null && cell !== undefined && cell !== '' && cell !== false);
+        }
+
+        // Filter data to only populated rows, ensuring at least one row
+        function trimEmptyRows(data, emptyRowTemplate) {
+            const filtered = data.filter(isRowPopulated);
+            return filtered.length > 0 ? filtered : [emptyRowTemplate];
+        }
+
         // Switch between tabs
         function switchTab(tab) {
             currentTab = tab;
@@ -554,8 +565,8 @@
                     // Re-fetch and set data to force complete re-render
                     const response = await fetch('/api/data');
                     const allData = await response.json();
-                    const issuesData = allData.issues || [];
-                    issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']]);
+                    const issuesData = trimEmptyRows(allData.issues || [], ['', '', '', '', 'Medium', 'Open', '', '', '']);
+                    issueTable.setData(issuesData);
                     // Load issue documentation status and attachment counts
                     await loadIssueDocStatus();
                     await loadAttachmentCounts();
@@ -582,6 +593,12 @@
                 racmData[0][0].toUpperCase().includes('RISK')) {
                 racmData = racmData.slice(1);
             }
+
+            // Filter out empty rows, ensure at least one row
+            const emptyRacmRow = ['', '', '', '', '', '', '', '', '', false, '', false, false, '', '', ''];
+            const emptyIssueRow = ['', '', '', '', 'Medium', 'Open', '', '', ''];
+            racmData = trimEmptyRows(racmData, emptyRacmRow);
+            issuesData = trimEmptyRows(issuesData, emptyIssueRow);
 
             const racmContainer = document.getElementById('spreadsheet-racm');
             const issuesContainer = document.getElementById('spreadsheet-issues');
@@ -616,7 +633,7 @@
                 columnResize: true,
                 rowResize: true,
                 columnDrag: true,
-                minDimensions: [16, 10],
+                minDimensions: [16, 1],
                 tableOverflow: true,
                 tableWidth: containerWidth + 'px',
                 tableHeight: 'auto',
@@ -650,7 +667,7 @@
             // Create Issue Log spreadsheet - full width columns
             const issueColWidth = Math.floor((containerWidth - 50) / 9); // Distribute width across 9 columns
             issueTable = jspreadsheet(issuesContainer, {
-                data: issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']],
+                data: issuesData,
                 columns: [
                     { type: 'text', width: 90, title: 'Issue ID', readOnly: true },
                     { type: 'text', width: 90, title: 'Risk ID' },
@@ -666,7 +683,7 @@
                 defaultRowHeight: 40,
                 columnResize: true,
                 rowResize: true,
-                minDimensions: [8, 5],
+                minDimensions: [9, 1],
                 tableOverflow: true,
                 tableWidth: containerWidth + 'px',
                 tableHeight: 'auto',
@@ -860,8 +877,8 @@
             const response = await fetch('/api/data');
             const allData = await response.json();
             if (issueTable) {
-                const issuesData = allData.issues || [];
-                issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']]);
+                const issuesData = trimEmptyRows(allData.issues || [], ['', '', '', '', 'Medium', 'Open', '', '', '']);
+                issueTable.setData(issuesData);
                 // Reload documentation status
                 await loadIssueDocStatus();
             }
@@ -1886,13 +1903,14 @@
         async function refreshSpreadsheet() {
             const response = await fetch('/api/data');
             const allData = await response.json();
-            // Set RACM data
-            const racmData = allData.racm || [];
+            // Set RACM data (trimmed)
+            const emptyRacmRow = ['', '', '', '', '', '', '', '', '', false, '', false, false, '', '', ''];
+            const racmData = trimEmptyRows(allData.racm || [], emptyRacmRow);
             table.setData(racmData);
             // Also refresh issues if available
             if (issueTable && allData.issues) {
-                const issuesData = allData.issues;
-                issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']]);
+                const issuesData = trimEmptyRows(allData.issues, ['', '', '', '', 'Medium', 'Open', '', '', '']);
+                issueTable.setData(issuesData);
             }
             // Reload caches
             await loadTestDocStatus();
