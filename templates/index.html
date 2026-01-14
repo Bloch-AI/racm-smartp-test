@@ -444,6 +444,11 @@
                     items.push({ title: 'Delete row', onclick: function() { obj.deleteRow(y); } });
                     items.push({ type: 'line' });
                     items.push({ title: 'Bold', onclick: function() { applyStyle('font-weight: bold;'); } });
+                    items.push({ type: 'line' });
+                    items.push({ title: 'Align Left', onclick: function() { setAlignment('left'); } });
+                    items.push({ title: 'Align Center', onclick: function() { setAlignment('center'); } });
+                    items.push({ title: 'Align Right', onclick: function() { setAlignment('right'); } });
+                    items.push({ type: 'line' });
                     items.push({ title: 'Highlight Yellow', onclick: function() { applyStyle('background-color: #fef3c7;'); } });
                     items.push({ title: 'Highlight Green', onclick: function() { applyStyle('background-color: #d1fae5;'); } });
                     items.push({ title: 'Highlight Red', onclick: function() { applyStyle('background-color: #fee2e2;'); } });
@@ -571,9 +576,10 @@
                 const y2 = Math.max(sel[1], sel[3]);
                 for (let y = y1; y <= y2; y++) {
                     for (let x = x1; x <= x2; x++) {
-                        const cell = jspreadsheet.getColumnNameFromId([x, y]);
-                        const current = table.getStyle(cell) || '';
-                        table.setStyle(cell, current + style);
+                        const cellEl = table.getCellFromCoords(x, y);
+                        if (cellEl) {
+                            cellEl.style.cssText += style;
+                        }
                     }
                 }
             }
@@ -588,8 +594,28 @@
                 const y2 = Math.max(sel[1], sel[3]);
                 for (let y = y1; y <= y2; y++) {
                     for (let x = x1; x <= x2; x++) {
-                        const cell = jspreadsheet.getColumnNameFromId([x, y]);
-                        table.setStyle(cell, '');
+                        const cellEl = table.getCellFromCoords(x, y);
+                        if (cellEl) {
+                            cellEl.style.cssText = '';
+                        }
+                    }
+                }
+            }
+        }
+
+        function setAlignment(align) {
+            const sel = table.selectedCell;
+            if (sel && sel.length === 4) {
+                const x1 = Math.min(sel[0], sel[2]);
+                const y1 = Math.min(sel[1], sel[3]);
+                const x2 = Math.max(sel[0], sel[2]);
+                const y2 = Math.max(sel[1], sel[3]);
+                for (let y = y1; y <= y2; y++) {
+                    for (let x = x1; x <= x2; x++) {
+                        const cellEl = table.getCellFromCoords(x, y);
+                        if (cellEl) {
+                            cellEl.style.textAlign = align;
+                        }
                     }
                 }
             }
