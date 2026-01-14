@@ -19,9 +19,9 @@ db = get_db()
 def seed_initial_data():
     """Add sample data if database is empty."""
     if not db.get_all_risks():
-        db.create_risk('R001', 'Unauthorized system access', 'Quarterly access reviews', 'IT Security', 'Quarterly', 'Effective')
-        db.create_risk('R002', 'Data integrity issues', 'Automated validation checks', 'Data Team', 'Daily', 'Effective')
-        db.create_risk('R003', 'Segregation of duties', 'Role-based access controls', 'HR/IT', 'Ongoing', 'Needs Improvement')
+        db.create_risk('R001', 'Unauthorized system access', 'C001', 'IT Security', '', '', '', '', 'Not Complete', 0, '', 0, 0)
+        db.create_risk('R002', 'Data integrity issues', 'C002', 'Data Team', '', '', '', '', 'Effective', 0, '', 0, 0)
+        db.create_risk('R003', 'Segregation of duties', 'C003', 'HR/IT', '', '', '', '', 'Not Effective', 1, 'John', 1, 0)
 
     if not db.get_all_tasks():
         db.create_task('Define audit scope', 'Identify key processes and risks', 'medium', '', 'planning')

@@ -47,14 +47,23 @@
         }
         .jexcel tbody td, .jspreadsheet tbody td {
             font-size: 13px;
+            white-space: normal !important;
+            word-wrap: break-word;
+            vertical-align: top;
+            padding: 6px 8px;
         }
         .jexcel thead tr:first-child td, .jspreadsheet thead tr:first-child td {
             background: #1e40af !important;
             color: white !important;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.02em;
+            white-space: normal !important;
+            word-wrap: break-word;
+            vertical-align: middle;
+            padding: 8px 4px;
+            line-height: 1.3;
         }
         /* Filter row - second row in thead */
         .jexcel thead tr.jexcel_filter td, .jspreadsheet thead tr.jexcel_filter td {
@@ -378,27 +387,36 @@
             table = jspreadsheet(container, {
                 data: data,
                 columns: [
-                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'Risk ID' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.18), title: 'Risk Description' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.18), title: 'Control Description' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'Control Owner' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'Frequency' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'Status' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.12), title: 'Flowchart' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.14), title: 'Task' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.04), title: 'Risk ID' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'Risk', wordWrap: true },
+                    { type: 'text', width: Math.floor(containerWidth * 0.05), title: 'Control ID' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.07), title: 'Control Owner' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'DE Testing', wordWrap: true },
+                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'DE Conclusion', wordWrap: true },
+                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'OE Testing', wordWrap: true },
+                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'OE Conclusion', wordWrap: true },
+                    { type: 'dropdown', width: Math.floor(containerWidth * 0.06), title: 'Status', source: ['Effective', 'Not Effective', 'Not Complete'] },
+                    { type: 'checkbox', width: Math.floor(containerWidth * 0.05), title: 'Ready for Review?' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.06), title: 'Reviewer' },
+                    { type: 'checkbox', width: Math.floor(containerWidth * 0.05), title: 'Raise Issue?' },
+                    { type: 'checkbox', width: Math.floor(containerWidth * 0.04), title: 'Closed' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.06), title: 'Flowchart' },
+                    { type: 'text', width: Math.floor(containerWidth * 0.05), title: 'Task' },
                 ],
+                wordWrap: true,
+                defaultRowHeight: 40,
                 columnResize: true,
                 rowResize: true,
                 columnDrag: true,
-                minDimensions: [8, 10],
+                minDimensions: [15, 10],
                 tableOverflow: true,
                 tableWidth: containerWidth + 'px',
                 tableHeight: 'auto',
                 filters: true,
                 search: true,
                 updateTable: function(instance, cell, col, row, val, label, cellName) {
-                    // Flowchart column (G = index 6)
-                    if (col == 6) {
+                    // Flowchart column (N = index 13)
+                    if (col == 13) {
                         if (val && val.trim()) {
                             cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="text-primary-600 hover:text-primary-800 underline text-sm">' + val + '</a>';
                         } else {
@@ -408,8 +426,8 @@
                             }
                         }
                     }
-                    // Task column (H = index 7)
-                    if (col == 7) {
+                    // Task column (O = index 14)
+                    if (col == 14) {
                         if (val && val.trim()) {
                             cell.innerHTML = '<span class="edit-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-task="' + val + '" data-row="' + row + '">Edit Task</span>';
                         } else {
@@ -419,18 +437,18 @@
                             }
                         }
                     }
-                    // Status column styling (F = index 5)
-                    if (col == 5) {
-                        const status = val ? val.toLowerCase() : '';
-                        if (status.includes('effective') && !status.includes('ineffective')) {
+                    // Status column styling (I = index 8)
+                    if (col == 8) {
+                        const status = val ? val : '';
+                        if (status === 'Effective') {
                             cell.style.backgroundColor = '#d1fae5';
                             cell.style.color = '#065f46';
-                        } else if (status.includes('improvement')) {
-                            cell.style.backgroundColor = '#fef3c7';
-                            cell.style.color = '#92400e';
-                        } else if (status.includes('ineffective')) {
+                        } else if (status === 'Not Effective') {
                             cell.style.backgroundColor = '#fee2e2';
                             cell.style.color = '#991b1b';
+                        } else if (status === 'Not Complete') {
+                            cell.style.backgroundColor = '#fef3c7';
+                            cell.style.color = '#92400e';
                         }
                     }
                 },
@@ -683,7 +701,7 @@
                 const riskId = table.getValueFromCoords(0, row);
                 if (riskId) {
                     const flowchartName = riskId.replace(/\s+/g, '-').toLowerCase() + '-walkthrough';
-                    table.setValueFromCoords(6, row, flowchartName);
+                    table.setValueFromCoords(13, row, flowchartName);
                     window.open('/flowchart/' + encodeURIComponent(flowchartName), '_blank');
                     saveData();
                 }
@@ -773,7 +791,7 @@
                     body: JSON.stringify(taskData)
                 });
                 const result = await response.json();
-                table.setValueFromCoords(7, row, result.taskId);
+                table.setValueFromCoords(14, row, result.taskId);
                 await saveData();
                 showToast('Task created!', 'success');
             }

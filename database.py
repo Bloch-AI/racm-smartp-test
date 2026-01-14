@@ -40,11 +40,18 @@ class RACMDatabase:
             CREATE TABLE IF NOT EXISTS risks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 risk_id TEXT UNIQUE NOT NULL,
-                risk_description TEXT,
-                control_description TEXT,
+                risk TEXT,
+                control_id TEXT,
                 control_owner TEXT,
-                frequency TEXT,
-                status TEXT DEFAULT 'Not Tested',
+                design_effectiveness_testing TEXT,
+                design_effectiveness_conclusion TEXT,
+                operational_effectiveness_test TEXT,
+                operational_effectiveness_conclusion TEXT,
+                status TEXT DEFAULT 'Not Complete',
+                ready_for_review INTEGER DEFAULT 0,
+                reviewer TEXT,
+                raise_issue INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -104,16 +111,24 @@ class RACMDatabase:
         conn.close()
         return dict(row) if row else None
 
-    def create_risk(self, risk_id: str, risk_description: str = "",
-                    control_description: str = "", control_owner: str = "",
-                    frequency: str = "", status: str = "Not Tested") -> int:
+    def create_risk(self, risk_id: str, risk: str = "", control_id: str = "",
+                    control_owner: str = "", design_effectiveness_testing: str = "",
+                    design_effectiveness_conclusion: str = "", operational_effectiveness_test: str = "",
+                    operational_effectiveness_conclusion: str = "", status: str = "Not Complete",
+                    ready_for_review: int = 0, reviewer: str = "",
+                    raise_issue: int = 0, closed: int = 0) -> int:
         """Create a new risk/control. Returns the new ID."""
         conn = self._get_conn()
         cursor = conn.execute("""
-            INSERT INTO risks (risk_id, risk_description, control_description,
-                              control_owner, frequency, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (risk_id, risk_description, control_description, control_owner, frequency, status))
+            INSERT INTO risks (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
+                              design_effectiveness_conclusion, operational_effectiveness_test,
+                              operational_effectiveness_conclusion, status, ready_for_review,
+                              reviewer, raise_issue, closed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
+              design_effectiveness_conclusion, operational_effectiveness_test,
+              operational_effectiveness_conclusion, status, ready_for_review,
+              reviewer, raise_issue, closed))
         conn.commit()
         new_id = cursor.lastrowid
         conn.close()
@@ -121,8 +136,10 @@ class RACMDatabase:
 
     def update_risk(self, risk_id: str, **kwargs) -> bool:
         """Update a risk. Pass fields to update as kwargs."""
-        allowed = {'risk_description', 'control_description', 'control_owner',
-                   'frequency', 'status'}
+        allowed = {'risk', 'control_id', 'control_owner', 'design_effectiveness_testing',
+                   'design_effectiveness_conclusion', 'operational_effectiveness_test',
+                   'operational_effectiveness_conclusion', 'status', 'ready_for_review',
+                   'reviewer', 'raise_issue', 'closed'}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
@@ -466,10 +483,8 @@ RELATIONSHIPS:
     def get_as_spreadsheet(self) -> List[List]:
         """Get risks in spreadsheet format (for backward compatibility)."""
         risks = self.get_all_risks()
-        header = ['Risk ID', 'Risk Description', 'Control Description',
-                  'Control Owner', 'Frequency', 'Status', 'Flowchart', 'Task']
 
-        rows = [header]
+        rows = []
         for r in risks:
             # Find linked flowchart and task
             conn = self._get_conn()
@@ -479,11 +494,18 @@ RELATIONSHIPS:
 
             rows.append([
                 r['risk_id'],
-                r['risk_description'] or '',
-                r['control_description'] or '',
+                r['risk'] or '',
+                r['control_id'] or '',
                 r['control_owner'] or '',
-                r['frequency'] or '',
-                r['status'] or '',
+                r['design_effectiveness_testing'] or '',
+                r['design_effectiveness_conclusion'] or '',
+                r['operational_effectiveness_test'] or '',
+                r['operational_effectiveness_conclusion'] or '',
+                r['status'] or 'Not Complete',
+                r['ready_for_review'],
+                r['reviewer'] or '',
+                r['raise_issue'],
+                r['closed'],
                 fc['name'] if fc else '',
                 task['title'] if task else ''
             ])
@@ -494,29 +516,54 @@ RELATIONSHIPS:
         if not data or len(data) < 1:
             return
 
-        # Skip header row
-        for row in data[1:]:
-            if len(row) >= 6 and row[0]:  # Must have risk_id at minimum
+        for row in data:
+            if len(row) >= 1 and row[0]:  # Must have risk_id at minimum
                 risk_id = row[0]
                 existing = self.get_risk(risk_id)
+
+                # Convert checkbox values (True/False/1/0) to int
+                def to_int(val):
+                    if isinstance(val, bool):
+                        return 1 if val else 0
+                    if isinstance(val, int):
+                        return val
+                    return 0
+
+                ready_for_review = to_int(row[9]) if len(row) > 9 else 0
+                raise_issue = to_int(row[11]) if len(row) > 11 else 0
+                closed = to_int(row[12]) if len(row) > 12 else 0
 
                 if existing:
                     self.update_risk(
                         risk_id,
-                        risk_description=row[1] if len(row) > 1 else '',
-                        control_description=row[2] if len(row) > 2 else '',
+                        risk=row[1] if len(row) > 1 else '',
+                        control_id=row[2] if len(row) > 2 else '',
                         control_owner=row[3] if len(row) > 3 else '',
-                        frequency=row[4] if len(row) > 4 else '',
-                        status=row[5] if len(row) > 5 else 'Not Tested'
+                        design_effectiveness_testing=row[4] if len(row) > 4 else '',
+                        design_effectiveness_conclusion=row[5] if len(row) > 5 else '',
+                        operational_effectiveness_test=row[6] if len(row) > 6 else '',
+                        operational_effectiveness_conclusion=row[7] if len(row) > 7 else '',
+                        status=row[8] if len(row) > 8 else 'Not Complete',
+                        ready_for_review=ready_for_review,
+                        reviewer=row[10] if len(row) > 10 else '',
+                        raise_issue=raise_issue,
+                        closed=closed
                     )
                 else:
                     self.create_risk(
                         risk_id=risk_id,
-                        risk_description=row[1] if len(row) > 1 else '',
-                        control_description=row[2] if len(row) > 2 else '',
+                        risk=row[1] if len(row) > 1 else '',
+                        control_id=row[2] if len(row) > 2 else '',
                         control_owner=row[3] if len(row) > 3 else '',
-                        frequency=row[4] if len(row) > 4 else '',
-                        status=row[5] if len(row) > 5 else 'Not Tested'
+                        design_effectiveness_testing=row[4] if len(row) > 4 else '',
+                        design_effectiveness_conclusion=row[5] if len(row) > 5 else '',
+                        operational_effectiveness_test=row[6] if len(row) > 6 else '',
+                        operational_effectiveness_conclusion=row[7] if len(row) > 7 else '',
+                        status=row[8] if len(row) > 8 else 'Not Complete',
+                        ready_for_review=ready_for_review,
+                        reviewer=row[10] if len(row) > 10 else '',
+                        raise_issue=raise_issue,
+                        closed=closed
                     )
 
     def get_kanban_format(self) -> Dict:
