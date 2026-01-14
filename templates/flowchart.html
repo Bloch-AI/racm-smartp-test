@@ -40,133 +40,287 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
 
     <style>
-        /* Drawflow canvas styling */
+        /* ========== MIRO-STYLE CANVAS ========== */
         #drawflow {
             flex: 1;
-            background: white;
-            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
-            background-size: 20px 20px;
+            background: #f5f5f5;
+            background-image:
+                radial-gradient(circle, #d4d4d4 1px, transparent 1px);
+            background-size: 24px 24px;
         }
 
-        .drawflow-node {
-            min-width: 180px;
-            max-width: 250px;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        /* ========== OVERRIDE ALL DRAWFLOW DEFAULTS ========== */
+        .drawflow .drawflow-node,
+        .drawflow .drawflow-node.start,
+        .drawflow .drawflow-node.process,
+        .drawflow .drawflow-node.decision,
+        .drawflow .drawflow-node.end,
+        .drawflow .drawflow-node.control,
+        .drawflow .drawflow-node.risk,
+        .drawflow .drawflow-node.document,
+        .drawflow .drawflow-node.note {
+            background: none !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            min-width: 200px;
+            max-width: 280px;
         }
-        .drawflow-node:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        .drawflow .drawflow-node.system {
+            background: none !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            max-width: none !important;
         }
-        .drawflow-node.selected {
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+        .drawflow .drawflow-node {
+            transition: transform 0.15s ease;
+        }
+        .drawflow .drawflow-node:hover {
+            transform: translateY(-2px);
+            z-index: 10;
+        }
+        .drawflow .drawflow-node.selected {
+            z-index: 20;
+        }
+        .drawflow .drawflow-node.selected .drawflow_content_node {
+            outline: 2px solid #3b82f6;
+            outline-offset: 2px;
         }
 
-        .drawflow-node .drawflow_content_node {
-            padding: 12px;
+        .drawflow .drawflow-node .drawflow_content_node {
+            padding: 0 !important;
             text-align: center;
+            border-radius: 8px;
+            overflow: auto;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            resize: both;
+            min-width: 180px;
+            min-height: 60px;
+        }
+        .drawflow .drawflow-node:hover .drawflow_content_node {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        /* Resize handle styling */
+        .drawflow .drawflow-node .drawflow_content_node::-webkit-resizer {
+            background: linear-gradient(135deg, transparent 50%, #cbd5e1 50%);
+            border-radius: 0 0 8px 0;
         }
 
-        /* Node type specific styles */
-        .drawflow-node.start .drawflow_content_node {
-            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
-            border-radius: 25px;
+        /* ========== NODE HEADER ========== */
+        .node-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 12px;
+            border-radius: 8px 8px 0 0;
         }
-        .drawflow-node.process .drawflow_content_node {
-            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+        .header-input {
+            background: transparent;
+            border: none;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-align: center;
+            color: inherit;
+            width: 100%;
+            padding: 0;
+            margin: 0;
+            outline: none;
         }
-        .drawflow-node.decision .drawflow_content_node {
-            background: linear-gradient(135deg, #fef3c7, #fde68a);
+        .header-input:focus {
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
         }
-        .drawflow-node.end .drawflow_content_node {
-            background: linear-gradient(135deg, #fee2e2, #fecaca);
-            border-radius: 25px;
+        .header-input::placeholder {
+            color: inherit;
+            opacity: 0.6;
         }
-        .drawflow-node.control .drawflow_content_node {
-            background: linear-gradient(135deg, #ede9fe, #ddd6fe);
-            border: 2px dashed #8b5cf6;
+        .node-body {
+            padding: 10px 12px 12px;
+            background: white;
+            border-radius: 0 0 8px 8px;
         }
-        .drawflow-node.risk .drawflow_content_node {
-            background: linear-gradient(135deg, #fee2e2, #fecaca);
-            border: 2px solid #ef4444;
+        .node-body:empty {
+            padding: 6px;
+            min-height: 10px;
         }
-        .drawflow-node.document .drawflow_content_node {
-            background: linear-gradient(135deg, #cffafe, #a5f3fc);
-            border-bottom: 3px solid #06b6d4;
+
+        /* ========== NODE TYPE HEADERS ========== */
+        .drawflow-node.start .drawflow_content_node { border-radius: 24px; }
+        .drawflow-node.start .node-header { background: #dcfce7; color: #166534; border-radius: 24px 24px 0 0; }
+        .drawflow-node.start .node-body { border-radius: 0 0 24px 24px; }
+
+        .drawflow-node.end .drawflow_content_node { border-radius: 24px; }
+        .drawflow-node.end .node-header { background: #fee2e2; color: #991b1b; border-radius: 24px 24px 0 0; }
+        .drawflow-node.end .node-body { border-radius: 0 0 24px 24px; }
+
+        .drawflow-node.process .node-header { background: #dbeafe; color: #1e40af; }
+        .drawflow-node.decision .node-header { background: #fef3c7; color: #92400e; }
+        .drawflow-node.control .node-header { background: #ede9fe; color: #5b21b6; }
+        /* Risk - standalone indicator (no connectors) */
+        .drawflow-node.risk .node-header { background: #fee2e2; color: #991b1b; }
+        .drawflow-node.risk .drawflow_content_node { border-left: 4px solid #ef4444 !important; border-radius: 4px; }
+        .drawflow-node.document .node-header { background: #cffafe; color: #155e75; }
+        /* System - container style, always in background */
+        .drawflow .drawflow-node.system {
+            min-width: 250px !important;
+            max-width: none !important;
+            width: fit-content !important;
+            z-index: 0 !important;
         }
         .drawflow-node.system .drawflow_content_node {
-            background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
-            border: 1px solid #64748b;
+            background: rgba(241, 245, 249, 0.6) !important;
+            border: 2px dashed #94a3b8 !important;
+            overflow: visible !important;
+            width: fit-content !important;
+            min-width: 250px;
         }
-        .drawflow-node.note .drawflow_content_node {
-            background: linear-gradient(135deg, #fef9c3, #fef08a);
-            border-left: 4px solid #eab308;
-            text-align: left;
+        .drawflow-node.system .node-header { background: rgba(226, 232, 240, 0.9); color: #334155; }
+        .drawflow-node.system .node-body {
+            background: transparent;
+            min-height: 150px;
+            min-width: 250px;
+            width: 350px;
+            height: 180px;
+            resize: both;
+            overflow: auto;
+            border: 1px dashed transparent;
         }
 
+        /* Other nodes stay above system */
+        .drawflow .drawflow-node:not(.system):not(.note) {
+            z-index: 1;
+        }
+
+        /* Note - sticky style */
+        .drawflow-node.note .drawflow_content_node { background: #fef9c3 !important; border-radius: 2px; transform: rotate(-1deg); }
+        .drawflow-node.note .node-header { background: #fef08a; color: #854d0e; font-size: 10px; border-radius: 2px 2px 0 0; }
+        .drawflow-node.note .node-body { background: #fef9c3; text-align: left; border-radius: 0 0 2px 2px; }
+
+        /* ========== CONNECTION LINES - Miro style ========== */
         .drawflow .connection .main-path {
-            stroke: #64748b;
+            stroke: #94a3b8;
             stroke-width: 2px;
+            fill: none;
+        }
+        .drawflow .connection:hover .main-path {
+            stroke: #3b82f6;
+            stroke-width: 3px;
         }
         .drawflow .connection.selected .main-path {
             stroke: #2563eb;
+            stroke-width: 3px;
         }
 
-        /* Node content styles */
-        .node-title {
-            font-size: 10px;
-            font-weight: 600;
-            color: #64748b;
-            margin-bottom: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+        /* Connection points - sides, aligned with header */
+        .drawflow .drawflow-node .inputs {
+            position: absolute;
+            left: -6px;
+            top: 14px;  /* Aligned with header text */
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
+        .drawflow .drawflow-node .outputs {
+            position: absolute;
+            right: -6px;
+            left: auto;
+            top: 14px;  /* Aligned with header text */
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .drawflow .drawflow-node .input,
+        .drawflow .drawflow-node .output {
+            width: 12px;
+            height: 12px;
+            background: white;
+            border: 2px solid #cbd5e1;
+            border-radius: 50%;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .drawflow .drawflow-node .input:hover,
+        .drawflow .drawflow-node .output:hover {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            transform: scale(1.2);
+        }
+
+        /* ========== FORM ELEMENTS INSIDE NODES ========== */
         .node-input {
-            border: none;
-            background: rgba(255,255,255,0.7);
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
             text-align: center;
             width: 100%;
-            font-size: 13px;
-            font-weight: 500;
-            padding: 6px;
-            border-radius: 4px;
-            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e293b;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            transition: all 0.15s ease;
         }
         .node-input:focus {
             outline: none;
             background: white;
-            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
-        .node-textarea {
-            border: none;
-            background: rgba(255,255,255,0.7);
-            width: 100%;
-            font-size: 12px;
-            padding: 6px;
-            border-radius: 4px;
-            resize: vertical;
-            min-height: 40px;
-            font-family: inherit;
-        }
-        .node-textarea:focus {
-            outline: none;
-            background: white;
-            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-        }
-        .note .node-textarea {
-            text-align: left;
-            min-height: 60px;
-        }
-        .node-select {
-            border: none;
-            background: rgba(255,255,255,0.7);
-            width: 100%;
-            font-size: 11px;
-            padding: 4px;
-            border-radius: 4px;
-            margin-top: 6px;
+        .node-input::placeholder {
+            color: #94a3b8;
+            font-weight: 400;
         }
 
-        /* Toast animations */
+        .node-textarea {
+            border: none;
+            background: transparent;
+            width: 100%;
+            font-size: 13px;
+            color: #334155;
+            padding: 4px 0;
+            resize: none;
+            min-height: 20px;
+            font-family: inherit;
+            line-height: 1.5;
+            outline: none;
+        }
+        .node-textarea:focus {
+            background: transparent;
+        }
+        .node-textarea::placeholder {
+            color: #cbd5e1;
+        }
+
+        /* Note textarea */
+        .drawflow-node.note .node-textarea {
+            min-height: 40px;
+            color: #713f12;
+        }
+
+        .node-select {
+            border: none;
+            background: rgba(0,0,0,0.05);
+            width: 100%;
+            font-size: 11px;
+            font-weight: 500;
+            color: #475569;
+            padding: 6px 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            cursor: pointer;
+            outline: none;
+        }
+        .node-select:focus {
+            background: rgba(0,0,0,0.08);
+        }
+
+        /* ========== TOAST NOTIFICATIONS ========== */
         .toast {
             animation: slideIn 0.3s ease-out;
             transition: opacity 0.3s ease, transform 0.3s ease;
@@ -234,17 +388,29 @@
                 <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Flow Nodes</h3>
 
                 <div class="space-y-2">
-                    <div class="node-item p-3 bg-emerald-50 border border-emerald-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="start">
-                        <span class="text-sm font-medium text-emerald-700">Start</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-green-200 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="start">
+                        <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l2 2 4-4"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">Start</span>
                     </div>
-                    <div class="node-item p-3 bg-blue-50 border border-blue-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="process">
-                        <span class="text-sm font-medium text-blue-700">Process Step</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-blue-200 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="process">
+                        <div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">Process</span>
                     </div>
-                    <div class="node-item p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="decision">
-                        <span class="text-sm font-medium text-amber-700">Decision</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-amber-200 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="decision">
+                        <div class="w-8 h-8 rounded bg-amber-100 flex items-center justify-center flex-shrink-0 rotate-45">
+                            <svg class="w-4 h-4 text-amber-600 -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">Decision</span>
                     </div>
-                    <div class="node-item p-3 bg-red-50 border border-red-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="end">
-                        <span class="text-sm font-medium text-red-700">End</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-red-200 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="end">
+                        <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">End</span>
                     </div>
                 </div>
 
@@ -252,20 +418,35 @@
                 <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Audit Elements</h3>
 
                 <div class="space-y-2">
-                    <div class="node-item p-3 bg-violet-50 border border-violet-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="control">
-                        <span class="text-sm font-medium text-violet-700">Control Point</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-dashed border-violet-300 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="control">
+                        <div class="w-8 h-8 rounded bg-violet-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">Control</span>
                     </div>
-                    <div class="node-item p-3 bg-red-50 border border-red-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="risk">
-                        <span class="text-sm font-medium text-red-700">Risk</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-red-200 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="risk">
+                        <div class="w-8 h-8 rounded bg-red-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">Risk</span>
                     </div>
-                    <div class="node-item p-3 bg-cyan-50 border border-cyan-200 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="document">
-                        <span class="text-sm font-medium text-cyan-700">Document</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-cyan-200 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="document">
+                        <div class="w-8 h-8 rounded bg-cyan-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">Document</span>
                     </div>
-                    <div class="node-item p-3 bg-slate-100 border border-slate-300 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="system">
-                        <span class="text-sm font-medium text-slate-700">System</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all" draggable="true" ondragstart="drag(event)" data-node="system">
+                        <div class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-slate-600">System</span>
                     </div>
-                    <div class="node-item p-3 bg-yellow-50 border border-yellow-300 rounded-lg cursor-grab hover:shadow-md transition-all" draggable="true" ondragstart="drag(event)" data-node="note">
-                        <span class="text-sm font-medium text-yellow-800">Note</span>
+                    <div class="node-item flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all -rotate-1" draggable="true" ondragstart="drag(event)" data-node="note">
+                        <div class="w-8 h-8 rounded bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        </div>
+                        <span class="text-sm font-medium text-yellow-700">Note</span>
                     </div>
                 </div>
 
@@ -315,17 +496,62 @@
             setTimeout(() => loadFlowchart(), 500);
         }
 
-        // Node templates
+        // Node templates - clean Miro style with editable headers
         const nodeTemplates = {
-            start: `<div class="node-title">START</div><input type="text" class="node-input" value="Process Start" df-name>`,
-            process: `<div class="node-title">PROCESS</div><input type="text" class="node-input" value="Process Step" df-name><textarea class="node-textarea" placeholder="Description..." df-description></textarea>`,
-            decision: `<div class="node-title">DECISION</div><input type="text" class="node-input" value="Decision Point?" df-name><textarea class="node-textarea" placeholder="Criteria..." df-description></textarea>`,
-            end: `<div class="node-title">END</div><input type="text" class="node-input" value="Process End" df-name>`,
-            control: `<div class="node-title">CONTROL</div><input type="text" class="node-input" value="Control Name" df-name><textarea class="node-textarea" placeholder="Control description..." df-description></textarea><select class="node-select" df-status><option value="effective">Effective</option><option value="needs-improvement">Needs Improvement</option><option value="ineffective">Ineffective</option><option value="not-tested">Not Tested</option></select>`,
-            risk: `<div class="node-title">RISK</div><input type="text" class="node-input" value="Risk Title" df-name><textarea class="node-textarea" placeholder="Risk description..." df-description></textarea><select class="node-select" df-rating><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>`,
-            document: `<div class="node-title">DOCUMENT</div><input type="text" class="node-input" value="Document Name" df-name><textarea class="node-textarea" placeholder="Description / Reference..." df-description></textarea>`,
-            system: `<div class="node-title">SYSTEM</div><input type="text" class="node-input" value="System Name" df-name><textarea class="node-textarea" placeholder="System details..." df-description></textarea>`,
-            note: `<div class="node-title">NOTE</div><textarea class="node-textarea" placeholder="Enter your note here..." df-note style="min-height: 80px;"></textarea>`,
+            start: `
+                <div class="node-header"><input type="text" class="header-input" value="Start" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Description..." df-description></textarea>
+                </div>`,
+            process: `
+                <div class="node-header"><input type="text" class="header-input" value="Process" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Description..." df-description></textarea>
+                </div>`,
+            decision: `
+                <div class="node-header"><input type="text" class="header-input" value="Decision" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Criteria..." df-description></textarea>
+                </div>`,
+            end: `
+                <div class="node-header"><input type="text" class="header-input" value="End" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Description..." df-description></textarea>
+                </div>`,
+            control: `
+                <div class="node-header"><input type="text" class="header-input" value="Control" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Control description..." df-description></textarea>
+                    <select class="node-select" df-status>
+                        <option value="effective">Effective</option>
+                        <option value="needs-improvement">Needs Improvement</option>
+                        <option value="ineffective">Ineffective</option>
+                        <option value="not-tested">Not Tested</option>
+                    </select>
+                </div>`,
+            risk: `
+                <div class="node-header"><input type="text" class="header-input" value="Risk" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Risk description..." df-description></textarea>
+                    <select class="node-select" df-rating>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>`,
+            document: `
+                <div class="node-header"><input type="text" class="header-input" value="Document" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Reference..." df-description></textarea>
+                </div>`,
+            system: `
+                <div class="node-header"><input type="text" class="header-input" value="System" df-name></div>
+                <div class="node-body"></div>`,
+            note: `
+                <div class="node-header"><input type="text" class="header-input" value="Note" df-name></div>
+                <div class="node-body">
+                    <textarea class="node-textarea" placeholder="Notes..." df-note></textarea>
+                </div>`,
         };
 
         const nodeConfig = {
@@ -334,9 +560,9 @@
             decision: { inputs: 1, outputs: 2 },
             end: { inputs: 1, outputs: 0 },
             control: { inputs: 1, outputs: 1 },
-            risk: { inputs: 1, outputs: 1 },
+            risk: { inputs: 0, outputs: 0 },      // No connectors - standalone risk indicator
             document: { inputs: 1, outputs: 1 },
-            system: { inputs: 1, outputs: 1 },
+            system: { inputs: 0, outputs: 0 },    // No connectors - container box
             note: { inputs: 0, outputs: 0 },
         };
 
