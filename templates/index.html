@@ -251,9 +251,20 @@
                     </button>
                 </div>
 
-                <!-- Spreadsheet -->
+                <!-- Spreadsheet Tabs -->
                 <div class="bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5 overflow-hidden">
-                    <div id="spreadsheet"></div>
+                    <div class="border-b border-slate-200 bg-slate-50">
+                        <nav class="flex -mb-px" aria-label="Tabs">
+                            <button id="tab-racm" onclick="switchTab('racm')" class="tab-button active px-6 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-600 bg-white">
+                                RACM
+                            </button>
+                            <button id="tab-issues" onclick="switchTab('issues')" class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                                Issue Log
+                            </button>
+                        </nav>
+                    </div>
+                    <div id="spreadsheet-racm"></div>
+                    <div id="spreadsheet-issues" style="display: none;"></div>
                 </div>
 
                 <!-- Toast notifications -->
@@ -420,42 +431,69 @@
     <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 
     <script>
-        let table;
+        let table;  // RACM spreadsheet
+        let issueTable;  // Issue Log spreadsheet
+        let currentTab = 'racm';  // 'racm' or 'issues'
 
-        // Initialize spreadsheet
+        // Get current active table
+        function getActiveTable() {
+            return currentTab === 'racm' ? table : issueTable;
+        }
+
+        // Switch between tabs
+        function switchTab(tab) {
+            currentTab = tab;
+
+            // Update tab button styles
+            document.getElementById('tab-racm').className = tab === 'racm'
+                ? 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-600 bg-white'
+                : 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300';
+            document.getElementById('tab-issues').className = tab === 'issues'
+                ? 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-600 bg-white'
+                : 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300';
+
+            // Show/hide spreadsheets
+            document.getElementById('spreadsheet-racm').style.display = tab === 'racm' ? 'block' : 'none';
+            document.getElementById('spreadsheet-issues').style.display = tab === 'issues' ? 'block' : 'none';
+        }
+
+        // Initialize both spreadsheets
         async function init() {
             const response = await fetch('/api/data');
-            let data = await response.json();
+            const allData = await response.json();
+
+            let racmData = allData.racm || [];
+            let issuesData = allData.issues || [];
 
             // Skip header row if first row contains header text
-            console.log('First row before skip:', data[0]);
-            if (data.length > 0 && data[0][0] && typeof data[0][0] === 'string' &&
-                data[0][0].toUpperCase().includes('RISK')) {
-                data = data.slice(1);
-                console.log('Header row skipped. First row now:', data[0]);
+            if (racmData.length > 0 && racmData[0][0] && typeof racmData[0][0] === 'string' &&
+                racmData[0][0].toUpperCase().includes('RISK')) {
+                racmData = racmData.slice(1);
             }
 
-            const container = document.getElementById('spreadsheet');
-            const containerWidth = container.parentElement.offsetWidth - 2;
+            const racmContainer = document.getElementById('spreadsheet-racm');
+            const issuesContainer = document.getElementById('spreadsheet-issues');
+            const containerWidth = racmContainer.parentElement.offsetWidth - 2;
 
-            table = jspreadsheet(container, {
-                data: data,
+            // Create RACM spreadsheet
+            table = jspreadsheet(racmContainer, {
+                data: racmData,
                 columns: [
-                    { type: 'text', width: Math.floor(containerWidth * 0.04), title: 'Risk ID' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'Risk', wordWrap: true },
-                    { type: 'text', width: Math.floor(containerWidth * 0.05), title: 'Control ID' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.07), title: 'Control Owner' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'DE Testing', wordWrap: true },
-                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'DE Conclusion', wordWrap: true },
-                    { type: 'text', width: Math.floor(containerWidth * 0.10), title: 'OE Testing', wordWrap: true },
-                    { type: 'text', width: Math.floor(containerWidth * 0.08), title: 'OE Conclusion', wordWrap: true },
-                    { type: 'dropdown', width: Math.floor(containerWidth * 0.06), title: 'Status', source: ['Effective', 'Not Effective', 'Not Complete'] },
-                    { type: 'checkbox', width: Math.floor(containerWidth * 0.05), title: 'Ready for Review?' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.06), title: 'Reviewer' },
-                    { type: 'checkbox', width: Math.floor(containerWidth * 0.05), title: 'Raise Issue?' },
-                    { type: 'checkbox', width: Math.floor(containerWidth * 0.04), title: 'Closed' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.06), title: 'Flowchart' },
-                    { type: 'text', width: Math.floor(containerWidth * 0.05), title: 'Task' },
+                    { type: 'text', width: 70, title: 'Risk ID' },
+                    { type: 'text', width: 150, title: 'Risk', wordWrap: true },
+                    { type: 'text', width: 80, title: 'Control ID' },
+                    { type: 'text', width: 100, title: 'Control Owner' },
+                    { type: 'text', width: 100, title: 'DE Testing', wordWrap: true },
+                    { type: 'text', width: 100, title: 'DE Conclusion', wordWrap: true },
+                    { type: 'text', width: 100, title: 'OE Testing', wordWrap: true },
+                    { type: 'text', width: 100, title: 'OE Conclusion', wordWrap: true },
+                    { type: 'dropdown', width: 100, title: 'Status', source: ['Effective', 'Not Effective', 'Not Complete'] },
+                    { type: 'checkbox', width: 80, title: 'Ready for Review?' },
+                    { type: 'text', width: 100, title: 'Reviewer' },
+                    { type: 'checkbox', width: 80, title: 'Raise Issue?' },
+                    { type: 'checkbox', width: 60, title: 'Closed' },
+                    { type: 'text', width: 100, title: 'Flowchart' },
+                    { type: 'text', width: 80, title: 'Task' },
                 ],
                 wordWrap: true,
                 defaultRowHeight: 40,
@@ -468,69 +506,8 @@
                 tableHeight: 'auto',
                 filters: true,
                 search: true,
-                updateTable: function(instance, cell, col, row, val, label, cellName) {
-                    const riskId = instance.jexcel.getValueFromCoords(0, row);
-
-                    // DE Testing column (E = index 4)
-                    if (col == 4) {
-                        if (riskId && riskId.trim()) {
-                            // Check if document exists via cache (data attribute gets wiped on refresh)
-                            const cacheKey = `${riskId}_de_testing`;
-                            const hasDoc = testDocCache[cacheKey] === true;
-                            if (hasDoc) {
-                                cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">📄 Edit</span>';
-                            } else {
-                                cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">+ Create</span>';
-                            }
-                        }
-                    }
-                    // OE Testing column (G = index 6)
-                    if (col == 6) {
-                        if (riskId && riskId.trim()) {
-                            const cacheKey = `${riskId}_oe_testing`;
-                            const hasDoc = testDocCache[cacheKey] === true;
-                            if (hasDoc) {
-                                cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">📄 Edit</span>';
-                            } else {
-                                cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">+ Create</span>';
-                            }
-                        }
-                    }
-                    // Flowchart column (N = index 13)
-                    if (col == 13) {
-                        if (val && val.trim()) {
-                            cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="text-primary-600 hover:text-primary-800 underline text-sm">' + val + '</a>';
-                        } else {
-                            if (riskId && riskId.trim()) {
-                                cell.innerHTML = '<span class="create-flowchart text-cyan-600 hover:text-cyan-800 cursor-pointer text-sm" data-row="' + row + '">+ Create</span>';
-                            }
-                        }
-                    }
-                    // Task column (O = index 14)
-                    if (col == 14) {
-                        if (val && val.trim()) {
-                            cell.innerHTML = '<span class="edit-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-task="' + val + '" data-row="' + row + '">Edit Task</span>';
-                        } else {
-                            if (riskId && riskId.trim()) {
-                                cell.innerHTML = '<span class="create-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-row="' + row + '">+ Add Task</span>';
-                            }
-                        }
-                    }
-                    // Status column styling (I = index 8)
-                    if (col == 8) {
-                        const status = val ? val : '';
-                        if (status === 'Effective') {
-                            cell.style.backgroundColor = '#d1fae5';
-                            cell.style.color = '#065f46';
-                        } else if (status === 'Not Effective') {
-                            cell.style.backgroundColor = '#fee2e2';
-                            cell.style.color = '#991b1b';
-                        } else if (status === 'Not Complete') {
-                            cell.style.backgroundColor = '#fef3c7';
-                            cell.style.color = '#92400e';
-                        }
-                    }
-                },
+                updateTable: updateRACMTable,
+                onchange: onRACMChange,
                 contextMenu: function(obj, x, y, e) {
                     let items = [];
                     items.push({ title: 'Merge cells', onclick: function() { mergeSelected(); } });
@@ -554,26 +531,202 @@
                 }
             });
 
+            // Create Issue Log spreadsheet
+            issueTable = jspreadsheet(issuesContainer, {
+                data: issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '']],
+                columns: [
+                    { type: 'text', width: 80, title: 'Issue ID', readOnly: true },
+                    { type: 'text', width: 80, title: 'Risk ID' },
+                    { type: 'text', width: 200, title: 'Title' },
+                    { type: 'text', width: 250, title: 'Description', wordWrap: true },
+                    { type: 'dropdown', width: 100, title: 'Severity', source: ['Low', 'Medium', 'High', 'Critical'] },
+                    { type: 'dropdown', width: 100, title: 'Status', source: ['Open', 'In Progress', 'Resolved', 'Closed'] },
+                    { type: 'text', width: 120, title: 'Assigned To' },
+                    { type: 'calendar', width: 100, title: 'Due Date', options: { format: 'YYYY-MM-DD' } },
+                ],
+                wordWrap: true,
+                defaultRowHeight: 40,
+                columnResize: true,
+                rowResize: true,
+                minDimensions: [8, 5],
+                tableOverflow: true,
+                tableWidth: containerWidth + 'px',
+                tableHeight: 'auto',
+                filters: true,
+                search: true,
+                updateTable: updateIssueTable,
+                contextMenu: function(obj, x, y, e) {
+                    let items = [];
+                    items.push({ title: 'Insert row above', onclick: function() { obj.insertRow(1, y, true); } });
+                    items.push({ title: 'Insert row below', onclick: function() { obj.insertRow(1, y); } });
+                    items.push({ title: 'Delete row', onclick: function() { obj.deleteRow(y); } });
+                    return items;
+                }
+            });
+
             return table;
         }
 
-        // Save data to server
+        // RACM sheet updateTable callback
+        function updateRACMTable(instance, cell, col, row, val, label, cellName) {
+            const riskId = instance.jexcel.getValueFromCoords(0, row);
+
+            // DE Testing column (E = index 4)
+            if (col == 4) {
+                if (riskId && riskId.trim()) {
+                    const cacheKey = `${riskId}_de_testing`;
+                    const hasDoc = testDocCache[cacheKey] === true;
+                    if (hasDoc) {
+                        cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">📄 Edit</span>';
+                    } else {
+                        cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">+ Create</span>';
+                    }
+                }
+            }
+            // OE Testing column (G = index 6)
+            if (col == 6) {
+                if (riskId && riskId.trim()) {
+                    const cacheKey = `${riskId}_oe_testing`;
+                    const hasDoc = testDocCache[cacheKey] === true;
+                    if (hasDoc) {
+                        cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">📄 Edit</span>';
+                    } else {
+                        cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">+ Create</span>';
+                    }
+                }
+            }
+            // Flowchart column (N = index 13)
+            if (col == 13) {
+                if (val && val.trim()) {
+                    cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="text-primary-600 hover:text-primary-800 underline text-sm">' + val + '</a>';
+                } else {
+                    if (riskId && riskId.trim()) {
+                        cell.innerHTML = '<span class="create-flowchart text-cyan-600 hover:text-cyan-800 cursor-pointer text-sm" data-row="' + row + '">+ Create</span>';
+                    }
+                }
+            }
+            // Task column (O = index 14)
+            if (col == 14) {
+                if (val && val.trim()) {
+                    cell.innerHTML = '<span class="edit-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-task="' + val + '" data-row="' + row + '">Edit Task</span>';
+                } else {
+                    if (riskId && riskId.trim()) {
+                        cell.innerHTML = '<span class="create-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-row="' + row + '">+ Add Task</span>';
+                    }
+                }
+            }
+            // Status column styling (I = index 8)
+            if (col == 8) {
+                const status = val ? val : '';
+                if (status === 'Effective') {
+                    cell.style.backgroundColor = '#d1fae5';
+                    cell.style.color = '#065f46';
+                } else if (status === 'Not Effective') {
+                    cell.style.backgroundColor = '#fee2e2';
+                    cell.style.color = '#991b1b';
+                } else if (status === 'Not Complete') {
+                    cell.style.backgroundColor = '#fef3c7';
+                    cell.style.color = '#92400e';
+                }
+            }
+        }
+
+        // Issue Log sheet updateTable callback
+        function updateIssueTable(instance, cell, col, row, val, label, cellName) {
+            // Severity column styling (col 4)
+            if (col == 4) {
+                const severity = val ? val : '';
+                if (severity === 'Critical') {
+                    cell.style.backgroundColor = '#fee2e2';
+                    cell.style.color = '#991b1b';
+                } else if (severity === 'High') {
+                    cell.style.backgroundColor = '#ffedd5';
+                    cell.style.color = '#c2410c';
+                } else if (severity === 'Medium') {
+                    cell.style.backgroundColor = '#fef3c7';
+                    cell.style.color = '#92400e';
+                } else if (severity === 'Low') {
+                    cell.style.backgroundColor = '#d1fae5';
+                    cell.style.color = '#065f46';
+                }
+            }
+            // Status column styling (col 5)
+            if (col == 5) {
+                const status = val ? val : '';
+                if (status === 'Closed' || status === 'Resolved') {
+                    cell.style.backgroundColor = '#d1fae5';
+                    cell.style.color = '#065f46';
+                } else if (status === 'In Progress') {
+                    cell.style.backgroundColor = '#dbeafe';
+                    cell.style.color = '#1e40af';
+                } else if (status === 'Open') {
+                    cell.style.backgroundColor = '#fee2e2';
+                    cell.style.color = '#991b1b';
+                }
+            }
+        }
+
+        // Handle RACM changes - auto-create issue when checkbox ticked
+        async function onRACMChange(instance, cell, x, y, value) {
+            // Raise Issue? checkbox is column 11
+            if (x == 11 && value === true) {
+                const riskId = instance.jexcel.getValueFromCoords(0, y);
+                if (riskId && riskId.trim()) {
+                    try {
+                        const response = await fetch(`/api/issues/from-risk/${encodeURIComponent(riskId)}`, {
+                            method: 'POST'
+                        });
+                        const data = await response.json();
+                        if (data.status === 'created') {
+                            showToast(`Issue ${data.issue_id} created for ${riskId}`, 'success');
+                            // Refresh the Issue Log tab
+                            await refreshIssueLog();
+                        } else if (data.status === 'exists') {
+                            showToast(`Issue already exists for ${riskId}`, 'info');
+                        }
+                    } catch (error) {
+                        console.error('Error creating issue:', error);
+                    }
+                }
+            }
+        }
+
+        // Refresh just the Issue Log sheet
+        async function refreshIssueLog() {
+            const response = await fetch('/api/data');
+            const allData = await response.json();
+            if (issueTable) {
+                const issuesData = allData.issues || [];
+                issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '']]);
+            }
+        }
+
+        // Save data to server (both sheets)
         async function saveData() {
-            const data = table.getData();
+            const racmData = table.getData();
+            const issuesData = issueTable.getData();
             await fetch('/api/data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify({ racm: racmData, issues: issuesData })
             });
             showToast('Data saved successfully!', 'success');
         }
 
-        // Export to Excel
+        // Export to Excel (both sheets)
         function exportExcel() {
-            const data = table.getData();
-            const ws = XLSX.utils.aoa_to_sheet(data);
+            const racmData = table.getData();
+            const issuesData = issueTable.getData();
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "RACM");
+
+            // Add RACM sheet
+            const racmWs = XLSX.utils.aoa_to_sheet(racmData);
+            XLSX.utils.book_append_sheet(wb, racmWs, "RACM");
+
+            // Add Issue Log sheet
+            const issuesWs = XLSX.utils.aoa_to_sheet(issuesData);
+            XLSX.utils.book_append_sheet(wb, issuesWs, "Issue Log");
+
             XLSX.writeFile(wb, "risk_control_matrix.xlsx");
             showToast('Exported to Excel!', 'success');
         }
@@ -586,16 +739,36 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 const workbook = XLSX.read(e.target.result, { type: 'binary' });
-                const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                table.setData(data);
+
+                // Import RACM sheet
+                if (workbook.SheetNames.includes('RACM')) {
+                    const racmSheet = workbook.Sheets['RACM'];
+                    const racmData = XLSX.utils.sheet_to_json(racmSheet, { header: 1 });
+                    table.setData(racmData);
+                } else if (workbook.SheetNames[0]) {
+                    // Fallback to first sheet
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    table.setData(data);
+                }
+
+                // Import Issue Log sheet if present
+                if (workbook.SheetNames.includes('Issue Log')) {
+                    const issuesSheet = workbook.Sheets['Issue Log'];
+                    const issuesData = XLSX.utils.sheet_to_json(issuesSheet, { header: 1 });
+                    issueTable.setData(issuesData);
+                }
+
                 showToast('Imported from Excel!', 'success');
             };
             reader.readAsBinaryString(file);
             event.target.value = '';
         }
 
-        function addRow() { table.insertRow(); }
+        function addRow() {
+            const activeTable = getActiveTable();
+            if (activeTable) activeTable.insertRow();
+        }
 
         function mergeSelected() {
             // Get highlighted cells from the table

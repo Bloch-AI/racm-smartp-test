@@ -90,12 +90,29 @@ class RACMDatabase:
                 UNIQUE(risk_id, doc_type)
             );
 
+            -- Issues (Issue Log linked to RACM)
+            CREATE TABLE IF NOT EXISTS issues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                issue_id TEXT UNIQUE NOT NULL,
+                risk_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                severity TEXT DEFAULT 'Medium',
+                status TEXT DEFAULT 'Open',
+                assigned_to TEXT,
+                due_date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             -- Index for common queries
             CREATE INDEX IF NOT EXISTS idx_risks_status ON risks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_column ON tasks(column_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_risk ON tasks(risk_id);
             CREATE INDEX IF NOT EXISTS idx_flowcharts_risk ON flowcharts(risk_id);
             CREATE INDEX IF NOT EXISTS idx_test_docs_risk ON test_documents(risk_id);
+            CREATE INDEX IF NOT EXISTS idx_issues_risk ON issues(risk_id);
+            CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
         """)
         conn.commit()
         conn.close()
@@ -502,6 +519,153 @@ class RACMDatabase:
             'updated_at': fc.get('updated_at')
         }
 
+    # ==================== ISSUES (Issue Log) ====================
+
+    def _generate_issue_id(self) -> str:
+        """Generate next issue ID (ISS-001, ISS-002, etc.)."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT MAX(CAST(SUBSTR(issue_id, 5) AS INTEGER)) as max_num FROM issues").fetchone()
+        conn.close()
+        next_num = (row['max_num'] or 0) + 1
+        return f"ISS-{next_num:03d}"
+
+    def create_issue(self, risk_id: str, title: str, description: str = '',
+                     severity: str = 'Medium', status: str = 'Open',
+                     assigned_to: str = '', due_date: str = None) -> str:
+        """Create a new issue. Returns the issue_id."""
+        issue_id = self._generate_issue_id()
+        conn = self._get_conn()
+        conn.execute("""
+            INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (issue_id, risk_id.upper(), title, description, severity, status, assigned_to, due_date))
+        conn.commit()
+        conn.close()
+        return issue_id
+
+    def get_all_issues(self) -> List[Dict]:
+        """Get all issues."""
+        conn = self._get_conn()
+        rows = conn.execute("SELECT * FROM issues ORDER BY issue_id").fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_issue(self, issue_id: str) -> Optional[Dict]:
+        """Get a single issue by issue_id."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM issues WHERE issue_id = ?", (issue_id.upper(),)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_issues_for_risk(self, risk_id: str) -> List[Dict]:
+        """Get all issues for a specific risk."""
+        conn = self._get_conn()
+        rows = conn.execute("SELECT * FROM issues WHERE risk_id = ? ORDER BY issue_id", (risk_id.upper(),)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def update_issue(self, issue_id: str, **kwargs) -> bool:
+        """Update an issue. Returns True if found and updated."""
+        allowed_fields = ['title', 'description', 'severity', 'status', 'assigned_to', 'due_date', 'risk_id']
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields and v is not None}
+        if not updates:
+            return False
+
+        conn = self._get_conn()
+        set_clause = ', '.join(f"{k} = ?" for k in updates.keys())
+        values = list(updates.values()) + [issue_id.upper()]
+        cursor = conn.execute(f"UPDATE issues SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?", values)
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def delete_issue(self, issue_id: str) -> bool:
+        """Delete an issue. Returns True if found and deleted."""
+        conn = self._get_conn()
+        cursor = conn.execute("DELETE FROM issues WHERE issue_id = ?", (issue_id.upper(),))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def get_issues_as_spreadsheet(self) -> List[List]:
+        """Get issues in spreadsheet format for jspreadsheet."""
+        issues = self.get_all_issues()
+        return [
+            [
+                issue['issue_id'],
+                issue['risk_id'],
+                issue['title'],
+                issue['description'] or '',
+                issue['severity'],
+                issue['status'],
+                issue['assigned_to'] or '',
+                issue['due_date'] or ''
+            ]
+            for issue in issues
+        ]
+
+    def save_issues_from_spreadsheet(self, data: List[List]):
+        """Save issues from spreadsheet format."""
+        conn = self._get_conn()
+
+        # Get existing issue IDs
+        existing = {row['issue_id'] for row in conn.execute("SELECT issue_id FROM issues").fetchall()}
+        seen = set()
+
+        for row in data:
+            if not row or len(row) < 3:
+                continue
+
+            issue_id = str(row[0]).strip().upper() if row[0] else ''
+            risk_id = str(row[1]).strip().upper() if row[1] else ''
+            title = str(row[2]).strip() if row[2] else ''
+
+            if not title:  # Skip empty rows
+                continue
+
+            description = str(row[3]).strip() if len(row) > 3 and row[3] else ''
+            severity = str(row[4]).strip() if len(row) > 4 and row[4] else 'Medium'
+            status = str(row[5]).strip() if len(row) > 5 and row[5] else 'Open'
+            assigned_to = str(row[6]).strip() if len(row) > 6 and row[6] else ''
+            due_date = str(row[7]).strip() if len(row) > 7 and row[7] else None
+
+            if issue_id and issue_id in existing:
+                # Update existing
+                conn.execute("""
+                    UPDATE issues SET risk_id=?, title=?, description=?, severity=?, status=?,
+                    assigned_to=?, due_date=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE issue_id=?
+                """, (risk_id, title, description, severity, status, assigned_to, due_date, issue_id))
+                seen.add(issue_id)
+            else:
+                # Create new
+                new_id = self._generate_issue_id()
+                conn.execute("""
+                    INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (new_id, risk_id, title, description, severity, status, assigned_to, due_date))
+                seen.add(new_id)
+
+        # Delete removed issues (those in existing but not in seen)
+        for issue_id in existing - seen:
+            conn.execute("DELETE FROM issues WHERE issue_id = ?", (issue_id,))
+
+        conn.commit()
+        conn.close()
+
+    def get_issue_summary(self) -> Dict:
+        """Get summary of issues by status."""
+        conn = self._get_conn()
+        rows = conn.execute("SELECT status, COUNT(*) as count FROM issues GROUP BY status").fetchall()
+        total = conn.execute("SELECT COUNT(*) as total FROM issues").fetchone()['total']
+        conn.close()
+        return {
+            'total': total,
+            'by_status': {row['status']: row['count'] for row in rows}
+        }
+
     # ==================== AI QUERY HELPERS ====================
 
     def execute_query(self, sql: str, params: tuple = ()) -> List[Dict]:
@@ -558,25 +722,42 @@ TABLE test_documents (Working papers - DE/OE testing documentation):
   - created_at: TIMESTAMP
   - updated_at: TIMESTAMP
 
+TABLE issues (Issue Log - linked to RACM risks):
+  - id: INTEGER PRIMARY KEY
+  - issue_id: TEXT (e.g., 'ISS-001', 'ISS-002')
+  - risk_id: TEXT (links to risks.risk_id)
+  - title: TEXT
+  - description: TEXT
+  - severity: TEXT (Low, Medium, High, Critical)
+  - status: TEXT (Open, In Progress, Resolved, Closed)
+  - assigned_to: TEXT
+  - due_date: DATE
+  - created_at: TIMESTAMP
+  - updated_at: TIMESTAMP
+
 RELATIONSHIPS:
   - tasks.risk_id -> risks.id (many tasks can link to one risk)
   - flowcharts.risk_id -> risks.id (flowchart can document a risk's control)
   - test_documents.risk_id -> risks.id (each risk can have DE and OE testing docs)
+  - issues.risk_id -> risks.risk_id (issues are raised against RACM risks)
 """
 
     def get_full_context(self) -> Dict:
         """Get full database context for AI."""
         flowcharts = self.get_all_flowcharts()
         test_docs = self.get_all_test_documents_metadata()
+        issues = self.get_all_issues()
 
         return {
             'schema': self.get_schema(),
             'risk_summary': self.get_risk_summary(),
             'task_summary': self.get_task_summary(),
+            'issue_summary': self.get_issue_summary(),
             'flowchart_count': len(flowcharts),
             'test_doc_count': len(test_docs),
             'risks': self.get_all_risks(),
             'tasks': self.get_all_tasks(),
+            'issues': issues,
             'flowcharts': [{'name': f['name'], 'risk_id': f['risk_id']}
                           for f in flowcharts],
             'test_documents': test_docs  # Metadata only - use tools to read full content

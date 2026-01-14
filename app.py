@@ -41,14 +41,29 @@ def index():
 
 @app.route('/api/data', methods=['GET'])
 def get_data():
-    """Get RACM data in spreadsheet format."""
-    return jsonify(db.get_as_spreadsheet())
+    """Get all spreadsheet data (RACM + Issues) for multi-tab view."""
+    return jsonify({
+        'racm': db.get_as_spreadsheet(),
+        'issues': db.get_issues_as_spreadsheet()
+    })
 
 @app.route('/api/data', methods=['POST'])
 def save_data():
-    """Save RACM data from spreadsheet format."""
+    """Save all spreadsheet data from multi-tab view."""
     global data_version
-    db.save_from_spreadsheet(request.json)
+    data = request.json
+
+    # Handle both old format (array) and new format (object with racm/issues)
+    if isinstance(data, list):
+        # Old format - just RACM data
+        db.save_from_spreadsheet(data)
+    else:
+        # New format - both sheets
+        if 'racm' in data:
+            db.save_from_spreadsheet(data['racm'])
+        if 'issues' in data:
+            db.save_issues_from_spreadsheet(data['issues'])
+
     data_version += 1
     return jsonify({'status': 'saved'})
 
@@ -295,6 +310,78 @@ def get_context():
     """Get full database context for AI."""
     return jsonify(db.get_full_context())
 
+# ==================== Issues API ====================
+
+@app.route('/api/issues', methods=['GET'])
+def get_issues():
+    """Get all issues."""
+    return jsonify(db.get_all_issues())
+
+@app.route('/api/issues/<issue_id>', methods=['GET'])
+def get_issue(issue_id):
+    """Get a single issue."""
+    issue = db.get_issue(issue_id)
+    return jsonify(issue) if issue else ('Not found', 404)
+
+@app.route('/api/issues', methods=['POST'])
+def create_issue():
+    """Create a new issue."""
+    global data_version
+    data = request.json
+    issue_id = db.create_issue(
+        risk_id=data.get('risk_id', ''),
+        title=data.get('title', ''),
+        description=data.get('description', ''),
+        severity=data.get('severity', 'Medium'),
+        status=data.get('status', 'Open'),
+        assigned_to=data.get('assigned_to', ''),
+        due_date=data.get('due_date')
+    )
+    data_version += 1
+    return jsonify({'status': 'created', 'issue_id': issue_id})
+
+@app.route('/api/issues/<issue_id>', methods=['PUT'])
+def update_issue(issue_id):
+    """Update an issue."""
+    global data_version
+    if db.update_issue(issue_id, **request.json):
+        data_version += 1
+        return jsonify({'status': 'updated'})
+    return ('Not found', 404)
+
+@app.route('/api/issues/<issue_id>', methods=['DELETE'])
+def delete_issue(issue_id):
+    """Delete an issue."""
+    global data_version
+    if db.delete_issue(issue_id):
+        data_version += 1
+        return jsonify({'status': 'deleted'})
+    return ('Not found', 404)
+
+@app.route('/api/issues/from-risk/<risk_id>', methods=['POST'])
+def create_issue_from_risk(risk_id):
+    """Create an issue from a RACM risk (used when checkbox is ticked)."""
+    global data_version
+    risk = db.get_risk(risk_id)
+    if not risk:
+        return jsonify({'error': 'Risk not found'}), 404
+
+    # Check if issue already exists for this risk
+    existing = db.get_issues_for_risk(risk_id)
+    if existing:
+        return jsonify({'status': 'exists', 'issue_id': existing[0]['issue_id']})
+
+    # Create new issue with risk details
+    issue_id = db.create_issue(
+        risk_id=risk_id,
+        title=f"Issue for {risk_id}: {risk.get('risk', 'No description')[:50]}",
+        description=f"Risk: {risk.get('risk', '')}\nControl: {risk.get('control_id', '')}",
+        severity='Medium',
+        status='Open'
+    )
+    data_version += 1
+    return jsonify({'status': 'created', 'issue_id': issue_id})
+
 # ==================== Export/Import ====================
 
 @app.route('/api/export', methods=['GET'])
@@ -345,6 +432,8 @@ def chat():
 - Status Breakdown: {json.dumps(context['risk_summary']['by_status'])}
 - Total Tasks: {context['task_summary']['total']}
 - Tasks by Stage: {json.dumps(context['task_summary']['by_column'])}
+- Total Issues: {context['issue_summary']['total']}
+- Issues by Status: {json.dumps(context['issue_summary']['by_status'])}
 - Flowcharts: {context['flowchart_count']}
 - Test Documents (Working Papers): {context['test_doc_count']}
 
@@ -354,6 +443,9 @@ def chat():
 ## Current Tasks:
 {json.dumps(context['tasks'], indent=2)}
 
+## Current Issues (Issue Log):
+{json.dumps(context['issues'], indent=2)}
+
 ## Flowcharts (metadata):
 {json.dumps(context['flowcharts'], indent=2)}
 
@@ -361,11 +453,12 @@ def chat():
 {json.dumps(context['test_documents'], indent=2)}
 
 ## Your Capabilities:
-1. Answer questions about the audit data
-2. Use tools to ADD new rows to RACM, CREATE Kanban tasks, or UPDATE data
+1. Answer questions about the audit data, issues, and testing status
+2. Use tools to ADD new rows to RACM, CREATE Kanban tasks, CREATE issues, or UPDATE data
 3. Execute SQL queries to analyze data
 4. READ working papers (test documents) and flowcharts when relevant to the question
 5. CREATE or UPDATE test documents (working papers) for DE/OE testing
+6. Track and report on issues raised against RACM risks
 
 ## IMPORTANT - Seamless Document Access:
 When the user asks about testing, findings, or documentation for a specific risk:
