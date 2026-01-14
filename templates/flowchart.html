@@ -13,23 +13,20 @@
                 extend: {
                     colors: {
                         primary: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
                         },
-                        audit: {
-                            green: '#10b981',
-                            amber: '#f59e0b',
-                            red: '#ef4444',
-                            grey: '#6b7280',
-                        }
+                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
+                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
+                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' }
                     }
                 }
             }
@@ -40,6 +37,54 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
 
     <style>
+        :root {
+            --primary: #0284c7;
+            --primary-light: #e0f2fe;
+            --primary-dark: #075985;
+            --radius: 6px;
+        }
+
+        /* Button system */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 36px;
+            padding: 0 14px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn svg { width: 16px; height: 16px; }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+        }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-ghost {
+            background: transparent;
+            color: #6b7280;
+            border: none;
+        }
+        .btn-ghost:hover { background: #f3f4f6; color: #374151; }
+        .btn-success {
+            background: #22c55e;
+            color: white;
+            border: none;
+        }
+        .btn-success:hover { background: #16a34a; }
+
         /* ========== MIRO-STYLE CANVAS ========== */
         #drawflow {
             flex: 1;
@@ -94,7 +139,7 @@
             z-index: 20;
         }
         .drawflow .drawflow-node.selected .drawflow_content_node {
-            outline: 2px solid #3b82f6;
+            outline: 2px solid var(--primary);
             outline-offset: 2px;
         }
 
@@ -217,11 +262,11 @@
             fill: none;
         }
         .drawflow .connection:hover .main-path {
-            stroke: #3b82f6;
+            stroke: var(--primary);
             stroke-width: 3px;
         }
         .drawflow .connection.selected .main-path {
-            stroke: #2563eb;
+            stroke: var(--primary-dark);
             stroke-width: 3px;
         }
 
@@ -255,8 +300,8 @@
         }
         .drawflow .drawflow-node .input:hover,
         .drawflow .drawflow-node .output:hover {
-            background: #3b82f6;
-            border-color: #3b82f6;
+            background: var(--primary);
+            border-color: var(--primary);
             transform: scale(1.2);
         }
 
@@ -277,8 +322,8 @@
         .node-input:focus {
             outline: none;
             background: white;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
         }
         .node-input::placeholder {
             color: #94a3b8;
@@ -364,22 +409,21 @@
                         </a>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <input type="text" id="flowchartName" placeholder="Flowchart name..." value="{{ flowchart_id or '' }}" class="rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm w-48">
-                    <button onclick="saveFlowchart()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 transition-colors">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="flex items-center gap-2">
+                    <input type="text" id="flowchartName" placeholder="Flowchart name..." value="{{ flowchart_id or '' }}" class="h-9 rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm w-40">
+                    <button onclick="loadFlowchart()" class="btn btn-ghost">Load</button>
+                    <button onclick="exportData()" class="btn btn-secondary">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Export
+                    </button>
+                    <button onclick="clearCanvas()" class="btn btn-ghost">Clear</button>
+                    <button onclick="saveFlowchart()" class="btn btn-primary">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                         </svg>
                         Save
-                    </button>
-                    <button onclick="loadFlowchart()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
-                        Load
-                    </button>
-                    <button onclick="exportData()" class="inline-flex items-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors">
-                        Export
-                    </button>
-                    <button onclick="clearCanvas()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
-                        Clear
                     </button>
                 </div>
             </div>

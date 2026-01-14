@@ -13,23 +13,20 @@
                 extend: {
                     colors: {
                         primary: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
                         },
-                        audit: {
-                            green: '#10b981',
-                            amber: '#f59e0b',
-                            red: '#ef4444',
-                            grey: '#6b7280',
-                        }
+                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
+                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
+                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' }
                     }
                 }
             }
@@ -40,6 +37,68 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jkanban@1.3.1/dist/jkanban.min.css">
 
     <style>
+        :root {
+            --primary: #0284c7;
+            --primary-light: #e0f2fe;
+            --primary-dark: #075985;
+            --radius: 6px;
+        }
+
+        /* Button system */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 36px;
+            padding: 0 14px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn svg { width: 16px; height: 16px; }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+        }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-ghost {
+            background: transparent;
+            color: #6b7280;
+            border: none;
+        }
+        .btn-ghost:hover { background: #f3f4f6; color: #374151; }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+            border: none;
+        }
+        .btn-danger:hover { background: #dc2626; }
+
+        /* Status chips */
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 9999px;
+        }
+        .chip-neutral { background: #f3f4f6; color: #4b5563; }
+        .chip-success { background: #dcfce7; color: #15803d; }
+        .chip-warning { background: #fef3c7; color: #b45309; }
+        .chip-danger { background: #fee2e2; color: #b91c1c; }
+
         /* Custom jKanban styles */
         .kanban-container {
             display: flex;
@@ -48,40 +107,43 @@
         }
         .kanban-board {
             background: white;
-            border-radius: 12px;
-            min-width: 300px;
-            max-width: 300px;
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-            border: 1px solid rgb(15 23 42 / 0.05);
+            border-radius: 8px;
+            min-width: 280px;
+            max-width: 280px;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+            border: 1px solid #e2e8f0;
         }
         .kanban-board header {
-            padding: 16px;
+            padding: 14px 16px;
             border-bottom: 1px solid #e2e8f0;
             background: #f8fafc;
-            border-radius: 12px 12px 0 0;
+            border-radius: 8px 8px 0 0;
         }
         .kanban-board header .kanban-title-board {
             font-weight: 600;
-            font-size: 14px;
-            color: #1e293b;
+            font-size: 13px;
+            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
         }
         .kanban-drag {
             min-height: 100px;
             padding: 12px;
+            background: #fafafa;
         }
         .kanban-item {
             background: white;
-            border-radius: 8px;
+            border-radius: 6px;
             padding: 12px;
             margin-bottom: 8px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            border: 1px solid #e5e7eb;
             cursor: grab;
             transition: all 0.15s ease;
         }
         .kanban-item:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            border-color: #cbd5e1;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border-color: #d1d5db;
         }
         .kanban-item[data-priority="high"] {
             border-left: 3px solid #ef4444;
@@ -90,17 +152,57 @@
             border-left: 3px solid #f59e0b;
         }
         .kanban-item[data-priority="low"] {
-            border-left: 3px solid #10b981;
+            border-left: 3px solid #22c55e;
         }
 
         /* Toast animations */
         .toast {
             animation: slideIn 0.3s ease-out;
-            transition: opacity 0.3s ease, transform 0.3s ease;
         }
         @keyframes slideIn {
             from { opacity: 0; transform: translateX(100%); }
             to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 24px 16px;
+            color: #9ca3af;
+        }
+
+        /* Modal styles */
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            color: #64748b;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .modal-close:hover { background: #e2e8f0; color: #334155; }
+        .modal-close svg { width: 18px; height: 18px; }
+
+        /* Form styles */
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 6px;
         }
     </style>
 </head>
@@ -129,15 +231,15 @@
                         </a>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <button onclick="addColumn()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="flex items-center gap-2">
+                    <button onclick="addColumn()" class="btn btn-secondary">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                         </svg>
                         Add Column
                     </button>
-                    <button onclick="saveBoard()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 transition-colors">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <button onclick="saveBoard()" class="btn btn-primary">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                         </svg>
                         Save
@@ -173,26 +275,31 @@
     <!-- Edit Card Modal -->
     <div id="editModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50">
-                <h3 id="modalTitle" class="text-lg font-semibold text-slate-900">Edit Task</h3>
+            <div class="modal-header">
+                <h3 id="modalTitle" class="text-base font-semibold text-slate-900">Edit Task</h3>
+                <button onclick="closeModal()" class="modal-close" aria-label="Close">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
             <div class="p-6 space-y-4">
                 <input type="hidden" id="editItemId">
                 <input type="hidden" id="editColumnId">
 
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                    <label class="form-label">Title</label>
                     <input type="text" id="editTitle" placeholder="Task title..." class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                    <label class="form-label">Description</label>
                     <textarea id="editDescription" placeholder="Task description..." rows="3" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"></textarea>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                        <label class="form-label">Priority</label>
                         <select id="editPriority" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
                             <option value="low">Low</option>
                             <option value="medium">Medium</option>
@@ -200,21 +307,26 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                        <label class="form-label">Due Date</label>
                         <input type="date" id="editDueDate" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Assignee</label>
+                    <label class="form-label">Assignee</label>
                     <input type="text" id="editAssignee" placeholder="Who is responsible?" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
                 </div>
             </div>
             <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-                <button id="deleteBtn" onclick="deleteCard()" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500">Delete</button>
-                <div class="flex gap-3">
-                    <button onclick="closeModal()" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Cancel</button>
-                    <button onclick="saveCard()" class="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">Save</button>
+                <button id="deleteBtn" onclick="deleteCard()" class="btn btn-danger">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                </button>
+                <div class="flex gap-2">
+                    <button onclick="closeModal()" class="btn btn-secondary">Cancel</button>
+                    <button onclick="saveCard()" class="btn btn-primary">Save</button>
                 </div>
             </div>
         </div>

@@ -12,24 +12,24 @@
             theme: {
                 extend: {
                     colors: {
+                        // Single primary color - professional blue
                         primary: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
                         },
-                        audit: {
-                            green: '#10b981',
-                            amber: '#f59e0b',
-                            red: '#ef4444',
-                            grey: '#6b7280',
-                        }
+                        // Semantic colors only
+                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
+                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
+                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' },
+                        info: { light: '#dbeafe', DEFAULT: '#3b82f6', dark: '#1d4ed8' }
                     }
                 }
             }
@@ -44,7 +44,89 @@
     <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 
     <style>
-        /* Override Jspreadsheet styles to match theme */
+        /* ========================================
+           DESIGN SYSTEM - SmartPapers
+           ======================================== */
+
+        :root {
+            --primary: #0284c7;
+            --primary-light: #e0f2fe;
+            --primary-dark: #075985;
+            --success: #22c55e;
+            --success-light: #dcfce7;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --radius: 6px;
+            --radius-lg: 8px;
+        }
+
+        /* ========================================
+           BUTTON SYSTEM
+           ======================================== */
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 36px;
+            padding: 0 14px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn svg { width: 16px; height: 16px; }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .btn-primary:hover { background: var(--primary-dark); }
+
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+
+        .btn-ghost {
+            background: transparent;
+            color: #6b7280;
+            border: none;
+        }
+        .btn-ghost:hover { background: #f3f4f6; color: #374151; }
+
+        /* ========================================
+           STATUS CHIPS / BADGES
+           ======================================== */
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 9999px;
+            white-space: nowrap;
+        }
+        .chip-neutral { background: #f3f4f6; color: #4b5563; }
+        .chip-success { background: var(--success-light); color: #15803d; }
+        .chip-warning { background: var(--warning-light); color: #b45309; }
+        .chip-danger { background: var(--danger-light); color: #b91c1c; }
+        .chip-info { background: var(--primary-light); color: var(--primary-dark); }
+
+        /* ========================================
+           TABLE STYLES - Clean & Professional
+           ======================================== */
+
         .jexcel_content, .jspreadsheet_content {
             font-family: inherit;
         }
@@ -53,58 +135,60 @@
             white-space: normal !important;
             word-wrap: break-word;
             vertical-align: top;
-            padding: 6px 8px;
+            padding: 10px 12px;
+            border-color: #f1f5f9 !important;
         }
+        /* Clean header - light background, not dark */
         .jexcel thead tr:first-child td, .jspreadsheet thead tr:first-child td {
-            background: #1e40af !important;
-            color: white !important;
+            background: #f8fafc !important;
+            color: #475569 !important;
             font-weight: 600;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
+            font-size: 12px;
+            text-transform: none;
+            letter-spacing: normal;
             white-space: normal !important;
             word-wrap: break-word;
             vertical-align: middle;
-            padding: 8px 4px;
-            line-height: 1.3;
+            padding: 12px 12px;
+            line-height: 1.4;
+            border-bottom: 2px solid #e2e8f0 !important;
         }
-        /* Filter row - second row in thead */
+        /* Zebra striping */
+        .jexcel tbody tr:nth-child(even) td, .jspreadsheet tbody tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+        .jexcel tbody tr:hover td, .jspreadsheet tbody tr:hover td {
+            background-color: #f0f9ff !important;
+        }
+        .jexcel_container, .jspreadsheet_container {
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Filter row styling */
         .jexcel thead tr.jexcel_filter td, .jspreadsheet thead tr.jexcel_filter td {
-            background: #f1f5f9 !important;
-            color: #334155 !important;
-            font-weight: normal;
-            text-transform: none;
-            padding: 4px 6px;
+            background: white !important;
+            padding: 8px 8px;
         }
         .jexcel thead tr.jexcel_filter td input,
         .jspreadsheet thead tr.jexcel_filter td input {
             width: 100% !important;
-            padding: 6px 8px !important;
-            border: 1px solid #cbd5e1 !important;
-            border-radius: 4px !important;
+            padding: 6px 10px !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: var(--radius) !important;
             font-size: 12px !important;
-            background: white !important;
-            color: #334155 !important;
+            background: #f9fafb !important;
+            color: #374151 !important;
             box-sizing: border-box;
         }
         .jexcel thead tr.jexcel_filter td input:focus,
         .jspreadsheet thead tr.jexcel_filter td input:focus {
-            border-color: #3b82f6 !important;
+            border-color: var(--primary) !important;
             outline: none !important;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
-        }
-        .jexcel tbody tr:hover td, .jspreadsheet tbody tr:hover td {
-            background-color: #f8fafc;
-        }
-        .jexcel_container, .jspreadsheet_container {
-            border-radius: 0.75rem;
-            overflow: hidden;
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-            border: 1px solid rgb(15 23 42 / 0.05);
-        }
-        /* Filter row styling */
-        .jexcel_filter, .jspreadsheet_filter {
-            background-color: #f8fafc !important;
+            box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15) !important;
+            background: white !important;
         }
 
         /* Ensure Issue Log table uses full width */
@@ -112,19 +196,119 @@
         #spreadsheet-issues .jexcel {
             width: 100% !important;
         }
-        .jexcel_filter td, .jspreadsheet_filter td {
-            background-color: #f8fafc !important;
-            border-bottom: 2px solid #e2e8f0;
+
+        /* ========================================
+           DRAWER / PANEL STYLES
+           ======================================== */
+
+        .drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: var(--primary);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
         }
-        .jexcel_filter input, .jspreadsheet_filter input {
+        .drawer-header-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .drawer-header-icon svg { width: 20px; height: 20px; color: white; }
+        .drawer-header-title { font-size: 15px; font-weight: 600; color: white; }
+        .drawer-header-subtitle { font-size: 12px; color: rgba(255,255,255,0.7); }
+        .drawer-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.7);
+            transition: all 0.15s;
+        }
+        .drawer-close:hover { background: rgba(255,255,255,0.1); color: white; }
+
+        /* ========================================
+           MODAL STYLES
+           ======================================== */
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .modal-title { font-size: 16px; font-weight: 600; color: #1e293b; }
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            transition: all 0.15s;
+        }
+        .modal-close:hover { background: #f1f5f9; color: #4b5563; }
+
+        /* ========================================
+           FORM STYLES
+           ======================================== */
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        .form-input {
             width: 100%;
-            padding: 4px 8px;
-            border: 1px solid #cbd5e1;
-            border-radius: 4px;
+            height: 38px;
+            padding: 0 12px;
+            font-size: 14px;
+            border: 1px solid #d1d5db;
+            border-radius: var(--radius);
+            transition: all 0.15s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+        }
+        .form-hint {
             font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
         }
 
-        /* Quill editor styling */
+        /* ========================================
+           INLINE ACTIONS
+           ======================================== */
+
+        .action-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: var(--primary);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+        .action-link:hover { color: var(--primary-dark); }
+        .action-link svg { width: 14px; height: 14px; }
+
+        /* ========================================
+           QUILL EDITOR
+           ======================================== */
+
         #testDocEditor {
             display: flex;
             flex-direction: column;
@@ -153,7 +337,10 @@
             padding: 16px;
         }
 
-        /* Toast animations */
+        /* ========================================
+           TOAST NOTIFICATIONS
+           ======================================== */
+
         .toast {
             animation: slideIn 0.3s ease-out;
             transition: opacity 0.3s ease, transform 0.3s ease;
@@ -161,6 +348,32 @@
         @keyframes slideIn {
             from { opacity: 0; transform: translateX(100%); }
             to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ========================================
+           EMPTY STATES
+           ======================================== */
+
+        .empty-state {
+            text-align: center;
+            padding: 32px 16px;
+            color: #6b7280;
+        }
+        .empty-state-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 12px;
+            color: #d1d5db;
+        }
+        .empty-state-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #4b5563;
+            margin-bottom: 4px;
+        }
+        .empty-state-text {
+            font-size: 13px;
+            color: #9ca3af;
         }
     </style>
 </head>
@@ -192,8 +405,8 @@
                 </div>
                 <!-- Right: AI Chat Toggle -->
                 <div class="flex items-center gap-3">
-                    <button onclick="toggleChat()" class="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-500 transition-colors">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <button onclick="toggleChat()" class="btn btn-secondary">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                         </svg>
                         AI Assistant
@@ -205,62 +418,72 @@
         <!-- Main content -->
         <main class="py-6">
             <div class="mx-auto px-4 sm:px-6">
-                <!-- Header -->
-                <div class="md:flex md:items-center md:justify-between mb-6">
-                    <div class="min-w-0 flex-1">
-                        <h1 class="text-2xl font-bold leading-7 text-slate-900 sm:truncate sm:text-3xl sm:tracking-tight">
-                            Risk and Control Matrix
-                        </h1>
-                        <p class="mt-1 text-sm text-slate-500">
-                            Document risks, controls, and their effectiveness
-                        </p>
+                <!-- Header with integrated toolbar -->
+                <div class="flex items-center justify-between mb-5">
+                    <div>
+                        <h1 class="text-xl font-semibold text-slate-900">Risk and Control Matrix</h1>
+                        <p class="text-sm text-slate-500">Document risks, controls, and testing results</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <!-- Table tools -->
+                        <button onclick="addRow()" class="btn btn-ghost" title="Add row">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add Row
+                        </button>
+                        <button onclick="mergeSelected()" class="btn btn-ghost" title="Merge cells">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z" />
+                            </svg>
+                            Merge
+                        </button>
+                        <div class="w-px h-6 bg-slate-200 mx-1"></div>
+                        <!-- Import/Export dropdown -->
+                        <div class="relative" id="importExportDropdown">
+                            <button onclick="toggleImportExport()" class="btn btn-secondary">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                </svg>
+                                Import / Export
+                                <svg class="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            <div id="importExportMenu" class="hidden absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-10">
+                                <button onclick="exportExcel(); toggleImportExport();" class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Export to Excel
+                                </button>
+                                <label class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                    </svg>
+                                    Import from Excel
+                                    <input type="file" id="fileInput" onchange="importExcel(event); toggleImportExport();" accept=".xlsx,.xls" class="hidden">
+                                </label>
+                            </div>
+                        </div>
+                        <!-- Primary save button -->
+                        <button onclick="saveData()" class="btn btn-primary">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Save Changes
+                        </button>
                     </div>
                 </div>
 
-                <!-- Toolbar -->
-                <div class="mb-4 flex flex-wrap items-center gap-3">
-                    <button onclick="saveData()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 transition-colors">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                        </svg>
-                        Save
-                    </button>
-                    <button onclick="exportExcel()" class="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Export Excel
-                    </button>
-                    <label class="inline-flex items-center rounded-md bg-slate-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 transition-colors cursor-pointer">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                        </svg>
-                        Import Excel
-                        <input type="file" id="fileInput" onchange="importExcel(event)" accept=".xlsx,.xls" class="hidden">
-                    </label>
-                    <div class="h-6 w-px bg-slate-300"></div>
-                    <button onclick="addRow()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Row
-                    </button>
-                    <button onclick="mergeSelected()" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors">
-                        <svg class="-ml-0.5 mr-1.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z" />
-                        </svg>
-                        Merge Cells
-                    </button>
-                </div>
-
                 <!-- Spreadsheet Tabs -->
-                <div id="spreadsheet" class="bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5 overflow-hidden">
-                    <div class="border-b border-slate-200 bg-slate-50">
-                        <nav class="flex -mb-px" aria-label="Tabs">
-                            <button id="tab-racm" onclick="switchTab('racm')" class="tab-button active px-6 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-600 bg-white">
-                                RACM
+                <div id="spreadsheet" class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="border-b border-slate-200 bg-white">
+                        <nav class="flex" aria-label="Tabs">
+                            <button id="tab-racm" onclick="switchTab('racm')" class="tab-button px-5 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-700 bg-primary-50/50">
+                                Risk & Control Matrix
                             </button>
-                            <button id="tab-issues" onclick="switchTab('issues')" class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                            <button id="tab-issues" onclick="switchTab('issues')" class="tab-button px-5 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
                                 Issue Log
                             </button>
                         </nav>
@@ -277,94 +500,112 @@
 
     <!-- Task Modal -->
     <div id="taskModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50">
-                <h3 id="taskModalTitle" class="text-lg font-semibold text-slate-900">Add Task</h3>
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div class="modal-header">
+                <h3 id="taskModalTitle" class="modal-title">Add Task</h3>
+                <button onclick="closeTaskModal()" class="modal-close">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
-            <div class="p-6 space-y-4">
+            <div class="p-5 space-y-4">
                 <input type="hidden" id="taskId">
                 <input type="hidden" id="taskRow">
 
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Title</label>
-                    <input type="text" id="taskTitle" placeholder="Task title..." class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                    <label class="form-label">Title</label>
+                    <input type="text" id="taskTitle" placeholder="Task title..." class="form-input">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                    <textarea id="taskDescription" placeholder="What needs to be done?" rows="3" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"></textarea>
+                    <label class="form-label">Description</label>
+                    <textarea id="taskDescription" placeholder="What needs to be done?" rows="3" class="form-input" style="height: auto; padding: 10px 12px;"></textarea>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-                        <select id="taskPriority" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                        <label class="form-label">Priority</label>
+                        <select id="taskPriority" class="form-input">
                             <option value="low">Low</option>
                             <option value="medium" selected>Medium</option>
                             <option value="high">High</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
-                        <input type="date" id="taskDueDate" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                        <label class="form-label">Due Date</label>
+                        <input type="date" id="taskDueDate" class="form-input">
+                        <p class="form-hint">YYYY-MM-DD format</p>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Assignee</label>
-                    <input type="text" id="taskAssignee" placeholder="Who is responsible?" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                    <label class="form-label">Assignee</label>
+                    <input type="text" id="taskAssignee" placeholder="Who is responsible?" class="form-input">
+                    <p class="form-hint">Team member or role</p>
                 </div>
 
-                <div id="taskStatus" class="hidden rounded-md bg-blue-50 p-3">
-                    <p class="text-sm text-blue-700">Status: <span id="taskStatusText" class="font-medium"></span></p>
+                <div id="taskStatus" class="hidden rounded-md bg-primary-50 p-3 border border-primary-200">
+                    <p class="text-sm text-primary-700">Status: <span id="taskStatusText" class="font-medium"></span></p>
                 </div>
             </div>
-            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+            <div class="px-5 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
                 <a id="viewOnBoardLink" href="/kanban" target="_blank" class="hidden">
-                    <button type="button" class="rounded-md bg-cyan-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-500">View on Board</button>
+                    <button type="button" class="btn btn-secondary">View on Board</button>
                 </a>
-                <button onclick="closeTaskModal()" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Cancel</button>
-                <button onclick="saveTask()" class="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">Save Task</button>
+                <button onclick="closeTaskModal()" class="btn btn-secondary">Cancel</button>
+                <button onclick="saveTask()" class="btn btn-primary">Save Task</button>
             </div>
         </div>
     </div>
 
     <!-- Test Document Editor Modal -->
     <div id="testDocModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center overflow-y-auto py-8">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col" style="max-height: calc(100vh - 4rem);">
-            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex-shrink-0 rounded-t-xl">
-                <h3 id="testDocModalTitle" class="text-lg font-semibold text-slate-900">Design Effectiveness Testing</h3>
-                <p id="testDocModalSubtitle" class="text-sm text-slate-500 mt-1">Risk: R001</p>
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl mx-4 flex flex-col" style="max-height: calc(100vh - 4rem);">
+            <div class="modal-header flex-shrink-0 rounded-t-lg">
+                <div>
+                    <h3 id="testDocModalTitle" class="modal-title">Design Effectiveness Testing</h3>
+                    <p id="testDocModalSubtitle" class="text-sm text-slate-500 mt-0.5">Risk: R001</p>
+                </div>
+                <button onclick="closeTestDocModal()" class="modal-close">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <!-- Template guidance -->
+            <div class="px-6 py-3 bg-primary-50 border-b border-primary-100 text-sm text-primary-800">
+                <span class="font-medium">Tip:</span> Include objective, test steps, sample details, results, and conclusion.
             </div>
             <div class="flex-1 overflow-y-auto flex flex-col min-h-0">
                 <input type="hidden" id="testDocRiskCode">
                 <input type="hidden" id="testDocType">
                 <div id="testDocEditor" class="flex-1 min-h-[400px]"></div>
             </div>
-            <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 flex-shrink-0">
-                <button onclick="closeTestDocModal()" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Cancel</button>
-                <button onclick="saveTestDocument()" class="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">Save Document</button>
+            <div class="px-5 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2 flex-shrink-0">
+                <button onclick="closeTestDocModal()" class="btn btn-secondary">Cancel</button>
+                <button onclick="saveTestDocument()" class="btn btn-primary">Save Document</button>
             </div>
         </div>
     </div>
 
     <!-- Evidence Panel (slides in from left) -->
     <div id="evidencePanel" class="fixed inset-y-0 left-0 w-full sm:w-[480px] max-w-full bg-white shadow-2xl z-50 transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
-        <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-4 border-b border-slate-200 bg-amber-600 flex-shrink-0">
+        <!-- Header - uses unified drawer style -->
+        <div class="drawer-header flex-shrink-0">
             <div class="flex items-center gap-3">
-                <div class="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
-                    <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="drawer-header-icon">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                 </div>
                 <div>
-                    <h2 id="evidencePanelTitle" class="text-base font-semibold text-white">Evidence & Working Papers</h2>
-                    <p id="evidencePanelSubtitle" class="text-xs text-amber-200">Risk: R001</p>
+                    <h2 id="evidencePanelTitle" class="drawer-header-title">Evidence & Working Papers</h2>
+                    <p id="evidencePanelSubtitle" class="drawer-header-subtitle">Risk: R001</p>
                 </div>
             </div>
-            <button onclick="closeEvidencePanel()" class="rounded-md p-2 text-amber-200 hover:text-white hover:bg-white/10 transition-colors">
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="closeEvidencePanel()" class="drawer-close">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
             </button>
@@ -375,44 +616,51 @@
         <input type="hidden" id="evidenceItemType">
 
         <!-- Category Tabs -->
-        <div id="evidenceTabs" class="border-b border-slate-200 bg-slate-50 flex-shrink-0">
-            <nav class="flex -mb-px px-4" aria-label="Evidence Categories">
-                <button id="tab-planning" onclick="switchEvidenceTab('planning')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-amber-500 text-amber-600">
+        <div id="evidenceTabs" class="border-b border-slate-200 bg-white flex-shrink-0">
+            <nav class="flex px-4" aria-label="Evidence Categories">
+                <button id="tab-planning" onclick="switchEvidenceTab('planning')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-700">
                     Planning
                 </button>
-                <button id="tab-de" onclick="switchEvidenceTab('de')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                <button id="tab-de" onclick="switchEvidenceTab('de')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
                     DE Testing
                 </button>
-                <button id="tab-oe" onclick="switchEvidenceTab('oe')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                <button id="tab-oe" onclick="switchEvidenceTab('oe')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
                     OE Testing
                 </button>
-                <button id="tab-issue" onclick="switchEvidenceTab('issue')" class="evidence-tab hidden px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                <button id="tab-issue" onclick="switchEvidenceTab('issue')" class="evidence-tab hidden px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
                     Issue
                 </button>
             </nav>
         </div>
 
         <!-- Content Area -->
-        <div class="flex-1 overflow-y-auto p-4">
+        <div class="flex-1 overflow-y-auto p-4 bg-slate-50">
             <!-- Upload Section -->
             <div class="mb-4">
-                <div class="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center hover:border-amber-400 transition-colors">
+                <div class="border-2 border-dashed border-slate-300 rounded-lg p-5 text-center hover:border-primary-400 hover:bg-primary-50/30 transition-colors bg-white">
                     <input type="file" id="evidenceFileInput" multiple class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.msg,.eml,.txt,.csv,.png,.jpg,.jpeg,.gif,.zip">
                     <label for="evidenceFileInput" class="cursor-pointer">
-                        <svg class="mx-auto h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        <svg class="mx-auto h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
-                        <p class="mt-1 text-sm text-slate-600">Click to upload evidence</p>
-                        <p class="text-xs text-slate-500">PDF, Word, Excel, Email, Images (max 50MB)</p>
+                        <p class="mt-2 text-sm font-medium text-slate-700">Click to upload evidence</p>
+                        <p class="text-xs text-slate-500 mt-1">PDF, Word, Excel, Email, Images (max 50MB)</p>
                     </label>
                 </div>
             </div>
 
             <!-- Files List -->
             <div>
-                <h4 class="text-sm font-medium text-slate-700 mb-2" id="evidenceListTitle">Planning Documents</h4>
+                <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3" id="evidenceListTitle">Planning Documents</h4>
                 <div id="evidenceFilesList" class="space-y-2">
-                    <p class="text-sm text-slate-500 italic">No files uploaded yet.</p>
+                    <!-- Empty state -->
+                    <div class="empty-state bg-white rounded-lg border border-slate-200">
+                        <svg class="empty-state-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p class="empty-state-title">No evidence uploaded yet</p>
+                        <p class="empty-state-text">Upload documents to support your audit work</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -423,27 +671,27 @@
 
     <!-- Chat Panel -->
     <div id="chatPanel" class="fixed inset-y-0 right-0 w-full sm:w-[420px] max-w-full bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
-        <!-- Chat Header -->
-        <div class="flex items-center justify-between px-4 py-4 border-b border-slate-200 bg-violet-600 flex-shrink-0">
+        <!-- Chat Header - uses unified drawer style -->
+        <div class="drawer-header flex-shrink-0">
             <div class="flex items-center gap-3">
-                <div class="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
-                    <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="drawer-header-icon">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                 </div>
                 <div>
-                    <h2 class="text-base font-semibold text-white">AI Audit Assistant</h2>
-                    <p class="text-xs text-violet-200">Powered by Claude</p>
+                    <h2 class="drawer-header-title">AI Audit Assistant</h2>
+                    <p class="drawer-header-subtitle">Powered by Claude</p>
                 </div>
             </div>
-            <div class="flex items-center gap-2">
-                <button onclick="clearChat()" class="rounded-md p-2 text-violet-200 hover:text-white hover:bg-white/10 transition-colors" title="Clear chat">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="flex items-center gap-1">
+                <button onclick="clearChat()" class="drawer-close" title="Clear chat">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                 </button>
-                <button onclick="toggleChat()" class="rounded-md p-2 text-violet-200 hover:text-white hover:bg-white/10 transition-colors">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <button onclick="toggleChat()" class="drawer-close">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
@@ -453,19 +701,32 @@
         <!-- Chat Messages -->
         <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
             <div class="flex gap-3">
-                <div class="flex-shrink-0 h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center">
-                    <svg class="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="flex-shrink-0 h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
+                    <svg class="h-4 w-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                 </div>
-                <div class="flex-1 bg-white rounded-lg p-3 shadow-sm ring-1 ring-slate-900/5">
-                    <p class="text-sm text-slate-700">Hi! I'm your AI audit assistant. I can help you:</p>
-                    <ul class="mt-2 text-sm text-slate-600 space-y-1">
-                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Add risks and controls to the RACM</li>
-                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Create flowcharts for walkthroughs</li>
-                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Create tasks on the audit plan</li>
-                        <li class="flex items-center gap-2"><span class="text-emerald-500">+</span> Analyze and summarize your audit data</li>
-                    </ul>
+                <div class="flex-1 bg-white rounded-lg p-4 shadow-sm border border-slate-200">
+                    <p class="text-sm text-slate-700 mb-3">Hi! I'm your AI audit assistant. What would you like to do?</p>
+                    <!-- Quick action chips -->
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="insertChatMessage('Add a new risk to the RACM')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                            Add risk
+                        </button>
+                        <button onclick="insertChatMessage('Create a flowchart for the control walkthrough')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5z" /></svg>
+                            Create flowchart
+                        </button>
+                        <button onclick="insertChatMessage('Add a task to the audit plan')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                            Add task
+                        </button>
+                        <button onclick="insertChatMessage('Summarize the current audit status')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                            Summarize
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -484,11 +745,12 @@
         <!-- Chat Input -->
         <div class="p-4 border-t border-slate-200 bg-white">
             <div class="flex gap-2">
-                <input type="text" id="chatInput" placeholder="Ask about your audit..." onkeypress="handleChatKeypress(event)" class="flex-1 rounded-lg border-slate-300 shadow-sm focus:border-violet-500 focus:ring-violet-500 text-sm">
-                <button id="chatSend" onclick="sendMessage()" class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                <input type="text" id="chatInput" placeholder="Ask about your audit..." onkeypress="handleChatKeypress(event)" class="flex-1 rounded-lg border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                <button id="chatSend" onclick="sendMessage()" class="btn btn-primary">
                     Send
                 </button>
             </div>
+            <p class="text-xs text-slate-400 mt-2">Press Enter to send</p>
         </div>
     </div>
 
@@ -526,17 +788,38 @@
             return filtered.length > 0 ? filtered : [emptyRowTemplate];
         }
 
+        // Toggle import/export dropdown
+        function toggleImportExport() {
+            const menu = document.getElementById('importExportMenu');
+            menu.classList.toggle('hidden');
+        }
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('importExportDropdown');
+            const menu = document.getElementById('importExportMenu');
+            if (dropdown && menu && !dropdown.contains(e.target)) {
+                menu.classList.add('hidden');
+            }
+        });
+
+        // Insert message into chat input (for quick action chips)
+        function insertChatMessage(message) {
+            const input = document.getElementById('chatInput');
+            input.value = message;
+            input.focus();
+        }
+
         // Switch between tabs
         function switchTab(tab) {
             currentTab = tab;
 
             // Update tab button styles
             document.getElementById('tab-racm').className = tab === 'racm'
-                ? 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-600 bg-white'
-                : 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300';
+                ? 'tab-button px-5 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-700 bg-primary-50/50'
+                : 'tab-button px-5 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700';
             document.getElementById('tab-issues').className = tab === 'issues'
-                ? 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-600 bg-white'
-                : 'tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300';
+                ? 'tab-button px-5 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-700 bg-primary-50/50'
+                : 'tab-button px-5 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700';
 
             // Show/hide spreadsheets
             document.getElementById('spreadsheet-racm').style.display = tab === 'racm' ? 'block' : 'none';
@@ -1672,9 +1955,9 @@
                 const tab = document.getElementById(`tab-${t}`);
                 if (tab) {
                     if (t === category) {
-                        tab.className = 'evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-amber-500 text-amber-600';
+                        tab.className = 'evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-700';
                     } else {
-                        tab.className = 'evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300';
+                        tab.className = 'evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700';
                     }
                 }
             });
