@@ -106,6 +106,12 @@
         .jexcel_filter, .jspreadsheet_filter {
             background-color: #f8fafc !important;
         }
+
+        /* Ensure Issue Log table uses full width */
+        #spreadsheet-issues .jexcel_container,
+        #spreadsheet-issues .jexcel {
+            width: 100% !important;
+        }
         .jexcel_filter td, .jspreadsheet_filter td {
             background-color: #f8fafc !important;
             border-bottom: 2px solid #e2e8f0;
@@ -252,7 +258,7 @@
                 </div>
 
                 <!-- Spreadsheet Tabs -->
-                <div class="bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5 overflow-hidden">
+                <div id="spreadsheet" class="bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5 overflow-hidden">
                     <div class="border-b border-slate-200 bg-slate-50">
                         <nav class="flex -mb-px" aria-label="Tabs">
                             <button id="tab-racm" onclick="switchTab('racm')" class="tab-button active px-6 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-600 bg-white">
@@ -345,6 +351,79 @@
             </div>
         </div>
     </div>
+
+    <!-- Evidence Panel (slides in from left) -->
+    <div id="evidencePanel" class="fixed inset-y-0 left-0 w-full sm:w-[480px] max-w-full bg-white shadow-2xl z-50 transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-4 py-4 border-b border-slate-200 bg-amber-600 flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
+                    <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <div>
+                    <h2 id="evidencePanelTitle" class="text-base font-semibold text-white">Evidence & Working Papers</h2>
+                    <p id="evidencePanelSubtitle" class="text-xs text-amber-200">Risk: R001</p>
+                </div>
+            </div>
+            <button onclick="closeEvidencePanel()" class="rounded-md p-2 text-amber-200 hover:text-white hover:bg-white/10 transition-colors">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Hidden inputs -->
+        <input type="hidden" id="evidenceItemId">
+        <input type="hidden" id="evidenceItemType">
+
+        <!-- Category Tabs -->
+        <div id="evidenceTabs" class="border-b border-slate-200 bg-slate-50 flex-shrink-0">
+            <nav class="flex -mb-px px-4" aria-label="Evidence Categories">
+                <button id="tab-planning" onclick="switchEvidenceTab('planning')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-amber-500 text-amber-600">
+                    Planning
+                </button>
+                <button id="tab-de" onclick="switchEvidenceTab('de')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                    DE Testing
+                </button>
+                <button id="tab-oe" onclick="switchEvidenceTab('oe')" class="evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                    OE Testing
+                </button>
+                <button id="tab-issue" onclick="switchEvidenceTab('issue')" class="evidence-tab hidden px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                    Issue
+                </button>
+            </nav>
+        </div>
+
+        <!-- Content Area -->
+        <div class="flex-1 overflow-y-auto p-4">
+            <!-- Upload Section -->
+            <div class="mb-4">
+                <div class="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center hover:border-amber-400 transition-colors">
+                    <input type="file" id="evidenceFileInput" multiple class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.msg,.eml,.txt,.csv,.png,.jpg,.jpeg,.gif,.zip">
+                    <label for="evidenceFileInput" class="cursor-pointer">
+                        <svg class="mx-auto h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p class="mt-1 text-sm text-slate-600">Click to upload evidence</p>
+                        <p class="text-xs text-slate-500">PDF, Word, Excel, Email, Images (max 50MB)</p>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Files List -->
+            <div>
+                <h4 class="text-sm font-medium text-slate-700 mb-2" id="evidenceListTitle">Planning Documents</h4>
+                <div id="evidenceFilesList" class="space-y-2">
+                    <p class="text-sm text-slate-500 italic">No files uploaded yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Evidence Panel Backdrop -->
+    <div id="evidenceBackdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden" onclick="closeEvidencePanel()"></div>
 
     <!-- Chat Panel -->
     <div id="chatPanel" class="fixed inset-y-0 right-0 w-full sm:w-[420px] max-w-full bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
@@ -455,6 +534,39 @@
             // Show/hide spreadsheets
             document.getElementById('spreadsheet-racm').style.display = tab === 'racm' ? 'block' : 'none';
             document.getElementById('spreadsheet-issues').style.display = tab === 'issues' ? 'block' : 'none';
+
+            // Refresh the visible table to fix rendering issues
+            if (tab === 'issues' && issueTable) {
+                // Force resize and re-render
+                setTimeout(async () => {
+                    const container = document.getElementById('spreadsheet-issues');
+                    const wrapper = document.getElementById('spreadsheet');
+                    const parentWidth = wrapper.offsetWidth - 2;
+                    const tableEl = container.querySelector('.jexcel_container');
+                    if (tableEl) {
+                        tableEl.style.width = parentWidth + 'px';
+                    }
+                    // Also resize the jexcel table element itself
+                    const jexcelTable = container.querySelector('.jexcel');
+                    if (jexcelTable) {
+                        jexcelTable.style.width = '100%';
+                    }
+                    // Re-fetch and set data to force complete re-render
+                    const response = await fetch('/api/data');
+                    const allData = await response.json();
+                    const issuesData = allData.issues || [];
+                    issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']]);
+                    // Load issue documentation status and attachment counts
+                    await loadIssueDocStatus();
+                    await loadAttachmentCounts();
+                }, 50);
+            } else if (tab === 'racm' && table) {
+                setTimeout(() => {
+                    table.refresh();
+                    // Also refresh test doc status to ensure links show
+                    loadTestDocStatus();
+                }, 50);
+            }
         }
 
         // Initialize both spreadsheets
@@ -475,6 +587,9 @@
             const issuesContainer = document.getElementById('spreadsheet-issues');
             const containerWidth = racmContainer.parentElement.offsetWidth - 2;
 
+            // Show issues container temporarily for proper initialization
+            issuesContainer.style.display = 'block';
+
             // Create RACM spreadsheet
             table = jspreadsheet(racmContainer, {
                 data: racmData,
@@ -494,13 +609,14 @@
                     { type: 'checkbox', width: 60, title: 'Closed' },
                     { type: 'text', width: 100, title: 'Flowchart' },
                     { type: 'text', width: 80, title: 'Task' },
+                    { type: 'text', width: 90, title: 'Evidence', readOnly: true },
                 ],
                 wordWrap: true,
                 defaultRowHeight: 40,
                 columnResize: true,
                 rowResize: true,
                 columnDrag: true,
-                minDimensions: [15, 10],
+                minDimensions: [16, 10],
                 tableOverflow: true,
                 tableWidth: containerWidth + 'px',
                 tableHeight: 'auto',
@@ -531,18 +647,20 @@
                 }
             });
 
-            // Create Issue Log spreadsheet
+            // Create Issue Log spreadsheet - full width columns
+            const issueColWidth = Math.floor((containerWidth - 50) / 9); // Distribute width across 9 columns
             issueTable = jspreadsheet(issuesContainer, {
-                data: issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '']],
+                data: issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']],
                 columns: [
-                    { type: 'text', width: 80, title: 'Issue ID', readOnly: true },
-                    { type: 'text', width: 80, title: 'Risk ID' },
-                    { type: 'text', width: 200, title: 'Title' },
-                    { type: 'text', width: 250, title: 'Description', wordWrap: true },
+                    { type: 'text', width: 90, title: 'Issue ID', readOnly: true },
+                    { type: 'text', width: 90, title: 'Risk ID' },
+                    { type: 'text', width: Math.max(180, issueColWidth * 2), title: 'Title' },
+                    { type: 'text', width: Math.max(200, issueColWidth * 2), title: 'Description', wordWrap: true },
                     { type: 'dropdown', width: 100, title: 'Severity', source: ['Low', 'Medium', 'High', 'Critical'] },
                     { type: 'dropdown', width: 100, title: 'Status', source: ['Open', 'In Progress', 'Resolved', 'Closed'] },
-                    { type: 'text', width: 120, title: 'Assigned To' },
-                    { type: 'calendar', width: 100, title: 'Due Date', options: { format: 'YYYY-MM-DD' } },
+                    { type: 'text', width: Math.max(120, issueColWidth), title: 'Assigned To' },
+                    { type: 'calendar', width: 110, title: 'Due Date', options: { format: 'YYYY-MM-DD' } },
+                    { type: 'text', width: 100, title: 'Evidence', readOnly: true },
                 ],
                 wordWrap: true,
                 defaultRowHeight: 40,
@@ -564,12 +682,28 @@
                 }
             });
 
+            console.log('Issue table initialized:', issueTable ? 'OK' : 'FAILED');
+            console.log('Issues data:', issuesData);
+
+            // Hide issues container after initialization (RACM is default view)
+            issuesContainer.style.display = 'none';
+
             return table;
         }
 
         // RACM sheet updateTable callback
         function updateRACMTable(instance, cell, col, row, val, label, cellName) {
-            const riskId = instance.jexcel.getValueFromCoords(0, row);
+            // Get riskId - use table if available, otherwise fallback to instance.jexcel
+            let riskId = '';
+            try {
+                if (table) {
+                    riskId = table.getValueFromCoords(0, row);
+                } else if (instance && instance.jexcel) {
+                    riskId = instance.jexcel.getValueFromCoords(0, row);
+                }
+            } catch (e) {
+                console.warn('Could not get riskId in updateRACMTable:', e);
+            }
 
             // DE Testing column (E = index 4)
             if (col == 4) {
@@ -629,10 +763,32 @@
                     cell.style.color = '#92400e';
                 }
             }
+            // Evidence column (P = index 15) - shows attachment count for risks
+            if (col == 15 && riskId && riskId.trim()) {
+                const attachCount = riskAttachmentCache[riskId.toUpperCase()] || 0;
+                if (attachCount > 0) {
+                    cell.innerHTML = '<span class="view-risk-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-risk="' + riskId + '">📎 ' + attachCount + ' file' + (attachCount > 1 ? 's' : '') + '</span>';
+                } else {
+                    cell.innerHTML = '<span class="view-risk-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm" data-row="' + row + '" data-risk="' + riskId + '">+ Attach</span>';
+                }
+            }
         }
 
         // Issue Log sheet updateTable callback
+        let issueDocCache = {}; // Cache for issue documentation existence
+        let issueAttachmentCache = {}; // Cache for attachment counts
+
         function updateIssueTable(instance, cell, col, row, val, label, cellName) {
+            // Get issueId from column 0
+            let issueId = '';
+            try {
+                if (issueTable) {
+                    issueId = issueTable.getValueFromCoords(0, row);
+                } else if (instance && instance.jexcel) {
+                    issueId = instance.jexcel.getValueFromCoords(0, row);
+                }
+            } catch (e) {}
+
             // Severity column styling (col 4)
             if (col == 4) {
                 const severity = val ? val : '';
@@ -664,13 +820,24 @@
                     cell.style.color = '#991b1b';
                 }
             }
+            // Evidence column (col 8) - shows attachment count
+            if (col == 8 && issueId && issueId.trim()) {
+                const attachCount = issueAttachmentCache[issueId] || 0;
+                if (attachCount > 0) {
+                    cell.innerHTML = '<span class="view-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-issue="' + issueId + '">📎 ' + attachCount + ' file' + (attachCount > 1 ? 's' : '') + '</span>';
+                } else {
+                    cell.innerHTML = '<span class="view-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm" data-row="' + row + '" data-issue="' + issueId + '">+ Attach</span>';
+                }
+            }
         }
 
         // Handle RACM changes - auto-create issue when checkbox ticked
         async function onRACMChange(instance, cell, x, y, value) {
-            // Raise Issue? checkbox is column 11
-            if (x == 11 && value === true) {
-                const riskId = instance.jexcel.getValueFromCoords(0, y);
+            // Raise Issue? checkbox is column 11 (value can be true, 'true', or 1)
+            if (x == 11 && (value === true || value === 'true' || value === 1 || value === '1')) {
+                // Use global table variable since it's definitely set by now
+                const riskId = table.getValueFromCoords(0, y);
+                console.log('Raise Issue checkbox ticked for row', y, 'risk:', riskId);
                 if (riskId && riskId.trim()) {
                     try {
                         const response = await fetch(`/api/issues/from-risk/${encodeURIComponent(riskId)}`, {
@@ -697,7 +864,9 @@
             const allData = await response.json();
             if (issueTable) {
                 const issuesData = allData.issues || [];
-                issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '']]);
+                issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']]);
+                // Reload documentation status
+                await loadIssueDocStatus();
             }
         }
 
@@ -939,13 +1108,24 @@
         window.addEventListener('resize', function() {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(function() {
+                const wrapper = document.getElementById('spreadsheet');
+                const containerWidth = wrapper.offsetWidth - 2;
+
+                // Resize RACM table
                 if (table) {
-                    const container = document.getElementById('spreadsheet');
-                    const containerWidth = container.parentElement.offsetWidth - 2;
-                    // Update table width
-                    const tableEl = container.querySelector('.jexcel_container');
-                    if (tableEl) {
-                        tableEl.style.width = containerWidth + 'px';
+                    const racmContainer = document.getElementById('spreadsheet-racm');
+                    const racmTableEl = racmContainer.querySelector('.jexcel_container');
+                    if (racmTableEl) {
+                        racmTableEl.style.width = containerWidth + 'px';
+                    }
+                }
+
+                // Resize Issues table
+                if (issueTable) {
+                    const issuesContainer = document.getElementById('spreadsheet-issues');
+                    const issuesTableEl = issuesContainer.querySelector('.jexcel_container');
+                    if (issuesTableEl) {
+                        issuesTableEl.style.width = containerWidth + 'px';
                     }
                 }
             }, 150);
@@ -978,6 +1158,13 @@
                 const docType = e.target.getAttribute('data-type');
                 const riskCode = e.target.getAttribute('data-risk');
                 openTestDocModal(row, riskCode, docType);
+            }
+            // Risk Attachments handler
+            if (e.target.classList.contains('view-risk-attachments')) {
+                const riskId = e.target.getAttribute('data-risk');
+                if (riskId) {
+                    openAttachmentsModal(riskId, 'risk');
+                }
             }
         });
 
@@ -1069,6 +1256,7 @@
         // ==================== Test Document Editor Functions ====================
         let quillEditor = null;
         let testDocCache = {}; // Cache for document existence status
+        let riskAttachmentCache = {}; // Cache for risk attachment counts
 
         async function checkTestDocExists(riskCode, docType) {
             const cacheKey = `${riskCode}_${docType}`;
@@ -1088,19 +1276,51 @@
         async function loadTestDocStatus() {
             // Load document status for all rows into cache, then refresh table
             const data = table.getData();
+            const promises = [];
             for (let row = 0; row < data.length; row++) {
                 const riskCode = data[row][0];
                 if (riskCode && riskCode.trim()) {
                     // Pre-populate cache for DE and OE Testing columns
-                    await checkTestDocExists(riskCode, 'de_testing');
-                    await checkTestDocExists(riskCode, 'oe_testing');
+                    promises.push(checkTestDocExists(riskCode, 'de_testing'));
+                    promises.push(checkTestDocExists(riskCode, 'oe_testing'));
                 }
             }
-            // Refresh the table to update the cell rendering (uses cache)
-            table.refresh();
+            await Promise.all(promises);
+            console.log('Test doc cache populated:', testDocCache);
+            // Force complete re-render by setting data again
+            table.setData(data);
+            // Also load risk attachment counts
+            await loadRiskAttachmentCounts();
+        }
+
+        async function loadRiskAttachmentCounts() {
+            // Load attachment counts for all risks
+            if (!table) return;
+            const data = table.getData();
+            const promises = [];
+            for (let row = 0; row < data.length; row++) {
+                const riskId = data[row][0];
+                if (riskId && riskId.trim()) {
+                    promises.push(
+                        fetch(`/api/risks/${encodeURIComponent(riskId)}/attachments`)
+                            .then(r => r.json())
+                            .then(attachments => {
+                                riskAttachmentCache[riskId.toUpperCase()] = attachments.length;
+                            })
+                            .catch(() => {
+                                riskAttachmentCache[riskId.toUpperCase()] = 0;
+                            })
+                    );
+                }
+            }
+            await Promise.all(promises);
+            console.log('Risk attachment cache populated:', riskAttachmentCache);
+            // Re-render
+            table.setData(data);
         }
 
         async function openTestDocModal(row, riskCode, docType) {
+            currentIssueDoc = null; // Reset - we're editing a test doc, not an issue doc
             const riskDesc = table.getValueFromCoords(1, row);
             const typeLabel = docType === 'de_testing' ? 'Design Effectiveness Testing' : 'Operational Effectiveness Testing';
 
@@ -1182,6 +1402,437 @@
             if (e.target === this) closeTestDocModal();
         });
 
+        // ==================== Issue Documentation Functions ====================
+        let currentIssueDoc = null; // Track whether we're editing issue doc or test doc
+
+        async function checkIssueDocExists(issueId) {
+            const cacheKey = issueId.toUpperCase();
+            if (issueDocCache[cacheKey] !== undefined) {
+                return issueDocCache[cacheKey];
+            }
+            try {
+                const response = await fetch(`/api/issues/${encodeURIComponent(issueId)}/documentation/exists`);
+                const data = await response.json();
+                issueDocCache[cacheKey] = data.exists;
+                return data.exists;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function loadIssueDocStatus() {
+            // Load documentation status for all issues into cache
+            if (!issueTable) return;
+            const data = issueTable.getData();
+            const promises = [];
+            for (let row = 0; row < data.length; row++) {
+                const issueId = data[row][0];
+                if (issueId && issueId.trim()) {
+                    promises.push(checkIssueDocExists(issueId));
+                }
+            }
+            await Promise.all(promises);
+            console.log('Issue doc cache populated:', issueDocCache);
+            // Force re-render
+            issueTable.setData(data);
+        }
+
+        async function openIssueDocModal(issueId) {
+            currentIssueDoc = issueId;
+
+            // Get issue details
+            const issueData = issueTable.getData();
+            let issueTitle = '';
+            for (let row of issueData) {
+                if (row[0] && row[0].toUpperCase() === issueId.toUpperCase()) {
+                    issueTitle = row[2] || 'No title';
+                    break;
+                }
+            }
+
+            document.getElementById('testDocModalTitle').textContent = 'Issue Documentation & Evidence';
+            document.getElementById('testDocModalSubtitle').textContent = `Issue: ${issueId} - ${issueTitle}`;
+            document.getElementById('testDocRiskCode').value = '';
+            document.getElementById('testDocType').value = '';
+
+            // Initialize Quill if not already done
+            if (!quillEditor) {
+                quillEditor = new Quill('#testDocEditor', {
+                    theme: 'snow',
+                    placeholder: 'Document findings, evidence, root cause analysis, and remediation plans...',
+                    modules: {
+                        toolbar: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'color': [] }, { 'background': [] }],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            [{ 'indent': '-1'}, { 'indent': '+1' }],
+                            ['blockquote', 'code-block'],
+                            ['link'],
+                            ['clean']
+                        ]
+                    }
+                });
+            }
+
+            // Load existing content
+            try {
+                const response = await fetch(`/api/issues/${encodeURIComponent(issueId)}/documentation`);
+                const data = await response.json();
+                if (data.documentation) {
+                    quillEditor.root.innerHTML = data.documentation;
+                } else {
+                    quillEditor.root.innerHTML = '';
+                }
+            } catch (e) {
+                quillEditor.root.innerHTML = '';
+            }
+
+            document.getElementById('testDocModal').classList.remove('hidden');
+            document.getElementById('testDocModal').classList.add('flex');
+        }
+
+        // Override saveTestDocument to handle both test docs and issue docs
+        const originalSaveTestDocument = saveTestDocument;
+        saveTestDocument = async function() {
+            if (currentIssueDoc) {
+                // Save issue documentation
+                const content = quillEditor.root.innerHTML;
+                try {
+                    const response = await fetch(`/api/issues/${encodeURIComponent(currentIssueDoc)}/documentation`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ documentation: content })
+                    });
+                    const data = await response.json();
+                    if (data.status === 'saved') {
+                        showToast('Documentation saved successfully!', 'success');
+                        issueDocCache[currentIssueDoc.toUpperCase()] = content.trim().length > 0;
+                        await loadIssueDocStatus();
+                        currentIssueDoc = null;
+                        closeTestDocModal();
+                    } else {
+                        showToast('Error saving documentation', 'error');
+                    }
+                } catch (e) {
+                    showToast('Error saving documentation: ' + e.message, 'error');
+                }
+            } else {
+                // Original test document save
+                const riskCode = document.getElementById('testDocRiskCode').value;
+                const docType = document.getElementById('testDocType').value;
+                const content = quillEditor.root.innerHTML;
+
+                try {
+                    const response = await fetch(`/api/test-document/${encodeURIComponent(riskCode)}/${docType}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ content })
+                    });
+                    const data = await response.json();
+
+                    if (data.status === 'saved') {
+                        showToast('Document saved successfully!', 'success');
+                        testDocCache[`${riskCode}_${docType}`] = content.trim().length > 0;
+                        await loadTestDocStatus();
+                        closeTestDocModal();
+                    } else {
+                        showToast('Error saving document: ' + (data.error || 'Unknown error'), 'error');
+                    }
+                } catch (e) {
+                    showToast('Error saving document: ' + e.message, 'error');
+                }
+            }
+        };
+
+        // Click handler for Issue Log spreadsheet
+        document.getElementById('spreadsheet-issues').addEventListener('click', function(e) {
+            if (e.target.classList.contains('add-issue-doc') || e.target.classList.contains('edit-issue-doc')) {
+                const issueId = e.target.getAttribute('data-issue');
+                if (issueId) {
+                    openIssueDocModal(issueId);
+                }
+            }
+            if (e.target.classList.contains('view-attachments')) {
+                const issueId = e.target.getAttribute('data-issue');
+                if (issueId) {
+                    openAttachmentsModal(issueId, 'issue');
+                }
+            }
+        });
+
+        // ==================== Evidence Panel Functions ====================
+
+        let evidencePanelOpen = false;
+        let currentEvidenceItemId = null;
+        let currentEvidenceItemType = 'risk'; // 'risk' or 'issue'
+        let currentEvidenceCategory = 'planning'; // 'planning', 'de', 'oe', 'issue'
+
+        async function loadAttachmentCounts() {
+            // Load attachment counts for all issues
+            if (!issueTable) return;
+            const data = issueTable.getData();
+            for (let row = 0; row < data.length; row++) {
+                const issueId = data[row][0];
+                if (issueId && issueId.trim()) {
+                    try {
+                        const response = await fetch(`/api/issues/${encodeURIComponent(issueId)}/attachments`);
+                        const attachments = await response.json();
+                        issueAttachmentCache[issueId.toUpperCase()] = attachments.length;
+                    } catch (e) {
+                        issueAttachmentCache[issueId.toUpperCase()] = 0;
+                    }
+                }
+            }
+            // Re-render
+            issueTable.setData(data);
+        }
+
+        // Open evidence panel - for RACM risks (shows Planning, DE, OE tabs)
+        async function openAttachmentsModal(itemId, type = 'issue') {
+            currentEvidenceItemId = itemId;
+            currentEvidenceItemType = type;
+            document.getElementById('evidenceItemId').value = itemId;
+            document.getElementById('evidenceItemType').value = type;
+
+            const panel = document.getElementById('evidencePanel');
+            const backdrop = document.getElementById('evidenceBackdrop');
+
+            if (type === 'issue') {
+                // Get issue title
+                const data = issueTable.getData();
+                let issueTitle = '';
+                for (let row of data) {
+                    if (row[0] && row[0].toUpperCase() === itemId.toUpperCase()) {
+                        issueTitle = row[2] || 'No title';
+                        break;
+                    }
+                }
+                document.getElementById('evidencePanelTitle').textContent = 'Issue Evidence';
+                document.getElementById('evidencePanelSubtitle').textContent = `${itemId} - ${issueTitle}`;
+                // Show only Issue tab for issues
+                document.getElementById('tab-planning').classList.add('hidden');
+                document.getElementById('tab-de').classList.add('hidden');
+                document.getElementById('tab-oe').classList.add('hidden');
+                document.getElementById('tab-issue').classList.remove('hidden');
+                currentEvidenceCategory = 'issue';
+                switchEvidenceTab('issue');
+            } else {
+                // Get risk description
+                const data = table.getData();
+                let riskDesc = '';
+                for (let row of data) {
+                    if (row[0] && row[0].toUpperCase() === itemId.toUpperCase()) {
+                        riskDesc = row[1] || 'No description';
+                        break;
+                    }
+                }
+                document.getElementById('evidencePanelTitle').textContent = 'Risk Evidence & Working Papers';
+                document.getElementById('evidencePanelSubtitle').textContent = `${itemId} - ${riskDesc}`;
+                // Show Planning, DE, OE tabs for risks
+                document.getElementById('tab-planning').classList.remove('hidden');
+                document.getElementById('tab-de').classList.remove('hidden');
+                document.getElementById('tab-oe').classList.remove('hidden');
+                document.getElementById('tab-issue').classList.add('hidden');
+                currentEvidenceCategory = 'planning';
+                switchEvidenceTab('planning');
+            }
+
+            // Show panel
+            panel.classList.remove('-translate-x-full');
+            backdrop.classList.remove('hidden');
+            evidencePanelOpen = true;
+        }
+
+        function closeEvidencePanel() {
+            const panel = document.getElementById('evidencePanel');
+            const backdrop = document.getElementById('evidenceBackdrop');
+            panel.classList.add('-translate-x-full');
+            backdrop.classList.add('hidden');
+            evidencePanelOpen = false;
+        }
+
+        // Alias for backward compatibility
+        function closeAttachmentsModal() {
+            closeEvidencePanel();
+        }
+
+        function switchEvidenceTab(category) {
+            currentEvidenceCategory = category;
+
+            // Update tab styles
+            const tabs = ['planning', 'de', 'oe', 'issue'];
+            tabs.forEach(t => {
+                const tab = document.getElementById(`tab-${t}`);
+                if (tab) {
+                    if (t === category) {
+                        tab.className = 'evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-amber-500 text-amber-600';
+                    } else {
+                        tab.className = 'evidence-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300';
+                    }
+                }
+            });
+
+            // Update list title
+            const titles = {
+                'planning': 'Planning Documents',
+                'de': 'Design Effectiveness Testing Documents',
+                'oe': 'Operational Effectiveness Testing Documents',
+                'issue': 'Issue Evidence'
+            };
+            document.getElementById('evidenceListTitle').textContent = titles[category] || 'Documents';
+
+            // Refresh file list for this category
+            refreshEvidenceList();
+        }
+
+        async function refreshEvidenceList() {
+            const listDiv = document.getElementById('evidenceFilesList');
+            const itemId = currentEvidenceItemId;
+            const itemType = currentEvidenceItemType;
+            const category = currentEvidenceCategory;
+
+            try {
+                let attachments = [];
+                let downloadEndpoint = '';
+
+                if (itemType === 'issue') {
+                    // Issue attachments
+                    const response = await fetch(`/api/issues/${encodeURIComponent(itemId)}/attachments`);
+                    attachments = await response.json();
+                    downloadEndpoint = '/api/attachments/';
+                    issueAttachmentCache[itemId.toUpperCase()] = attachments.length;
+                } else {
+                    // Risk attachments - filter by category
+                    const response = await fetch(`/api/risks/${encodeURIComponent(itemId)}/attachments`);
+                    const allAttachments = await response.json();
+                    attachments = allAttachments.filter(att => att.category === category);
+                    downloadEndpoint = '/api/risk-attachments/';
+                    riskAttachmentCache[itemId.toUpperCase()] = allAttachments.length;
+                }
+
+                if (attachments.length === 0) {
+                    listDiv.innerHTML = '<p class="text-sm text-slate-500 italic">No files uploaded yet.</p>';
+                    return;
+                }
+
+                listDiv.innerHTML = attachments.map(att => {
+                    const sizeKB = Math.round(att.file_size / 1024);
+                    const sizeStr = sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)} MB` : `${sizeKB} KB`;
+                    const icon = getFileIcon(att.mime_type);
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">${icon}</span>
+                                <div>
+                                    <a href="${downloadEndpoint}${att.id}" target="_blank" class="text-sm font-medium text-slate-900 hover:text-amber-600">${att.original_filename}</a>
+                                    <p class="text-xs text-slate-500">${sizeStr} • ${new Date(att.uploaded_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <button onclick="deleteEvidenceFile(${att.id})" class="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                listDiv.innerHTML = '<p class="text-sm text-red-500">Error loading files.</p>';
+            }
+        }
+
+        function getFileIcon(mimeType) {
+            if (!mimeType) return '📄';
+            if (mimeType.includes('pdf')) return '📕';
+            if (mimeType.includes('word') || mimeType.includes('document')) return '📘';
+            if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📗';
+            if (mimeType.includes('image')) return '🖼️';
+            if (mimeType.includes('email') || mimeType.includes('message')) return '📧';
+            if (mimeType.includes('zip') || mimeType.includes('archive')) return '📦';
+            return '📄';
+        }
+
+        async function deleteEvidenceFile(attachmentId) {
+            if (!confirm('Delete this file?')) return;
+
+            try {
+                const deleteEndpoint = currentEvidenceItemType === 'issue'
+                    ? `/api/attachments/${attachmentId}`
+                    : `/api/risk-attachments/${attachmentId}`;
+                await fetch(deleteEndpoint, { method: 'DELETE' });
+                showToast('File deleted', 'success');
+                await refreshEvidenceList();
+                // Update the appropriate table display
+                if (currentEvidenceItemType === 'issue') {
+                    const data = issueTable.getData();
+                    issueTable.setData(data);
+                } else {
+                    const data = table.getData();
+                    table.setData(data);
+                }
+            } catch (e) {
+                showToast('Error deleting file', 'error');
+            }
+        }
+
+        // File upload handler for evidence panel
+        document.getElementById('evidenceFileInput').addEventListener('change', async function(e) {
+            const files = e.target.files;
+            const itemId = currentEvidenceItemId;
+            const itemType = currentEvidenceItemType;
+            const category = currentEvidenceCategory;
+            if (!files.length || !itemId) return;
+
+            const uploadUrl = itemType === 'issue'
+                ? `/api/issues/${encodeURIComponent(itemId)}/attachments`
+                : `/api/risks/${encodeURIComponent(itemId)}/attachments`;
+
+            for (let file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+                if (itemType === 'risk') {
+                    formData.append('category', category);
+                }
+
+                try {
+                    const response = await fetch(uploadUrl, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    if (result.error) {
+                        showToast(`Error: ${result.error}`, 'error');
+                    } else {
+                        showToast(`Uploaded: ${result.filename}`, 'success');
+                    }
+                } catch (err) {
+                    showToast(`Upload failed: ${err.message}`, 'error');
+                }
+            }
+
+            await refreshEvidenceList();
+            // Update the appropriate table display
+            if (itemType === 'issue') {
+                const data = issueTable.getData();
+                issueTable.setData(data);
+            } else {
+                const data = table.getData();
+                table.setData(data);
+            }
+
+            // Clear the input
+            e.target.value = '';
+        });
+
+        // Close panels on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (evidencePanelOpen) closeEvidencePanel();
+                if (chatOpen) toggleChat();
+            }
+        });
+
         // ==================== Chat Functions ====================
         let chatOpen = false;
 
@@ -1241,8 +1892,17 @@
 
         async function refreshSpreadsheet() {
             const response = await fetch('/api/data');
-            const data = await response.json();
-            table.setData(data);
+            const allData = await response.json();
+            // Set RACM data
+            const racmData = allData.racm || [];
+            table.setData(racmData);
+            // Also refresh issues if available
+            if (issueTable && allData.issues) {
+                const issuesData = allData.issues;
+                issueTable.setData(issuesData.length > 0 ? issuesData : [['', '', '', '', 'Medium', 'Open', '', '', '']]);
+            }
+            // Reload caches
+            await loadTestDocStatus();
         }
 
         function addChatMessage(content, type) {
@@ -1322,10 +1982,7 @@
             await fetch('/api/chat/clear', { method: 'POST' });
         }
 
-        // Escape key closes chat
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && chatOpen) toggleChat();
-        });
+        // Escape key closes panels (evidence panel handled in its section)
     </script>
 </body>
 </html>

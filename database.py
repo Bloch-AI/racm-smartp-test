@@ -101,6 +101,7 @@ class RACMDatabase:
                 status TEXT DEFAULT 'Open',
                 assigned_to TEXT,
                 due_date DATE,
+                documentation TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -113,8 +114,70 @@ class RACMDatabase:
             CREATE INDEX IF NOT EXISTS idx_test_docs_risk ON test_documents(risk_id);
             CREATE INDEX IF NOT EXISTS idx_issues_risk ON issues(risk_id);
             CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
+
+            -- Issue Attachments (file evidence)
+            CREATE TABLE IF NOT EXISTS issue_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                issue_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_size INTEGER,
+                mime_type TEXT,
+                description TEXT,
+                extracted_text TEXT,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_attachments_issue ON issue_attachments(issue_id);
+
+            -- Risk Attachments (file evidence for RACM)
+            CREATE TABLE IF NOT EXISTS risk_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                risk_id TEXT NOT NULL,
+                category TEXT DEFAULT 'planning',
+                filename TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_size INTEGER,
+                mime_type TEXT,
+                description TEXT,
+                extracted_text TEXT,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_attachments_risk ON risk_attachments(risk_id);
         """)
         conn.commit()
+
+        # Migration: Add documentation column to issues if it doesn't exist
+        try:
+            conn.execute("SELECT documentation FROM issues LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE issues ADD COLUMN documentation TEXT DEFAULT ''")
+            conn.commit()
+
+        # Migration: Add category column to risk_attachments if it doesn't exist
+        try:
+            conn.execute("SELECT category FROM risk_attachments LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE risk_attachments ADD COLUMN category TEXT DEFAULT 'planning'")
+            conn.commit()
+
+        # Create category index after migration ensures column exists
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_attachments_category ON risk_attachments(category)")
+        conn.commit()
+
+        # Migration: Add extracted_text column to issue_attachments if it doesn't exist
+        try:
+            conn.execute("SELECT extracted_text FROM issue_attachments LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE issue_attachments ADD COLUMN extracted_text TEXT")
+            conn.commit()
+
+        # Migration: Add extracted_text column to risk_attachments if it doesn't exist
+        try:
+            conn.execute("SELECT extracted_text FROM risk_attachments LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE risk_attachments ADD COLUMN extracted_text TEXT")
+            conn.commit()
+
         conn.close()
 
     # ==================== RISKS (RACM) ====================
@@ -531,14 +594,15 @@ class RACMDatabase:
 
     def create_issue(self, risk_id: str, title: str, description: str = '',
                      severity: str = 'Medium', status: str = 'Open',
-                     assigned_to: str = '', due_date: str = None) -> str:
+                     assigned_to: str = '', due_date: str = None,
+                     documentation: str = '') -> str:
         """Create a new issue. Returns the issue_id."""
         issue_id = self._generate_issue_id()
         conn = self._get_conn()
         conn.execute("""
-            INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (issue_id, risk_id.upper(), title, description, severity, status, assigned_to, due_date))
+            INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date, documentation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (issue_id, risk_id.upper(), title, description, severity, status, assigned_to, due_date, documentation))
         conn.commit()
         conn.close()
         return issue_id
@@ -566,7 +630,7 @@ class RACMDatabase:
 
     def update_issue(self, issue_id: str, **kwargs) -> bool:
         """Update an issue. Returns True if found and updated."""
-        allowed_fields = ['title', 'description', 'severity', 'status', 'assigned_to', 'due_date', 'risk_id']
+        allowed_fields = ['title', 'description', 'severity', 'status', 'assigned_to', 'due_date', 'risk_id', 'documentation']
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields and v is not None}
         if not updates:
             return False
@@ -655,6 +719,30 @@ class RACMDatabase:
         conn.commit()
         conn.close()
 
+    def get_issue_documentation(self, issue_id: str) -> Optional[str]:
+        """Get documentation for an issue."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT documentation FROM issues WHERE issue_id = ?", (issue_id.upper(),)).fetchone()
+        conn.close()
+        return row['documentation'] if row else None
+
+    def save_issue_documentation(self, issue_id: str, documentation: str) -> bool:
+        """Save documentation for an issue."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "UPDATE issues SET documentation = ?, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?",
+            (documentation, issue_id.upper())
+        )
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def has_issue_documentation(self, issue_id: str) -> bool:
+        """Check if an issue has documentation."""
+        doc = self.get_issue_documentation(issue_id)
+        return doc is not None and bool(doc.strip())
+
     def get_issue_summary(self) -> Dict:
         """Get summary of issues by status."""
         conn = self._get_conn()
@@ -665,6 +753,126 @@ class RACMDatabase:
             'total': total,
             'by_status': {row['status']: row['count'] for row in rows}
         }
+
+    # ==================== ISSUE ATTACHMENTS ====================
+
+    def add_attachment(self, issue_id: str, filename: str, original_filename: str,
+                       file_size: int, mime_type: str, description: str = '',
+                       extracted_text: str = '') -> int:
+        """Add an attachment record. Returns the attachment ID."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO issue_attachments (issue_id, filename, original_filename, file_size, mime_type, description, extracted_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (issue_id.upper(), filename, original_filename, file_size, mime_type, description, extracted_text))
+        conn.commit()
+        attachment_id = cursor.lastrowid
+        conn.close()
+        return attachment_id
+
+    def get_attachments_for_issue(self, issue_id: str) -> List[Dict]:
+        """Get all attachments for an issue."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM issue_attachments WHERE issue_id = ? ORDER BY uploaded_at DESC
+        """, (issue_id.upper(),)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_attachment(self, attachment_id: int) -> Optional[Dict]:
+        """Get a single attachment by ID."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM issue_attachments WHERE id = ?", (attachment_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def delete_attachment(self, attachment_id: int) -> bool:
+        """Delete an attachment record."""
+        conn = self._get_conn()
+        cursor = conn.execute("DELETE FROM issue_attachments WHERE id = ?", (attachment_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def get_all_attachments_metadata(self) -> List[Dict]:
+        """Get metadata for all attachments (for AI context)."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT issue_id, original_filename, file_size, mime_type, description, uploaded_at
+            FROM issue_attachments ORDER BY issue_id, uploaded_at
+        """).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def count_attachments_for_issue(self, issue_id: str) -> int:
+        """Count attachments for an issue."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT COUNT(*) as count FROM issue_attachments WHERE issue_id = ?",
+                          (issue_id.upper(),)).fetchone()
+        conn.close()
+        return row['count'] if row else 0
+
+    # ==================== RISK ATTACHMENTS ====================
+
+    def add_risk_attachment(self, risk_id: str, filename: str, original_filename: str,
+                            file_size: int, mime_type: str, description: str = '',
+                            category: str = 'planning', extracted_text: str = '') -> int:
+        """Add a risk attachment record. Returns the attachment ID.
+        Category can be: 'planning', 'de', 'oe'
+        """
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO risk_attachments (risk_id, category, filename, original_filename, file_size, mime_type, description, extracted_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (risk_id.upper(), category, filename, original_filename, file_size, mime_type, description, extracted_text))
+        conn.commit()
+        attachment_id = cursor.lastrowid
+        conn.close()
+        return attachment_id
+
+    def get_attachments_for_risk(self, risk_id: str) -> List[Dict]:
+        """Get all attachments for a risk."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM risk_attachments WHERE risk_id = ? ORDER BY uploaded_at DESC
+        """, (risk_id.upper(),)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_risk_attachment(self, attachment_id: int) -> Optional[Dict]:
+        """Get a single risk attachment by ID."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM risk_attachments WHERE id = ?", (attachment_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def delete_risk_attachment(self, attachment_id: int) -> bool:
+        """Delete a risk attachment record."""
+        conn = self._get_conn()
+        cursor = conn.execute("DELETE FROM risk_attachments WHERE id = ?", (attachment_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def get_all_risk_attachments_metadata(self) -> List[Dict]:
+        """Get metadata for all risk attachments (for AI context)."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT risk_id, original_filename, file_size, mime_type, description, uploaded_at
+            FROM risk_attachments ORDER BY risk_id, uploaded_at
+        """).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def count_attachments_for_risk(self, risk_id: str) -> int:
+        """Count attachments for a risk."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT COUNT(*) as count FROM risk_attachments WHERE risk_id = ?",
+                          (risk_id.upper(),)).fetchone()
+        conn.close()
+        return row['count'] if row else 0
 
     # ==================== AI QUERY HELPERS ====================
 
@@ -732,6 +940,7 @@ TABLE issues (Issue Log - linked to RACM risks):
   - status: TEXT (Open, In Progress, Resolved, Closed)
   - assigned_to: TEXT
   - due_date: DATE
+  - documentation: TEXT (rich text/HTML - evidence and detailed findings)
   - created_at: TIMESTAMP
   - updated_at: TIMESTAMP
 
@@ -748,6 +957,20 @@ RELATIONSHIPS:
         test_docs = self.get_all_test_documents_metadata()
         issues = self.get_all_issues()
 
+        # Add documentation status to issues
+        issues_with_doc_status = []
+        for issue in issues:
+            issue_copy = dict(issue)
+            issue_copy['has_documentation'] = bool(issue.get('documentation', '').strip())
+            # Don't include full documentation in context - AI should use tool to read it
+            if 'documentation' in issue_copy:
+                del issue_copy['documentation']
+            issues_with_doc_status.append(issue_copy)
+
+        # Get attachment metadata
+        issue_attachments = self.get_all_attachments_metadata()
+        risk_attachments = self.get_all_risk_attachments_metadata()
+
         return {
             'schema': self.get_schema(),
             'risk_summary': self.get_risk_summary(),
@@ -755,12 +978,16 @@ RELATIONSHIPS:
             'issue_summary': self.get_issue_summary(),
             'flowchart_count': len(flowcharts),
             'test_doc_count': len(test_docs),
+            'issue_attachment_count': len(issue_attachments),
+            'risk_attachment_count': len(risk_attachments),
             'risks': self.get_all_risks(),
             'tasks': self.get_all_tasks(),
-            'issues': issues,
+            'issues': issues_with_doc_status,  # With has_documentation flag
             'flowcharts': [{'name': f['name'], 'risk_id': f['risk_id']}
                           for f in flowcharts],
-            'test_documents': test_docs  # Metadata only - use tools to read full content
+            'test_documents': test_docs,  # Metadata only - use tools to read full content
+            'issue_attachments': issue_attachments,  # File evidence attached to issues
+            'risk_attachments': risk_attachments  # File evidence attached to risks
         }
 
     # ==================== IMPORT/EXPORT ====================

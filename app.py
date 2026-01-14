@@ -1,16 +1,145 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
 import json
 import os
+import uuid
 import anthropic
+import mimetypes
+
+# Text extraction imports
+try:
+    import pdfplumber
+    PDF_SUPPORT = True
+except ImportError:
+    PDF_SUPPORT = False
+
+try:
+    from docx import Document as DocxDocument
+    DOCX_SUPPORT = True
+except ImportError:
+    DOCX_SUPPORT = False
+
+try:
+    from openpyxl import load_workbook
+    XLSX_SUPPORT = True
+except ImportError:
+    XLSX_SUPPORT = False
 
 load_dotenv()
 from database import get_db, RACMDatabase
+
+
+# ==================== TEXT EXTRACTION ====================
+
+def extract_text_from_file(filepath: str, mime_type: str = None) -> str:
+    """Extract text content from various file types.
+
+    Supported: PDF, DOCX, XLSX, TXT, CSV
+    Returns extracted text or empty string if extraction fails.
+    """
+    if not os.path.exists(filepath):
+        return ""
+
+    # Determine file type from extension if mime_type not provided
+    ext = filepath.rsplit('.', 1)[-1].lower() if '.' in filepath else ''
+
+    try:
+        # Plain text files
+        if ext in ('txt', 'csv', 'eml') or (mime_type and 'text' in mime_type):
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()[:50000]  # Limit to 50KB of text
+
+        # PDF files
+        if ext == 'pdf' or (mime_type and 'pdf' in mime_type):
+            if not PDF_SUPPORT:
+                return "[PDF extraction not available - pdfplumber not installed]"
+            text_parts = []
+            with pdfplumber.open(filepath) as pdf:
+                for i, page in enumerate(pdf.pages[:50]):  # Limit to 50 pages
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(f"[Page {i+1}]\n{page_text}")
+            return "\n\n".join(text_parts)[:50000]
+
+        # Word documents
+        if ext == 'docx' or (mime_type and 'wordprocessingml' in mime_type):
+            if not DOCX_SUPPORT:
+                return "[DOCX extraction not available - python-docx not installed]"
+            doc = DocxDocument(filepath)
+            text_parts = []
+            for para in doc.paragraphs[:500]:  # Limit paragraphs
+                if para.text.strip():
+                    text_parts.append(para.text)
+            # Also extract from tables
+            for table in doc.tables[:20]:
+                for row in table.rows:
+                    row_text = ' | '.join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                    if row_text:
+                        text_parts.append(row_text)
+            return "\n".join(text_parts)[:50000]
+
+        # Excel files
+        if ext == 'xlsx' or (mime_type and 'spreadsheetml' in mime_type):
+            if not XLSX_SUPPORT:
+                return "[XLSX extraction not available - openpyxl not installed]"
+            wb = load_workbook(filepath, read_only=True, data_only=True)
+            text_parts = []
+            for sheet_name in wb.sheetnames[:10]:  # Limit sheets
+                sheet = wb[sheet_name]
+                text_parts.append(f"[Sheet: {sheet_name}]")
+                for row_num, row in enumerate(sheet.iter_rows(max_row=200, values_only=True)):
+                    if row_num > 200:
+                        break
+                    row_values = [str(cell) if cell is not None else '' for cell in row]
+                    if any(v.strip() for v in row_values):
+                        text_parts.append(' | '.join(row_values))
+            wb.close()
+            return "\n".join(text_parts)[:50000]
+
+        # Old Word format (.doc)
+        if ext == 'doc':
+            return "[.doc format not supported - please convert to .docx]"
+
+        # Old Excel format (.xls)
+        if ext == 'xls':
+            return "[.xls format not supported - please convert to .xlsx]"
+
+        # MSG email files
+        if ext == 'msg':
+            return "[.msg email extraction not yet implemented]"
+
+        # Images - no text extraction
+        if ext in ('png', 'jpg', 'jpeg', 'gif') or (mime_type and 'image' in mime_type):
+            return "[Image file - no text content]"
+
+        # ZIP files
+        if ext == 'zip':
+            return "[ZIP archive - cannot extract text from compressed files]"
+
+        return f"[Unsupported file type: {ext}]"
+
+    except Exception as e:
+        return f"[Error extracting text: {str(e)}]"
 
 app = Flask(__name__)
 
 # Claude API key - set via environment variable
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
+# File upload configuration
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'msg', 'eml', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'gif', 'zip'}
+MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+
+# Ensure upload folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Initialize database
 db = get_db()
@@ -358,6 +487,222 @@ def delete_issue(issue_id):
         return jsonify({'status': 'deleted'})
     return ('Not found', 404)
 
+@app.route('/api/issues/<issue_id>/documentation', methods=['GET'])
+def get_issue_documentation(issue_id):
+    """Get documentation for an issue."""
+    doc = db.get_issue_documentation(issue_id)
+    has_doc = db.has_issue_documentation(issue_id)
+    return jsonify({'documentation': doc or '', 'has_documentation': has_doc})
+
+@app.route('/api/issues/<issue_id>/documentation', methods=['POST'])
+def save_issue_documentation(issue_id):
+    """Save documentation for an issue."""
+    global data_version
+    data = request.json
+    documentation = data.get('documentation', '')
+    if db.save_issue_documentation(issue_id, documentation):
+        data_version += 1
+        return jsonify({'status': 'saved'})
+    return ('Issue not found', 404)
+
+@app.route('/api/issues/<issue_id>/documentation/exists', methods=['GET'])
+def issue_documentation_exists(issue_id):
+    """Check if an issue has documentation."""
+    return jsonify({'exists': db.has_issue_documentation(issue_id)})
+
+# ==================== Issue Attachments API ====================
+
+@app.route('/api/issues/<issue_id>/attachments', methods=['GET'])
+def get_issue_attachments(issue_id):
+    """Get all attachments for an issue."""
+    attachments = db.get_attachments_for_issue(issue_id)
+    return jsonify(attachments)
+
+@app.route('/api/issues/<issue_id>/attachments', methods=['POST'])
+def upload_issue_attachment(issue_id):
+    """Upload a file attachment for an issue."""
+    global data_version
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': f'File type not allowed. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
+
+    # Generate unique filename
+    original_filename = secure_filename(file.filename)
+    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
+    unique_filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
+
+    # Save file
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+    file.save(filepath)
+    file_size = os.path.getsize(filepath)
+
+    # Get MIME type
+    mime_type = mimetypes.guess_type(original_filename)[0] or 'application/octet-stream'
+
+    # Get description from form data
+    description = request.form.get('description', '')
+
+    # Extract text content from file
+    extracted_text = extract_text_from_file(filepath, mime_type)
+
+    # Save to database
+    attachment_id = db.add_attachment(
+        issue_id=issue_id,
+        filename=unique_filename,
+        original_filename=original_filename,
+        file_size=file_size,
+        mime_type=mime_type,
+        description=description,
+        extracted_text=extracted_text
+    )
+
+    data_version += 1
+    return jsonify({
+        'status': 'uploaded',
+        'id': attachment_id,
+        'filename': original_filename,
+        'size': file_size,
+        'text_extracted': len(extracted_text) > 0 and not extracted_text.startswith('[')
+    })
+
+@app.route('/api/attachments/<int:attachment_id>', methods=['GET'])
+def download_attachment(attachment_id):
+    """Download an attachment file."""
+    attachment = db.get_attachment(attachment_id)
+    if not attachment:
+        return ('Attachment not found', 404)
+
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'],
+        attachment['filename'],
+        download_name=attachment['original_filename'],
+        as_attachment=True
+    )
+
+@app.route('/api/attachments/<int:attachment_id>', methods=['DELETE'])
+def delete_attachment(attachment_id):
+    """Delete an attachment."""
+    global data_version
+    attachment = db.get_attachment(attachment_id)
+    if not attachment:
+        return ('Attachment not found', 404)
+
+    # Delete file from disk
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], attachment['filename'])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    # Delete from database
+    db.delete_attachment(attachment_id)
+    data_version += 1
+    return jsonify({'status': 'deleted'})
+
+# ==================== Risk Attachments API ====================
+
+@app.route('/api/risks/<risk_id>/attachments', methods=['GET'])
+def get_risk_attachments(risk_id):
+    """Get all attachments for a risk."""
+    attachments = db.get_attachments_for_risk(risk_id)
+    return jsonify(attachments)
+
+@app.route('/api/risks/<risk_id>/attachments', methods=['POST'])
+def upload_risk_attachment(risk_id):
+    """Upload a file attachment for a risk."""
+    global data_version
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': f'File type not allowed. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
+
+    # Generate unique filename
+    original_filename = secure_filename(file.filename)
+    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
+    unique_filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
+
+    # Save file
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+    file.save(filepath)
+    file_size = os.path.getsize(filepath)
+
+    # Get MIME type
+    mime_type = mimetypes.guess_type(original_filename)[0] or 'application/octet-stream'
+
+    # Get description and category from form data
+    description = request.form.get('description', '')
+    category = request.form.get('category', 'planning')
+    # Validate category
+    if category not in ('planning', 'de', 'oe'):
+        category = 'planning'
+
+    # Extract text content from file
+    extracted_text = extract_text_from_file(filepath, mime_type)
+
+    # Save to database
+    attachment_id = db.add_risk_attachment(
+        risk_id=risk_id,
+        filename=unique_filename,
+        original_filename=original_filename,
+        file_size=file_size,
+        mime_type=mime_type,
+        description=description,
+        category=category,
+        extracted_text=extracted_text
+    )
+
+    data_version += 1
+    return jsonify({
+        'status': 'uploaded',
+        'id': attachment_id,
+        'filename': original_filename,
+        'size': file_size,
+        'text_extracted': len(extracted_text) > 0 and not extracted_text.startswith('[')
+    })
+
+@app.route('/api/risk-attachments/<int:attachment_id>', methods=['GET'])
+def download_risk_attachment(attachment_id):
+    """Download a risk attachment file."""
+    attachment = db.get_risk_attachment(attachment_id)
+    if not attachment:
+        return ('Attachment not found', 404)
+
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'],
+        attachment['filename'],
+        download_name=attachment['original_filename'],
+        as_attachment=True
+    )
+
+@app.route('/api/risk-attachments/<int:attachment_id>', methods=['DELETE'])
+def delete_risk_attachment(attachment_id):
+    """Delete a risk attachment."""
+    global data_version
+    attachment = db.get_risk_attachment(attachment_id)
+    if not attachment:
+        return ('Attachment not found', 404)
+
+    # Delete file from disk
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], attachment['filename'])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    # Delete from database
+    db.delete_risk_attachment(attachment_id)
+    data_version += 1
+    return jsonify({'status': 'deleted'})
+
 @app.route('/api/issues/from-risk/<risk_id>', methods=['POST'])
 def create_issue_from_risk(risk_id):
     """Create an issue from a RACM risk (used when checkbox is ticked)."""
@@ -436,6 +781,8 @@ def chat():
 - Issues by Status: {json.dumps(context['issue_summary']['by_status'])}
 - Flowcharts: {context['flowchart_count']}
 - Test Documents (Working Papers): {context['test_doc_count']}
+- Issue Attachments (Evidence Files): {context['issue_attachment_count']}
+- Risk Attachments (Evidence Files): {context['risk_attachment_count']}
 
 ## Current RACM Data:
 {json.dumps(context['risks'], indent=2)}
@@ -452,6 +799,12 @@ def chat():
 ## Test Documents (metadata - use read_test_document to get full content):
 {json.dumps(context['test_documents'], indent=2)}
 
+## Issue Attachments (evidence files - use list_issue_attachments to get details):
+{json.dumps(context['issue_attachments'], indent=2)}
+
+## Risk Attachments (evidence files - use list_risk_attachments to get details):
+{json.dumps(context['risk_attachments'], indent=2)}
+
 ## Your Capabilities:
 1. Answer questions about the audit data, issues, and testing status
 2. Use tools to ADD new rows to RACM, CREATE Kanban tasks, CREATE issues, or UPDATE data
@@ -459,12 +812,17 @@ def chat():
 4. READ working papers (test documents) and flowcharts when relevant to the question
 5. CREATE or UPDATE test documents (working papers) for DE/OE testing
 6. Track and report on issues raised against RACM risks
+7. READ and UPDATE issue documentation/evidence using read_issue_documentation and update_issue_documentation tools
+8. LIST file attachments (PDFs, Word docs, Excel, emails) for issues using list_issue_attachments tool
+9. LIST file attachments for risks using list_risk_attachments tool
+10. READ the actual content of uploaded documents (PDFs, Word docs, Excel files) using read_attachment_content tool
 
 ## IMPORTANT - Seamless Document Access:
 When the user asks about testing, findings, or documentation for a specific risk:
 - FIRST check the test_documents metadata above to see if documents exist
 - If they exist, use read_test_document to fetch the full content BEFORE answering
 - Similarly, use read_flowchart to get process details when relevant
+- For issues, check if they have documentation and use read_issue_documentation to get evidence/findings
 - The user should get complete answers without having to ask you to fetch documents
 
 Be concise and professional."""
@@ -593,6 +951,63 @@ Be concise and professional."""
                     "name": {"type": "string", "description": "Flowchart name"}
                 },
                 "required": ["name"]
+            }
+        },
+        {
+            "name": "read_issue_documentation",
+            "description": "Read the documentation/evidence for an issue. Use this to get detailed findings, evidence, and supporting documentation for audit issues.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"}
+                },
+                "required": ["issue_id"]
+            }
+        },
+        {
+            "name": "update_issue_documentation",
+            "description": "Add or update documentation/evidence for an issue.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"},
+                    "documentation": {"type": "string", "description": "The documentation content (can include HTML formatting)"}
+                },
+                "required": ["issue_id", "documentation"]
+            }
+        },
+        {
+            "name": "list_issue_attachments",
+            "description": "List all file attachments (evidence files like PDFs, Word docs, Excel, emails) for an issue.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"}
+                },
+                "required": ["issue_id"]
+            }
+        },
+        {
+            "name": "list_risk_attachments",
+            "description": "List all file attachments (evidence files like PDFs, Word docs, Excel, emails) for a risk in the RACM.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_id": {"type": "string", "description": "Risk ID (e.g., 'R001')"}
+                },
+                "required": ["risk_id"]
+            }
+        },
+        {
+            "name": "read_attachment_content",
+            "description": "Read the extracted text content from an uploaded attachment file. Use this to analyze document contents like PDFs, Word documents, or Excel spreadsheets that have been uploaded as evidence.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "attachment_id": {"type": "integer", "description": "The attachment ID number"},
+                    "attachment_type": {"type": "string", "enum": ["issue", "risk"], "description": "Whether this is an issue attachment or risk attachment"}
+                },
+                "required": ["attachment_id", "attachment_type"]
             }
         }
     ]
@@ -846,6 +1261,106 @@ def execute_tool(tool_name, tool_input):
                 result += f"\n  {desc}"
 
         return result
+
+    elif tool_name == "read_issue_documentation":
+        issue_id = tool_input.get('issue_id', '').upper()
+        issue = db.get_issue(issue_id)
+
+        if not issue:
+            return f"Issue '{issue_id}' not found."
+
+        doc = issue.get('documentation', '')
+        if not doc or not doc.strip():
+            return f"Issue {issue_id} exists but has no documentation yet."
+
+        # Strip HTML tags for cleaner AI reading
+        import re
+        text_content = re.sub(r'<[^>]+>', '', doc)
+        text_content = re.sub(r'\s+', ' ', text_content).strip()
+
+        return f"## Documentation for Issue {issue_id}\n\nTitle: {issue.get('title', 'N/A')}\nRisk: {issue.get('risk_id', 'N/A')}\nSeverity: {issue.get('severity', 'N/A')}\nStatus: {issue.get('status', 'N/A')}\n\n### Evidence/Findings:\n{text_content}"
+
+    elif tool_name == "update_issue_documentation":
+        issue_id = tool_input.get('issue_id', '').upper()
+        documentation = tool_input.get('documentation', '')
+
+        if not documentation.strip():
+            return "Cannot save empty documentation. Please provide content."
+
+        # Wrap plain text in HTML paragraph if needed
+        if not documentation.strip().startswith('<'):
+            documentation = f"<p>{documentation}</p>"
+
+        if db.save_issue_documentation(issue_id, documentation):
+            data_version += 1
+            return f"Successfully saved documentation for issue {issue_id}."
+        return f"Issue {issue_id} not found."
+
+    elif tool_name == "list_issue_attachments":
+        issue_id = tool_input.get('issue_id', '').upper()
+        attachments = db.get_attachments_for_issue(issue_id)
+
+        if not attachments:
+            return f"No file attachments found for issue {issue_id}."
+
+        result = f"## File Attachments for Issue {issue_id}\n\n"
+        for att in attachments:
+            size_kb = att['file_size'] / 1024
+            size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
+            result += f"- **{att['original_filename']}** ({size_str})\n"
+            result += f"  Type: {att['mime_type']}\n"
+            if att['description']:
+                result += f"  Description: {att['description']}\n"
+            result += f"  Uploaded: {att['uploaded_at']}\n\n"
+
+        return result
+
+    elif tool_name == "list_risk_attachments":
+        risk_id = tool_input.get('risk_id', '').upper()
+        attachments = db.get_attachments_for_risk(risk_id)
+
+        if not attachments:
+            return f"No file attachments found for risk {risk_id}."
+
+        result = f"## File Attachments for Risk {risk_id}\n\n"
+        for att in attachments:
+            size_kb = att['file_size'] / 1024
+            size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
+            result += f"- **{att['original_filename']}** ({size_str})\n"
+            result += f"  Type: {att['mime_type']}\n"
+            if att['description']:
+                result += f"  Description: {att['description']}\n"
+            result += f"  Uploaded: {att['uploaded_at']}\n\n"
+
+        return result
+
+    elif tool_name == "read_attachment_content":
+        attachment_id = tool_input.get('attachment_id')
+        attachment_type = tool_input.get('attachment_type', 'issue')
+
+        if attachment_type == 'issue':
+            attachment = db.get_attachment(attachment_id)
+        else:
+            attachment = db.get_risk_attachment(attachment_id)
+
+        if not attachment:
+            return f"Attachment with ID {attachment_id} not found."
+
+        filename = attachment.get('original_filename', 'Unknown file')
+        extracted_text = attachment.get('extracted_text', '')
+
+        if not extracted_text:
+            return f"No text content available for '{filename}'. The file may be an image or unsupported format."
+
+        if extracted_text.startswith('['):
+            # This is an error/status message from extraction
+            return f"Cannot read content of '{filename}': {extracted_text}"
+
+        # Truncate very long content for the AI
+        if len(extracted_text) > 30000:
+            extracted_text = extracted_text[:30000] + "\n\n[Content truncated - file contains more text]"
+
+        return f"## Content of '{filename}'\n\n{extracted_text}"
 
     return "Unknown tool"
 
