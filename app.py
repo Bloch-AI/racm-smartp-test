@@ -151,6 +151,27 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 # Ensure upload folder exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+
+@app.context_processor
+def inject_audit_context():
+    """Inject audit-related variables into all templates."""
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+
+    # Find the active audit details
+    active_audit = None
+    if active_audit_id and accessible_audits:
+        for audit in accessible_audits:
+            if audit['id'] == active_audit_id:
+                active_audit = audit
+                break
+
+    return {
+        'accessible_audits': accessible_audits,
+        'active_audit_id': active_audit_id,
+        'active_audit': active_audit
+    }
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
