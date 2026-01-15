@@ -197,6 +197,142 @@ def increment_data_version() -> int:
         _data_version += 1
         return _data_version
 
+
+# ==================== AUDIT LIBRARY PROCESSING ====================
+
+LIBRARY_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'library')
+os.makedirs(LIBRARY_FOLDER, exist_ok=True)
+
+# Embedding model (lazy loaded)
+_embedding_model = None
+
+def get_embedding_model():
+    """Lazy load the sentence transformer model."""
+    global _embedding_model
+    if _embedding_model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            print("[Library] Loaded embedding model: all-MiniLM-L6-v2")
+        except Exception as e:
+            print(f"[Library] Warning: Could not load embedding model: {e}")
+    return _embedding_model
+
+def generate_embedding(text: str) -> list:
+    """Generate embedding for text using sentence transformer."""
+    model = get_embedding_model()
+    if model is None:
+        return None
+    try:
+        embedding = model.encode(text, convert_to_numpy=True)
+        return embedding.tolist()
+    except Exception as e:
+        print(f"[Library] Error generating embedding: {e}")
+        return None
+
+def chunk_document(text: str, chunk_size: int = 500, overlap: int = 50) -> list:
+    """Split document text into overlapping chunks.
+
+    Args:
+        text: Full document text
+        chunk_size: Target words per chunk
+        overlap: Words to overlap between chunks
+
+    Returns:
+        List of dicts with 'content', 'section', 'token_count'
+    """
+    chunks = []
+
+    # Split into paragraphs first
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+
+    current_chunk = []
+    current_words = 0
+    current_section = ""
+
+    for para in paragraphs:
+        # Try to detect section headers (lines that look like headers)
+        lines = para.split('\n')
+        for line in lines:
+            # Check if this looks like a header (short, possibly numbered)
+            if len(line) < 100 and (
+                line.isupper() or
+                line.startswith(('Chapter', 'Section', 'CHAPTER', 'SECTION')) or
+                (len(line.split()) < 8 and line.endswith(':')) or
+                (len(line) > 0 and line[0].isdigit() and '.' in line[:5])
+            ):
+                current_section = line.strip()
+
+        words = para.split()
+        word_count = len(words)
+
+        # If adding this paragraph exceeds chunk size, save current chunk
+        if current_words + word_count > chunk_size and current_chunk:
+            chunk_text = '\n\n'.join(current_chunk)
+            chunks.append({
+                'content': chunk_text,
+                'section': current_section,
+                'token_count': current_words
+            })
+
+            # Keep overlap from end of previous chunk
+            overlap_text = ' '.join(chunk_text.split()[-overlap:]) if overlap > 0 else ''
+            current_chunk = [overlap_text] if overlap_text else []
+            current_words = len(overlap_text.split())
+
+        current_chunk.append(para)
+        current_words += word_count
+
+    # Don't forget the last chunk
+    if current_chunk:
+        chunk_text = '\n\n'.join(current_chunk)
+        chunks.append({
+            'content': chunk_text,
+            'section': current_section,
+            'token_count': len(chunk_text.split())
+        })
+
+    return chunks
+
+def process_library_document(filepath: str, doc_id: int, mime_type: str = None) -> int:
+    """Process uploaded library document: extract text, chunk, embed, store.
+
+    Returns number of chunks created.
+    """
+    # Extract text
+    text = extract_text_from_file(filepath, mime_type)
+    if not text or text.startswith('['):
+        print(f"[Library] Warning: Could not extract text from document {doc_id}")
+        return 0
+
+    # Remove excessive whitespace
+    text = ' '.join(text.split())
+
+    # Chunk the document
+    chunks = chunk_document(text)
+    print(f"[Library] Document {doc_id}: Created {len(chunks)} chunks")
+
+    # Initialize vector table
+    db._init_vector_table()
+
+    # Store chunks with embeddings
+    for i, chunk in enumerate(chunks):
+        embedding = generate_embedding(chunk['content'])
+        db.add_library_chunk(
+            document_id=doc_id,
+            chunk_index=i,
+            content=chunk['content'],
+            section=chunk['section'],
+            token_count=chunk['token_count'],
+            embedding=embedding
+        )
+
+    # Update document with chunk count
+    db.update_library_document(doc_id, total_chunks=len(chunks))
+
+    return len(chunks)
+
+
 @app.route('/')
 def index():
     # TODO: Load audit_name from database/config when audit management is implemented
@@ -346,6 +482,166 @@ def kanban(board_id='default'):
     # TODO: Load audit_name from database/config when audit management is implemented
     audit_name = None  # Placeholder for audit name
     return render_template('kanban.html', board_id=board_id, audit_name=audit_name)
+
+
+@app.route('/library')
+def library():
+    """Audit Library page for managing reference documents."""
+    audit_name = None
+    return render_template('library.html', audit_name=audit_name)
+
+
+# ==================== LIBRARY API ====================
+
+@app.route('/api/library/documents', methods=['GET'])
+def list_library_documents():
+    """List all library documents."""
+    doc_type = request.args.get('type')
+    documents = db.list_library_documents(doc_type)
+    return jsonify(documents)
+
+
+@app.route('/api/library/documents', methods=['POST'])
+def upload_library_document():
+    """Upload a new library document."""
+    if 'file' not in request.files:
+        return error_response('No file provided')
+
+    file = request.files['file']
+    if file.filename == '':
+        return error_response('No file selected')
+
+    if not allowed_file(file.filename):
+        return error_response('File type not allowed')
+
+    # Get metadata from form
+    name = request.form.get('name', file.filename.rsplit('.', 1)[0])
+    doc_type = request.form.get('doc_type', 'framework')
+    source = request.form.get('source', '')
+    description = request.form.get('description', '')
+
+    # Save file
+    filename = secure_filename(file.filename)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    unique_filename = f"{timestamp}_{filename}"
+    filepath = os.path.join(LIBRARY_FOLDER, unique_filename)
+    file.save(filepath)
+
+    # Get file info
+    file_size = os.path.getsize(filepath)
+    mime_type = file.content_type
+
+    # Create database record
+    doc_id = db.add_library_document(
+        name=name,
+        filename=unique_filename,
+        original_filename=filename,
+        doc_type=doc_type,
+        source=source,
+        description=description,
+        file_size=file_size,
+        mime_type=mime_type
+    )
+
+    # Process document in background (chunking and embedding)
+    # For now, do it synchronously - can be made async later
+    try:
+        chunk_count = process_library_document(filepath, doc_id, mime_type)
+        return jsonify({
+            'id': doc_id,
+            'name': name,
+            'chunks': chunk_count,
+            'message': f'Document uploaded and processed into {chunk_count} chunks'
+        })
+    except Exception as e:
+        print(f"[Library] Error processing document: {e}")
+        return jsonify({
+            'id': doc_id,
+            'name': name,
+            'chunks': 0,
+            'warning': f'Document uploaded but processing failed: {str(e)}'
+        })
+
+
+@app.route('/api/library/documents/<int:doc_id>', methods=['GET'])
+def get_library_document(doc_id):
+    """Get a library document's details."""
+    doc = db.get_library_document(doc_id)
+    if not doc:
+        return not_found_response('Document')
+    return jsonify(doc)
+
+
+@app.route('/api/library/documents/<int:doc_id>', methods=['PUT'])
+def update_library_document_route(doc_id):
+    """Update a library document's metadata."""
+    data = request.json
+    if not data:
+        return error_response('No data provided')
+
+    success = db.update_library_document(doc_id, **data)
+    if success:
+        return jsonify({'status': 'updated'})
+    return error_response('Update failed')
+
+
+@app.route('/api/library/documents/<int:doc_id>', methods=['DELETE'])
+def delete_library_document_route(doc_id):
+    """Delete a library document and its chunks."""
+    doc = db.get_library_document(doc_id)
+    if not doc:
+        return not_found_response('Document')
+
+    # Delete file from disk
+    filepath = os.path.join(LIBRARY_FOLDER, doc['filename'])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    # Delete from database
+    db.delete_library_document(doc_id)
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/api/library/documents/<int:doc_id>/chunks', methods=['GET'])
+def get_library_document_chunks(doc_id):
+    """Get all chunks for a document."""
+    chunks = db.get_library_chunks(doc_id)
+    return jsonify(chunks)
+
+
+@app.route('/api/library/search', methods=['POST'])
+def search_library():
+    """Search the library using semantic search."""
+    data = request.json
+    query = data.get('query', '')
+    limit = data.get('limit', 5)
+
+    if not query:
+        return error_response('No query provided')
+
+    # Generate embedding for query
+    query_embedding = generate_embedding(query)
+
+    if query_embedding:
+        # Vector search
+        results = db.search_library(query_embedding, limit)
+    else:
+        # Fallback to keyword search
+        results = db.search_library_keyword(query, limit)
+
+    return jsonify({
+        'query': query,
+        'results': results,
+        'method': 'vector' if query_embedding else 'keyword'
+    })
+
+
+@app.route('/api/library/stats', methods=['GET'])
+def get_library_stats():
+    """Get library statistics."""
+    stats = db.get_library_stats()
+    return jsonify(stats)
+
 
 @app.route('/api/kanban/<board_id>', methods=['GET'])
 def get_kanban(board_id):
@@ -1109,6 +1405,19 @@ def get_ai_tools():
                 "required": ["attachment_id", "attachment_type"]
             }
         },
+        # Audit Library Tool (RAG Search)
+        {
+            "name": "search_audit_library",
+            "description": "Search the Audit Library for relevant information from reference documents like COBIT, COSO, IIA Standards, audit methodologies, policies, and other uploaded frameworks. Use this to find guidance, best practices, requirements, or standards that can inform audit decisions, testing approaches, or recommendations. The library uses semantic search to find the most relevant content.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query - describe what information you're looking for (e.g., 'IT general controls testing requirements', 'segregation of duties best practices', 'audit evidence standards')"},
+                    "limit": {"type": "integer", "description": "Maximum number of results to return (default: 5, max: 10)"}
+                },
+                "required": ["query"]
+            }
+        },
         # User Interaction Tool
         {
             "name": "ask_clarifying_question",
@@ -1179,6 +1488,7 @@ You have FULL access to create, read, update, and delete audit data:
 **READ:** Query data with SQL, read documents, flowcharts, attachments
 **UPDATE:** Change statuses, update documentation, move tasks
 **DELETE:** Remove risks, tasks, issues, flowcharts, attachments
+**AUDIT LIBRARY:** Search reference documents (COBIT, COSO, IIA Standards, methodologies) for guidance
 
 ## IMPORTANT GUIDELINES:
 
@@ -1194,6 +1504,8 @@ You have FULL access to create, read, update, and delete audit data:
    - The user should get complete answers without asking you to fetch documents
 
 5. **Be Proactive:** Offer to create missing documents, suggest next steps, and help streamline the audit process.
+
+6. **Use the Audit Library:** When the user asks about audit standards, best practices, control testing approaches, or needs guidance on methodology, use search_audit_library to find relevant content from reference documents before answering.
 
 Be concise and professional. Use markdown formatting for clarity."""
 
@@ -1667,6 +1979,55 @@ def execute_tool(tool_name, tool_input):
                 increment_data_version()
                 return f"Successfully deleted {attachment_type} attachment {attachment_id}."
         return f"Attachment {attachment_id} not found."
+
+    elif tool_name == "search_audit_library":
+        query = tool_input.get('query', '')
+        limit = min(tool_input.get('limit', 5), 10)  # Cap at 10
+
+        if not query.strip():
+            return "Please provide a search query."
+
+        try:
+            # Try semantic search first (requires embeddings)
+            query_embedding = generate_embedding(query)
+            results = db.search_library(query_embedding, limit=limit)
+
+            if not results:
+                # Fall back to keyword search
+                results = db.search_library_keyword(query, limit=limit)
+
+            if not results:
+                return f"No results found in the Audit Library for: '{query}'. Try different keywords or ensure documents have been uploaded to the library."
+
+            # Format results for the AI
+            response = f"## Audit Library Search Results for: '{query}'\n\n"
+            for i, result in enumerate(results, 1):
+                response += f"### Result {i}: {result.get('document_name', 'Unknown Document')}\n"
+                if result.get('section'):
+                    response += f"**Section:** {result['section']}\n"
+                response += f"**Source:** {result.get('source', 'Unknown')}\n"
+                response += f"**Type:** {result.get('doc_type', 'Unknown')}\n"
+                if result.get('similarity'):
+                    response += f"**Relevance:** {result['similarity']*100:.0f}%\n"
+                response += f"\n{result.get('content', '')}\n\n---\n\n"
+
+            return response
+
+        except Exception as e:
+            # If embedding fails, try keyword search
+            try:
+                results = db.search_library_keyword(query, limit=limit)
+                if results:
+                    response = f"## Audit Library Search Results (keyword) for: '{query}'\n\n"
+                    for i, result in enumerate(results, 1):
+                        response += f"### Result {i}: {result.get('document_name', 'Unknown Document')}\n"
+                        if result.get('section'):
+                            response += f"**Section:** {result['section']}\n"
+                        response += f"\n{result.get('content', '')}\n\n---\n\n"
+                    return response
+                return f"No results found in the Audit Library for: '{query}'."
+            except Exception as e2:
+                return f"Library search error: {str(e2)}"
 
     elif tool_name == "ask_clarifying_question":
         # This tool returns a special marker that the frontend handles

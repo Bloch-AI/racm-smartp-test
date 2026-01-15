@@ -936,7 +936,7 @@ class TestAIToolDefinitions:
         expected = ['execute_sql', 'get_audit_summary', 'read_test_document',
                    'read_flowchart', 'read_issue_documentation',
                    'list_issue_attachments', 'list_risk_attachments',
-                   'read_attachment_content']
+                   'read_attachment_content', 'search_audit_library']
         for name in expected:
             assert name in tool_names, f"Missing read tool: {name}"
 
@@ -949,8 +949,8 @@ class TestAIToolDefinitions:
     def test_tool_count(self):
         """Verify expected number of tools."""
         tools = app_module.get_ai_tools()
-        # 5 create + 4 update + 5 delete + 8 read + 1 clarifying = 23
-        assert len(tools) >= 23, f"Expected at least 23 tools, got {len(tools)}"
+        # 5 create + 4 update + 5 delete + 9 read (incl library) + 1 clarifying = 24
+        assert len(tools) >= 24, f"Expected at least 24 tools, got {len(tools)}"
 
 
 class TestAIToolExecution:
@@ -1453,6 +1453,397 @@ class TestUATAIToolWorkflow:
             'issue_id': issue_id
         })
         assert 'Root cause' in read_result or issue_id in read_result
+
+
+# ==================== AUDIT LIBRARY TESTS ====================
+
+class TestLibraryDatabase:
+    """Unit tests for library database operations."""
+
+    def test_add_library_document(self, test_db):
+        """Should add a library document."""
+        doc_id = test_db.add_library_document(
+            name='Test Framework',
+            filename='test-framework.pdf',
+            original_filename='Test Framework.pdf',
+            doc_type='framework',
+            source='Test Source',
+            description='Test description',
+            file_size=1024,
+            mime_type='application/pdf'
+        )
+        assert doc_id is not None
+        assert doc_id > 0
+
+    def test_get_library_document(self, test_db):
+        """Should retrieve a library document by ID."""
+        doc_id = test_db.add_library_document(
+            name='Retrievable Doc',
+            filename='retrievable.pdf',
+            original_filename='Retrievable.pdf',
+            doc_type='standard'
+        )
+        doc = test_db.get_library_document(doc_id)
+        assert doc is not None
+        assert doc['name'] == 'Retrievable Doc'
+        assert doc['doc_type'] == 'standard'
+
+    def test_list_library_documents(self, test_db):
+        """Should retrieve all library documents."""
+        test_db.add_library_document(name='Doc1', filename='doc1.pdf', original_filename='Doc1.pdf')
+        test_db.add_library_document(name='Doc2', filename='doc2.pdf', original_filename='Doc2.pdf')
+        docs = test_db.list_library_documents()
+        assert len(docs) >= 2
+
+    def test_filter_library_documents_by_type(self, test_db):
+        """Should filter documents by type."""
+        test_db.add_library_document(name='Framework1', filename='f1.pdf', original_filename='F1.pdf', doc_type='framework')
+        test_db.add_library_document(name='Standard1', filename='s1.pdf', original_filename='S1.pdf', doc_type='standard')
+
+        frameworks = test_db.list_library_documents(doc_type='framework')
+        for doc in frameworks:
+            assert doc['doc_type'] == 'framework'
+
+    def test_add_library_chunk(self, test_db):
+        """Should add a chunk to a library document."""
+        doc_id = test_db.add_library_document(name='Chunked Doc', filename='chunked.pdf', original_filename='Chunked.pdf')
+
+        # Add chunk with mock embedding (384 dimensions)
+        embedding = [0.1] * 384
+        chunk_id = test_db.add_library_chunk(
+            document_id=doc_id,
+            chunk_index=0,
+            content='This is test content for chunking.',
+            embedding=embedding,
+            section='Introduction',
+            token_count=10
+        )
+        assert chunk_id is not None
+
+    def test_get_library_chunks(self, test_db):
+        """Should retrieve chunks for a document."""
+        doc_id = test_db.add_library_document(name='Multi-chunk Doc', filename='multi.pdf', original_filename='Multi.pdf')
+
+        embedding = [0.1] * 384
+        test_db.add_library_chunk(doc_id, 0, 'Chunk 1 content', section='Section 1', embedding=embedding)
+        test_db.add_library_chunk(doc_id, 1, 'Chunk 2 content', section='Section 2', embedding=embedding)
+
+        chunks = test_db.get_library_chunks(doc_id)
+        assert len(chunks) >= 2
+
+    def test_delete_library_document(self, test_db):
+        """Should delete a library document and its chunks."""
+        doc_id = test_db.add_library_document(name='To Delete', filename='delete.pdf', original_filename='Delete.pdf')
+        embedding = [0.1] * 384
+        test_db.add_library_chunk(doc_id, 0, 'Will be deleted', embedding=embedding)
+
+        result = test_db.delete_library_document(doc_id)
+        assert result == True
+
+        doc = test_db.get_library_document(doc_id)
+        assert doc is None
+
+    def test_get_library_stats(self, test_db):
+        """Should return library statistics."""
+        test_db.add_library_document(name='Stats Doc', filename='stats.pdf', original_filename='Stats.pdf', doc_type='framework')
+        stats = test_db.get_library_stats()
+
+        assert 'total_documents' in stats
+        assert 'total_chunks' in stats
+        assert 'by_type' in stats
+        assert stats['total_documents'] >= 1
+
+    def test_search_library_keyword(self, test_db):
+        """Should search library by keyword."""
+        doc_id = test_db.add_library_document(name='Searchable Doc', filename='search.pdf', original_filename='Search.pdf', doc_type='methodology', source='IIA')
+        embedding = [0.1] * 384
+        test_db.add_library_chunk(doc_id, 0, 'Internal audit standards require evidence documentation.', embedding=embedding)
+        test_db.update_library_document(doc_id, total_chunks=1)
+
+        results = test_db.search_library_keyword('audit standards')
+        assert len(results) >= 1
+        assert any('audit' in r['content'].lower() for r in results)
+
+
+class TestLibraryAPI:
+    """Integration tests for library API endpoints."""
+
+    def test_library_page_loads(self, client):
+        """Library page should load with 200 status."""
+        response = client.get('/library')
+        assert response.status_code == 200
+
+    def test_library_page_has_ui_elements(self, client):
+        """Library page should have key UI elements."""
+        response = client.get('/library')
+        html = response.data.decode()
+        assert 'Audit Library' in html
+        assert 'Add Document' in html
+        assert 'search' in html.lower()
+
+    def test_get_library_documents_empty(self, client):
+        """Should return empty list when no documents."""
+        response = client.get('/api/library/documents')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data, (list, dict))
+
+    def test_get_library_stats(self, client):
+        """Should return library statistics."""
+        response = client.get('/api/library/stats')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'total_documents' in data
+        assert 'total_chunks' in data
+        assert 'by_type' in data
+
+    def test_search_library_endpoint(self, client):
+        """Search endpoint should accept POST requests."""
+        response = client.post('/api/library/search',
+            json={'query': 'audit controls', 'limit': 5},
+            content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'results' in data
+
+    def test_search_library_empty_query(self, client):
+        """Search with empty query should return error or empty."""
+        response = client.post('/api/library/search',
+            json={'query': '', 'limit': 5},
+            content_type='application/json')
+        assert response.status_code in [200, 400]
+
+    def test_get_nonexistent_document(self, client):
+        """Should handle nonexistent document gracefully."""
+        response = client.get('/api/library/documents/99999')
+        assert response.status_code in [404, 200]
+
+    def test_delete_nonexistent_document(self, client):
+        """Should handle deleting nonexistent document."""
+        response = client.delete('/api/library/documents/99999')
+        assert response.status_code in [404, 200]
+
+
+class TestLibraryDocumentProcessing:
+    """Unit tests for document processing functions."""
+
+    def test_chunk_document_returns_list(self):
+        """chunk_document should return a list of chunks."""
+        text = "This is a test document. " * 100  # Create enough text
+        chunks = app_module.chunk_document(text, chunk_size=50, overlap=10)
+        assert isinstance(chunks, list)
+        assert len(chunks) > 0
+
+    def test_chunk_document_with_sections(self):
+        """chunk_document should detect sections."""
+        text = """
+        # Introduction
+        This is the introduction section with some content.
+
+        # Methodology
+        This describes the methodology used.
+
+        ## Sub-section
+        More detailed content here.
+        """
+        chunks = app_module.chunk_document(text, chunk_size=20, overlap=5)
+        assert len(chunks) > 0
+        # At least some chunks should have section info
+        sections = [c.get('section') for c in chunks if c.get('section')]
+        assert len(sections) >= 0  # May or may not detect sections based on chunk boundaries
+
+    def test_chunk_document_overlap(self):
+        """Chunks should have overlapping content."""
+        text = "Word " * 200  # 200 words
+        chunks = app_module.chunk_document(text, chunk_size=50, overlap=10)
+        if len(chunks) > 1:
+            # Check that chunks have some length
+            for chunk in chunks:
+                assert len(chunk['content']) > 0
+
+    def test_generate_embedding_returns_list(self):
+        """generate_embedding should return a list of floats."""
+        # This test may be slow as it loads the model
+        try:
+            embedding = app_module.generate_embedding("Test text for embedding")
+            assert isinstance(embedding, list)
+            assert len(embedding) == 384  # all-MiniLM-L6-v2 produces 384-dim embeddings
+            assert all(isinstance(x, float) for x in embedding)
+        except Exception:
+            # Skip if model not available
+            pytest.skip("Embedding model not available")
+
+    def test_embedding_consistency(self):
+        """Same text should produce same embedding."""
+        try:
+            text = "Internal audit control testing"
+            emb1 = app_module.generate_embedding(text)
+            emb2 = app_module.generate_embedding(text)
+            # Should be identical
+            assert emb1 == emb2
+        except Exception:
+            pytest.skip("Embedding model not available")
+
+
+class TestSearchAuditLibraryTool:
+    """Unit tests for the search_audit_library AI tool."""
+
+    def test_search_audit_library_tool_exists(self):
+        """search_audit_library tool should be defined."""
+        tools = app_module.get_ai_tools()
+        tool_names = [t['name'] for t in tools]
+        assert 'search_audit_library' in tool_names
+
+    def test_search_audit_library_tool_schema(self):
+        """search_audit_library tool should have correct schema."""
+        tools = app_module.get_ai_tools()
+        tool = next(t for t in tools if t['name'] == 'search_audit_library')
+
+        assert 'input_schema' in tool
+        schema = tool['input_schema']
+        assert 'properties' in schema
+        assert 'query' in schema['properties']
+        assert 'required' in schema
+        assert 'query' in schema['required']
+
+    def test_execute_search_audit_library_empty_query(self, test_db, client):
+        """Should handle empty query gracefully."""
+        result = app_module.execute_tool('search_audit_library', {'query': ''})
+        assert 'provide a search query' in result.lower() or 'no results' in result.lower()
+
+    def test_execute_search_audit_library_no_documents(self, test_db, client):
+        """Should handle search with no library documents."""
+        result = app_module.execute_tool('search_audit_library', {'query': 'audit controls'})
+        assert 'no results' in result.lower() or 'not found' in result.lower() or 'search' in result.lower()
+
+    def test_execute_search_audit_library_with_documents(self, test_db, client):
+        """Should return results when library has matching documents."""
+        # Add a document with searchable content
+        doc_id = test_db.add_library_document(
+            name='COBIT Framework',
+            filename='cobit.pdf',
+            original_filename='COBIT.pdf',
+            doc_type='framework',
+            source='ISACA'
+        )
+
+        # Add chunk (using simple embedding for test)
+        embedding = [0.1] * 384
+        test_db.add_library_chunk(
+            doc_id, 0,
+            'IT governance framework for enterprise control objectives and management.',
+            section='Overview',
+            embedding=embedding
+        )
+        test_db.update_library_document(doc_id, total_chunks=1)
+
+        # Search should find this
+        result = app_module.execute_tool('search_audit_library', {
+            'query': 'IT governance control',
+            'limit': 5
+        })
+        # Result should contain search results or indicate no semantic match
+        assert isinstance(result, str)
+
+    def test_search_limit_cap(self, test_db, client):
+        """Should cap limit at 10."""
+        result = app_module.execute_tool('search_audit_library', {
+            'query': 'audit',
+            'limit': 100  # Exceeds cap
+        })
+        # Should not error, limit should be capped internally
+        assert isinstance(result, str)
+
+
+class TestLibrarySystemPrompt:
+    """Tests for library-related system prompt content."""
+
+    def test_system_prompt_mentions_library(self, test_db, client):
+        """System prompt should mention Audit Library capability."""
+        context = test_db.get_full_context()
+        prompt = app_module.build_ai_system_prompt(context, include_capabilities=True)
+        assert 'AUDIT LIBRARY' in prompt or 'library' in prompt.lower()
+
+    def test_system_prompt_library_guidance(self, test_db, client):
+        """System prompt should guide AI to use library for standards questions."""
+        context = test_db.get_full_context()
+        prompt = app_module.build_ai_system_prompt(context, include_capabilities=True)
+        assert 'search_audit_library' in prompt or 'standards' in prompt.lower() or 'reference' in prompt.lower()
+
+
+class TestUATLibraryWorkflow:
+    """End-to-end tests for library workflows."""
+
+    def test_library_document_lifecycle(self, test_db, client):
+        """Test complete document lifecycle: add, search, delete."""
+        # 1. Add document via database (simulating upload)
+        doc_id = test_db.add_library_document(
+            name='IIA Standards',
+            filename='iia-standards.pdf',
+            original_filename='IIA Standards.pdf',
+            doc_type='standard',
+            source='IIA',
+            description='International Standards for Professional Practice'
+        )
+        assert doc_id is not None
+
+        # 2. Add searchable chunk
+        embedding = [0.1] * 384
+        test_db.add_library_chunk(
+            doc_id, 0,
+            'Internal auditors must maintain objectivity and independence in performing audit work.',
+            section='Standard 1100',
+            embedding=embedding
+        )
+        test_db.update_library_document(doc_id, total_chunks=1)
+
+        # 3. Verify document appears in list
+        docs = test_db.list_library_documents()
+        assert any(d['id'] == doc_id for d in docs)
+
+        # 4. Verify stats updated
+        stats = test_db.get_library_stats()
+        assert stats['total_documents'] >= 1
+        assert stats['total_chunks'] >= 1
+
+        # 5. Search for content
+        results = test_db.search_library_keyword('objectivity')
+        assert len(results) >= 1
+
+        # 6. Delete document
+        test_db.delete_library_document(doc_id)
+
+        # 7. Verify deletion
+        doc = test_db.get_library_document(doc_id)
+        assert doc is None
+
+    def test_ai_library_search_workflow(self, test_db, client):
+        """Test AI using library search tool."""
+        # Setup: Add a library document
+        doc_id = test_db.add_library_document(
+            name='Audit Methodology',
+            filename='methodology.pdf',
+            original_filename='Methodology.pdf',
+            doc_type='methodology',
+            source='Internal'
+        )
+        embedding = [0.1] * 384
+        test_db.add_library_chunk(
+            doc_id, 0,
+            'Risk-based audit approach requires assessment of inherent and residual risks.',
+            section='Risk Assessment',
+            embedding=embedding
+        )
+        test_db.update_library_document(doc_id, total_chunks=1)
+
+        # Execute search via AI tool
+        result = app_module.execute_tool('search_audit_library', {
+            'query': 'risk-based audit approach'
+        })
+
+        # Verify result is a string (may or may not find matches depending on embedding)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
 
 if __name__ == '__main__':

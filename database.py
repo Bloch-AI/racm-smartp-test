@@ -158,6 +158,37 @@ class RACMDatabase:
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_attachments_risk ON risk_attachments(risk_id);
+
+            -- Audit Library Documents (reference materials like COBIT, COSO, IIA Standards)
+            CREATE TABLE IF NOT EXISTS library_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                doc_type TEXT DEFAULT 'framework',
+                source TEXT,
+                description TEXT,
+                file_size INTEGER,
+                mime_type TEXT,
+                total_chunks INTEGER DEFAULT 0,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Library Document Chunks (for RAG retrieval)
+            CREATE TABLE IF NOT EXISTS library_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES library_documents(id) ON DELETE CASCADE,
+                chunk_index INTEGER NOT NULL,
+                section TEXT,
+                content TEXT NOT NULL,
+                token_count INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_library_chunks_doc ON library_chunks(document_id);
+            CREATE INDEX IF NOT EXISTS idx_library_docs_type ON library_documents(doc_type);
+            CREATE INDEX IF NOT EXISTS idx_library_docs_source ON library_documents(source);
         """)
         conn.commit()
 
@@ -887,6 +918,250 @@ class RACMDatabase:
                           (risk_id.upper(),)).fetchone()
         conn.close()
         return row['count'] if row else 0
+
+    # ==================== AUDIT LIBRARY ====================
+
+    def _init_vector_table(self):
+        """Initialize sqlite-vec virtual table for vector search."""
+        try:
+            import sqlite_vec
+            conn = self._get_conn()
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+
+            # Create vec0 virtual table for embeddings (384 dimensions for all-MiniLM-L6-v2)
+            conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS library_embeddings USING vec0(
+                    chunk_id INTEGER PRIMARY KEY,
+                    embedding float[384]
+                )
+            """)
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Warning: Could not initialize vector table: {e}")
+            return False
+
+    def add_library_document(self, name: str, filename: str, original_filename: str,
+                            doc_type: str = 'framework', source: str = None,
+                            description: str = None, file_size: int = None,
+                            mime_type: str = None) -> int:
+        """Add a new library document. Returns the document ID."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO library_documents (name, filename, original_filename, doc_type,
+                                          source, description, file_size, mime_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name, filename, original_filename, doc_type, source, description,
+              file_size, mime_type))
+        conn.commit()
+        doc_id = cursor.lastrowid
+        conn.close()
+        return doc_id
+
+    def get_library_document(self, doc_id: int) -> Optional[Dict]:
+        """Get a library document by ID."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM library_documents WHERE id = ?", (doc_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_library_document_by_name(self, name: str) -> Optional[Dict]:
+        """Get a library document by name."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM library_documents WHERE name = ?", (name,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def list_library_documents(self, doc_type: str = None) -> List[Dict]:
+        """List all library documents, optionally filtered by type."""
+        conn = self._get_conn()
+        if doc_type:
+            rows = conn.execute("""
+                SELECT * FROM library_documents WHERE doc_type = ? ORDER BY name
+            """, (doc_type,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM library_documents ORDER BY name").fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def update_library_document(self, doc_id: int, **kwargs) -> bool:
+        """Update a library document's metadata."""
+        if not kwargs:
+            return False
+
+        allowed_fields = ['name', 'doc_type', 'source', 'description', 'total_chunks']
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+        if not updates:
+            return False
+
+        set_clause = ', '.join(f"{k} = ?" for k in updates.keys())
+        values = list(updates.values()) + [doc_id]
+
+        conn = self._get_conn()
+        cursor = conn.execute(f"""
+            UPDATE library_documents SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, values)
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def delete_library_document(self, doc_id: int) -> bool:
+        """Delete a library document and all its chunks."""
+        conn = self._get_conn()
+
+        # Delete embeddings first (sqlite-vec virtual table)
+        try:
+            import sqlite_vec
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+
+            # Get chunk IDs for this document
+            chunk_ids = conn.execute(
+                "SELECT id FROM library_chunks WHERE document_id = ?", (doc_id,)
+            ).fetchall()
+
+            for (chunk_id,) in chunk_ids:
+                conn.execute("DELETE FROM library_embeddings WHERE chunk_id = ?", (chunk_id,))
+        except Exception as e:
+            print(f"Warning: Could not delete embeddings: {e}")
+
+        # Delete document (cascades to chunks)
+        cursor = conn.execute("DELETE FROM library_documents WHERE id = ?", (doc_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def add_library_chunk(self, document_id: int, chunk_index: int, content: str,
+                         section: str = None, token_count: int = None,
+                         embedding: list = None) -> int:
+        """Add a chunk to the library. Returns chunk ID."""
+        conn = self._get_conn()
+
+        # Insert chunk
+        cursor = conn.execute("""
+            INSERT INTO library_chunks (document_id, chunk_index, section, content, token_count)
+            VALUES (?, ?, ?, ?, ?)
+        """, (document_id, chunk_index, section, content, token_count))
+        chunk_id = cursor.lastrowid
+
+        # Add embedding if provided
+        if embedding:
+            try:
+                import sqlite_vec
+                import struct
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
+
+                # Pack embedding as binary
+                embedding_blob = struct.pack(f'{len(embedding)}f', *embedding)
+                conn.execute("""
+                    INSERT INTO library_embeddings (chunk_id, embedding)
+                    VALUES (?, ?)
+                """, (chunk_id, embedding_blob))
+            except Exception as e:
+                print(f"Warning: Could not add embedding: {e}")
+
+        conn.commit()
+        conn.close()
+        return chunk_id
+
+    def get_library_chunks(self, document_id: int) -> List[Dict]:
+        """Get all chunks for a document."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM library_chunks WHERE document_id = ? ORDER BY chunk_index
+        """, (document_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def search_library(self, query_embedding: list, limit: int = 5) -> List[Dict]:
+        """Search the library using vector similarity. Returns relevant chunks with metadata."""
+        try:
+            import sqlite_vec
+            import struct
+
+            conn = self._get_conn()
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+
+            # Pack query embedding
+            query_blob = struct.pack(f'{len(query_embedding)}f', *query_embedding)
+
+            # Vector search with join to get full context
+            rows = conn.execute("""
+                SELECT
+                    c.id as chunk_id,
+                    c.content,
+                    c.section,
+                    c.chunk_index,
+                    d.id as document_id,
+                    d.name as document_name,
+                    d.source,
+                    d.doc_type,
+                    e.distance
+                FROM library_embeddings e
+                JOIN library_chunks c ON e.chunk_id = c.id
+                JOIN library_documents d ON c.document_id = d.id
+                WHERE e.embedding MATCH ?
+                ORDER BY e.distance
+                LIMIT ?
+            """, (query_blob, limit)).fetchall()
+
+            conn.close()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            print(f"Error in library search: {e}")
+            return []
+
+    def search_library_keyword(self, keyword: str, limit: int = 10) -> List[Dict]:
+        """Fallback keyword search when vector search isn't available."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT
+                c.id as chunk_id,
+                c.content,
+                c.section,
+                c.chunk_index,
+                d.id as document_id,
+                d.name as document_name,
+                d.source,
+                d.doc_type
+            FROM library_chunks c
+            JOIN library_documents d ON c.document_id = d.id
+            WHERE c.content LIKE ? OR c.section LIKE ?
+            ORDER BY d.name, c.chunk_index
+            LIMIT ?
+        """, (f'%{keyword}%', f'%{keyword}%', limit)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_library_stats(self) -> Dict:
+        """Get library statistics."""
+        conn = self._get_conn()
+        doc_count = conn.execute("SELECT COUNT(*) FROM library_documents").fetchone()[0]
+        chunk_count = conn.execute("SELECT COUNT(*) FROM library_chunks").fetchone()[0]
+
+        # Get counts by type
+        type_counts = conn.execute("""
+            SELECT doc_type, COUNT(*) as count FROM library_documents GROUP BY doc_type
+        """).fetchall()
+
+        conn.close()
+        return {
+            'total_documents': doc_count,
+            'total_chunks': chunk_count,
+            'by_type': {row['doc_type']: row['count'] for row in type_counts}
+        }
 
     # ==================== AI QUERY HELPERS ====================
 

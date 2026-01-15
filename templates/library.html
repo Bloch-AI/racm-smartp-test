@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Library - SmartPapers</title>
+
+    <!-- Google Fonts - Bloch AI Design System -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+                        'mono': ['DM Mono', 'monospace'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#e6f4fa',
+                            100: '#cce9f5',
+                            200: '#99d3eb',
+                            300: '#66bde1',
+                            400: '#33a7d7',
+                            500: '#008bd1',
+                            600: '#007ab8',
+                            700: '#00689e',
+                            800: '#005785',
+                            900: '#00456b',
+                        },
+                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
+                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
+                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' },
+                        info: { light: '#dbeafe', DEFAULT: '#3b82f6', dark: '#1d4ed8' }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * { font-family: 'Inter', system-ui, sans-serif; }
+        h1, h2, h3, .font-display { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+        code, pre, .font-mono { font-family: 'DM Mono', monospace; }
+
+        :root {
+            --primary: #008bd1;
+            --primary-light: #e6f4fa;
+            --primary-dark: #00689e;
+            --success: #22c55e;
+            --success-light: #dcfce7;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --radius: 8px;
+            --radius-lg: 12px;
+        }
+
+        /* Button System */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 36px;
+            padding: 0 16px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: var(--radius);
+            transition: all 0.2s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn svg { width: 16px; height: 16px; }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: scale(1.02);
+        }
+        .btn-primary:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .btn-secondary:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+            transform: scale(1.02);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: #6b7280;
+            border: none;
+        }
+        .btn-ghost:hover { background: #f3f4f6; color: #374151; }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+            border: none;
+        }
+        .btn-danger:hover { background: #dc2626; }
+
+        /* Chips */
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 9999px;
+            white-space: nowrap;
+        }
+        .chip-neutral { background: #f3f4f6; color: #4b5563; }
+        .chip-info { background: var(--primary-light); color: var(--primary-dark); }
+        .chip-success { background: var(--success-light); color: #15803d; }
+
+        /* Card hover effects */
+        .doc-card {
+            transition: all 0.2s ease;
+        }
+        .doc-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+
+        /* Upload zone */
+        .upload-zone {
+            border: 2px dashed #d1d5db;
+            transition: all 0.2s ease;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        /* Modal */
+        .modal-backdrop {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Form inputs */
+        .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 1px solid #d1d5db;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 139, 209, 0.1);
+        }
+        .form-input::placeholder {
+            color: #9ca3af;
+        }
+
+        /* Toast notifications */
+        .toast {
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Scrollbar */
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+    </style>
+</head>
+<body class="h-full">
+    <div class="min-h-full flex flex-col">
+        <!-- Navigation -->
+        <nav class="bg-white border-b border-slate-200">
+            <div class="flex h-16 items-center justify-between px-4 sm:px-6">
+                <!-- Left: Logo + Nav Links -->
+                <div class="flex items-center">
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <img src="/static/logo.png" alt="SmartPapers Logo" class="h-8 w-auto">
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-slate-900 leading-tight font-display">SmartPapers</span>
+                            <span class="text-xs text-slate-400 -mt-0.5">Internal Audit</span>
+                        </div>
+                    </div>
+                    <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
+                        <a href="/felix" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+                            </svg>
+                            Felix AI
+                        </a>
+                        <a href="/" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Workpapers
+                        </a>
+                        <a href="/flowchart" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Flowcharts
+                        </a>
+                        <a href="/library" class="flex items-center gap-1.5 bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            Audit Library
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 py-6 overflow-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6">
+                <!-- Header -->
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h1 class="text-2xl font-semibold text-slate-900 font-display">Audit Library</h1>
+                        <p class="text-sm text-slate-500 mt-1">Reference documents, frameworks, and standards for audit support</p>
+                    </div>
+                    <button onclick="openUploadModal()" class="btn btn-primary">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Document
+                    </button>
+                </div>
+
+                <!-- Stats Bar -->
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white rounded-lg border border-slate-200 p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
+                                <svg class="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-slate-900" id="stat-documents">0</p>
+                                <p class="text-xs text-slate-500">Documents</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg border border-slate-200 p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-success-light flex items-center justify-center">
+                                <svg class="w-5 h-5 text-success-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-slate-900" id="stat-chunks">0</p>
+                                <p class="text-xs text-slate-500">Searchable Chunks</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg border border-slate-200 p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-info-light flex items-center justify-center">
+                                <svg class="w-5 h-5 text-info-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-slate-900" id="stat-frameworks">0</p>
+                                <p class="text-xs text-slate-500">Frameworks</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg border border-slate-200 p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-warning-light flex items-center justify-center">
+                                <svg class="w-5 h-5 text-warning-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-semibold text-slate-900" id="stat-standards">0</p>
+                                <p class="text-xs text-slate-500">Standards</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="bg-white rounded-lg border border-slate-200 p-4 mb-6">
+                    <div class="flex items-center gap-3">
+                        <div class="flex-1 relative">
+                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <input type="text" id="search-input" placeholder="Search documents by content or title..." class="form-input pl-10" onkeyup="handleSearch(event)">
+                        </div>
+                        <select id="type-filter" class="form-input w-40" onchange="loadDocuments()">
+                            <option value="">All Types</option>
+                            <option value="framework">Frameworks</option>
+                            <option value="standard">Standards</option>
+                            <option value="methodology">Methodologies</option>
+                            <option value="policy">Policies</option>
+                            <option value="guidance">Guidance</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <button onclick="performSearch()" class="btn btn-secondary">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            Search
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Document Grid -->
+                <div id="documents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Documents will be loaded here -->
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden text-center py-16">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                        <svg class="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-medium text-slate-900 mb-1">No documents yet</h3>
+                    <p class="text-sm text-slate-500 mb-4">Upload audit frameworks, standards, and reference materials to enhance Felix AI's knowledge.</p>
+                    <button onclick="openUploadModal()" class="btn btn-primary">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Your First Document
+                    </button>
+                </div>
+
+                <!-- Search Results -->
+                <div id="search-results" class="hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-slate-900">Search Results</h2>
+                        <button onclick="clearSearch()" class="btn btn-ghost text-sm">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Clear Search
+                        </button>
+                    </div>
+                    <div id="search-results-list" class="space-y-3">
+                        <!-- Search results will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="fixed inset-0 z-50 hidden">
+        <div class="modal-backdrop absolute inset-0" onclick="closeUploadModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg relative">
+                <!-- Modal Header -->
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                    <h2 class="text-lg font-semibold text-slate-900 font-display">Add Document to Library</h2>
+                    <button onclick="closeUploadModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Body -->
+                <form id="upload-form" class="p-6 space-y-4">
+                    <!-- File Upload Zone -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Document File</label>
+                        <div class="upload-zone rounded-lg p-6 text-center cursor-pointer" onclick="document.getElementById('file-input').click()" id="upload-zone">
+                            <input type="file" id="file-input" class="hidden" accept=".pdf,.txt,.md,.doc,.docx" onchange="handleFileSelect(event)">
+                            <svg class="w-10 h-10 mx-auto mb-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            <p class="text-sm text-slate-600 mb-1" id="upload-text">Drop your file here or click to browse</p>
+                            <p class="text-xs text-slate-400">Supports PDF, TXT, MD, DOC, DOCX</p>
+                        </div>
+                    </div>
+
+                    <!-- Document Name -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Document Name <span class="text-danger">*</span></label>
+                        <input type="text" id="doc-name" class="form-input" placeholder="e.g., COBIT 2019 Framework" required>
+                    </div>
+
+                    <!-- Document Type -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Document Type</label>
+                        <select id="doc-type" class="form-input">
+                            <option value="framework">Framework (e.g., COBIT, COSO)</option>
+                            <option value="standard">Standard (e.g., IIA, ISO)</option>
+                            <option value="methodology">Methodology</option>
+                            <option value="policy">Policy</option>
+                            <option value="guidance">Guidance</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <!-- Source -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Source</label>
+                        <input type="text" id="doc-source" class="form-input" placeholder="e.g., ISACA, IIA, Internal">
+                    </div>
+
+                    <!-- Description -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="doc-description" class="form-input" rows="2" placeholder="Brief description of the document content..."></textarea>
+                    </div>
+
+                    <!-- Processing Status -->
+                    <div id="processing-status" class="hidden">
+                        <div class="bg-primary-50 rounded-lg p-4">
+                            <div class="flex items-center gap-3">
+                                <div class="animate-spin">
+                                    <svg class="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-primary-900">Processing document...</p>
+                                    <p class="text-xs text-primary-700" id="processing-text">Extracting text and generating embeddings</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Modal Footer -->
+                <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl">
+                    <button type="button" onclick="closeUploadModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="button" onclick="uploadDocument()" id="upload-btn" class="btn btn-primary" disabled>
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        Upload Document
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Document Modal -->
+    <div id="view-modal" class="fixed inset-0 z-50 hidden">
+        <div class="modal-backdrop absolute inset-0" onclick="closeViewModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl relative max-h-[80vh] flex flex-col">
+                <!-- Modal Header -->
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
+                    <h2 class="text-lg font-semibold text-slate-900 font-display" id="view-doc-name">Document Details</h2>
+                    <button onclick="closeViewModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Body -->
+                <div class="p-6 overflow-auto flex-1 scrollbar-thin">
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-xs text-slate-500 mb-1">Type</p>
+                                <p class="text-sm font-medium text-slate-900" id="view-doc-type">-</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 mb-1">Source</p>
+                                <p class="text-sm font-medium text-slate-900" id="view-doc-source">-</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 mb-1">File Size</p>
+                                <p class="text-sm font-medium text-slate-900" id="view-doc-size">-</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 mb-1">Chunks</p>
+                                <p class="text-sm font-medium text-slate-900" id="view-doc-chunks">-</p>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 mb-1">Description</p>
+                            <p class="text-sm text-slate-700" id="view-doc-description">No description provided.</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 mb-1">Uploaded</p>
+                            <p class="text-sm text-slate-700" id="view-doc-uploaded">-</p>
+                        </div>
+
+                        <!-- Chunks Preview -->
+                        <div class="mt-6">
+                            <h3 class="text-sm font-semibold text-slate-900 mb-3">Content Preview</h3>
+                            <div id="chunks-preview" class="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
+                                <!-- Chunks will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex-shrink-0">
+                    <button type="button" onclick="deleteDocument()" class="btn btn-ghost text-danger hover:bg-danger-light">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                    </button>
+                    <button type="button" onclick="closeViewModal()" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <script>
+        // State
+        let documents = [];
+        let selectedFile = null;
+        let currentDocumentId = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDocuments();
+            loadStats();
+            setupDragDrop();
+        });
+
+        // Load documents
+        async function loadDocuments() {
+            try {
+                const typeFilter = document.getElementById('type-filter').value;
+                let url = '/api/library/documents';
+                if (typeFilter) {
+                    url += `?type=${typeFilter}`;
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+                documents = data.documents || [];
+                renderDocuments();
+            } catch (error) {
+                console.error('Failed to load documents:', error);
+                showToast('Failed to load documents', 'error');
+            }
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/library/stats');
+                const stats = await response.json();
+
+                document.getElementById('stat-documents').textContent = stats.total_documents || 0;
+                document.getElementById('stat-chunks').textContent = stats.total_chunks || 0;
+                document.getElementById('stat-frameworks').textContent = stats.by_type?.framework || 0;
+                document.getElementById('stat-standards').textContent = stats.by_type?.standard || 0;
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        // Render documents grid
+        function renderDocuments() {
+            const grid = document.getElementById('documents-grid');
+            const emptyState = document.getElementById('empty-state');
+            const searchResults = document.getElementById('search-results');
+
+            // Hide search results when showing documents
+            searchResults.classList.add('hidden');
+
+            if (documents.length === 0) {
+                grid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            grid.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+
+            grid.innerHTML = documents.map(doc => `
+                <div class="doc-card bg-white rounded-lg border border-slate-200 p-4 cursor-pointer" onclick="viewDocument(${doc.id})">
+                    <div class="flex items-start gap-3">
+                        <div class="w-10 h-10 rounded-lg ${getTypeColor(doc.doc_type)} flex items-center justify-center flex-shrink-0">
+                            ${getTypeIcon(doc.doc_type)}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-sm font-semibold text-slate-900 truncate">${escapeHtml(doc.name)}</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(doc.source || 'Unknown source')}</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-600 mt-3 line-clamp-2">${escapeHtml(doc.description || 'No description')}</p>
+                    <div class="flex items-center gap-2 mt-3">
+                        <span class="chip ${getTypeChipClass(doc.doc_type)}">${formatDocType(doc.doc_type)}</span>
+                        <span class="chip chip-neutral">${doc.total_chunks || 0} chunks</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Get type-based colors
+        function getTypeColor(type) {
+            const colors = {
+                'framework': 'bg-primary-50',
+                'standard': 'bg-warning-light',
+                'methodology': 'bg-success-light',
+                'policy': 'bg-info-light',
+                'guidance': 'bg-slate-100',
+                'other': 'bg-slate-100'
+            };
+            return colors[type] || colors.other;
+        }
+
+        function getTypeChipClass(type) {
+            const classes = {
+                'framework': 'chip-info',
+                'standard': 'chip-neutral',
+                'methodology': 'chip-success',
+                'policy': 'chip-info',
+                'guidance': 'chip-neutral',
+                'other': 'chip-neutral'
+            };
+            return classes[type] || classes.other;
+        }
+
+        function getTypeIcon(type) {
+            const icons = {
+                'framework': '<svg class="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>',
+                'standard': '<svg class="w-5 h-5 text-warning-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>',
+                'methodology': '<svg class="w-5 h-5 text-success-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>',
+                'policy': '<svg class="w-5 h-5 text-info-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>',
+                'guidance': '<svg class="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>',
+                'other': '<svg class="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>'
+            };
+            return icons[type] || icons.other;
+        }
+
+        function formatDocType(type) {
+            return type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Other';
+        }
+
+        // Setup drag and drop
+        function setupDragDrop() {
+            const zone = document.getElementById('upload-zone');
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                zone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
+            });
+
+            zone.addEventListener('drop', handleDrop, false);
+        }
+
+        function handleDrop(e) {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect({ target: { files: files } });
+            }
+        }
+
+        // File selection
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                selectedFile = file;
+                document.getElementById('upload-text').textContent = file.name;
+                document.getElementById('upload-btn').disabled = false;
+
+                // Auto-fill name from filename
+                const nameInput = document.getElementById('doc-name');
+                if (!nameInput.value) {
+                    nameInput.value = file.name.replace(/\.[^/.]+$/, '');
+                }
+            }
+        }
+
+        // Modal controls
+        function openUploadModal() {
+            document.getElementById('upload-modal').classList.remove('hidden');
+            document.getElementById('upload-form').reset();
+            document.getElementById('upload-text').textContent = 'Drop your file here or click to browse';
+            document.getElementById('upload-btn').disabled = true;
+            document.getElementById('processing-status').classList.add('hidden');
+            selectedFile = null;
+        }
+
+        function closeUploadModal() {
+            document.getElementById('upload-modal').classList.add('hidden');
+        }
+
+        // Upload document
+        async function uploadDocument() {
+            if (!selectedFile) {
+                showToast('Please select a file', 'error');
+                return;
+            }
+
+            const name = document.getElementById('doc-name').value.trim();
+            if (!name) {
+                showToast('Please enter a document name', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('name', name);
+            formData.append('doc_type', document.getElementById('doc-type').value);
+            formData.append('source', document.getElementById('doc-source').value);
+            formData.append('description', document.getElementById('doc-description').value);
+
+            // Show processing status
+            document.getElementById('processing-status').classList.remove('hidden');
+            document.getElementById('upload-btn').disabled = true;
+
+            try {
+                const response = await fetch('/api/library/documents', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast(`Document uploaded successfully! ${data.chunks_created || 0} chunks created.`, 'success');
+                    closeUploadModal();
+                    loadDocuments();
+                    loadStats();
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                showToast(error.message || 'Failed to upload document', 'error');
+            } finally {
+                document.getElementById('processing-status').classList.add('hidden');
+                document.getElementById('upload-btn').disabled = false;
+            }
+        }
+
+        // View document
+        async function viewDocument(id) {
+            currentDocumentId = id;
+            const doc = documents.find(d => d.id === id);
+            if (!doc) return;
+
+            document.getElementById('view-doc-name').textContent = doc.name;
+            document.getElementById('view-doc-type').textContent = formatDocType(doc.doc_type);
+            document.getElementById('view-doc-source').textContent = doc.source || 'Not specified';
+            document.getElementById('view-doc-size').textContent = formatFileSize(doc.file_size);
+            document.getElementById('view-doc-chunks').textContent = doc.total_chunks || 0;
+            document.getElementById('view-doc-description').textContent = doc.description || 'No description provided.';
+            document.getElementById('view-doc-uploaded').textContent = formatDate(doc.uploaded_at);
+
+            // Load chunks preview
+            try {
+                const response = await fetch(`/api/library/documents/${id}/chunks?limit=5`);
+                const data = await response.json();
+                const chunksPreview = document.getElementById('chunks-preview');
+
+                if (data.chunks && data.chunks.length > 0) {
+                    chunksPreview.innerHTML = data.chunks.map((chunk, i) => `
+                        <div class="bg-slate-50 rounded-lg p-3 text-xs text-slate-600">
+                            <span class="font-mono text-slate-400">#${chunk.chunk_index + 1}</span>
+                            ${chunk.section ? `<span class="chip chip-neutral ml-2">${escapeHtml(chunk.section)}</span>` : ''}
+                            <p class="mt-2 line-clamp-3">${escapeHtml(chunk.content.substring(0, 300))}${chunk.content.length > 300 ? '...' : ''}</p>
+                        </div>
+                    `).join('');
+                } else {
+                    chunksPreview.innerHTML = '<p class="text-sm text-slate-500">No chunks available.</p>';
+                }
+            } catch (error) {
+                console.error('Failed to load chunks:', error);
+            }
+
+            document.getElementById('view-modal').classList.remove('hidden');
+        }
+
+        function closeViewModal() {
+            document.getElementById('view-modal').classList.add('hidden');
+            currentDocumentId = null;
+        }
+
+        // Delete document
+        async function deleteDocument() {
+            if (!currentDocumentId) return;
+
+            if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/library/documents/${currentDocumentId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('Document deleted successfully', 'success');
+                    closeViewModal();
+                    loadDocuments();
+                    loadStats();
+                } else {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Delete failed');
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                showToast(error.message || 'Failed to delete document', 'error');
+            }
+        }
+
+        // Search functions
+        function handleSearch(event) {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        }
+
+        async function performSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) {
+                clearSearch();
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/library/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, limit: 10 })
+                });
+
+                const data = await response.json();
+                renderSearchResults(data.results || []);
+            } catch (error) {
+                console.error('Search error:', error);
+                showToast('Search failed', 'error');
+            }
+        }
+
+        function renderSearchResults(results) {
+            const grid = document.getElementById('documents-grid');
+            const emptyState = document.getElementById('empty-state');
+            const searchResults = document.getElementById('search-results');
+            const resultsList = document.getElementById('search-results-list');
+
+            grid.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            searchResults.classList.remove('hidden');
+
+            if (results.length === 0) {
+                resultsList.innerHTML = `
+                    <div class="text-center py-8">
+                        <p class="text-sm text-slate-500">No results found. Try different keywords.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            resultsList.innerHTML = results.map(result => `
+                <div class="bg-white rounded-lg border border-slate-200 p-4 hover:border-primary-300 transition-colors cursor-pointer" onclick="viewDocument(${result.document_id})">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded bg-primary-50 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="text-sm font-semibold text-slate-900">${escapeHtml(result.document_name)}</h4>
+                            ${result.section ? `<span class="text-xs text-slate-500">${escapeHtml(result.section)}</span>` : ''}
+                            <p class="text-xs text-slate-600 mt-2 line-clamp-3">${escapeHtml(result.content)}</p>
+                            ${result.similarity ? `<span class="text-xs text-primary-600 mt-2 inline-block">Relevance: ${(result.similarity * 100).toFixed(0)}%</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function clearSearch() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('search-results').classList.add('hidden');
+            renderDocuments();
+        }
+
+        // Utility functions
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatFileSize(bytes) {
+            if (!bytes) return 'Unknown';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let i = 0;
+            while (bytes >= 1024 && i < units.length - 1) {
+                bytes /= 1024;
+                i++;
+            }
+            return bytes.toFixed(1) + ' ' + units[i];
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'Unknown';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const colors = {
+                success: 'bg-success text-white',
+                error: 'bg-danger text-white',
+                info: 'bg-primary-600 text-white'
+            };
+
+            toast.className = `toast px-4 py-3 rounded-lg shadow-lg ${colors[type] || colors.info}`;
+            toast.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium">${escapeHtml(message)}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-2 opacity-70 hover:opacity-100">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
