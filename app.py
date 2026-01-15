@@ -489,6 +489,119 @@ def kanban(board_id='default'):
     return render_template('kanban.html', board_id=board_id, audit_name=audit_name)
 
 
+@app.route('/audit-plan')
+def audit_plan():
+    """Annual Audit Plan page with spreadsheet and kanban views."""
+    audit_name = None
+    return render_template('audit_plan.html', audit_name=audit_name)
+
+
+# ==================== Annual Audit Plan API ====================
+
+@app.route('/api/audits', methods=['GET'])
+def get_audits():
+    """Get all audits from the annual audit plan."""
+    audits = db.get_all_audits()
+    return jsonify(audits)
+
+
+@app.route('/api/audits', methods=['POST'])
+def create_audit():
+    """Create a new audit in the annual plan."""
+    data = request.json
+    title = data.get('title', '').strip()
+    if not title:
+        return jsonify({'error': 'Title is required'}), 400
+
+    audit_id = db.create_audit(
+        title=title,
+        description=data.get('description'),
+        audit_area=data.get('audit_area'),
+        owner=data.get('owner'),
+        planned_start=data.get('planned_start'),
+        planned_end=data.get('planned_end'),
+        quarter=data.get('quarter'),
+        status=data.get('status', 'planning'),
+        priority=data.get('priority', 'medium'),
+        risk_rating=data.get('risk_rating'),
+        estimated_hours=data.get('estimated_hours'),
+        notes=data.get('notes')
+    )
+    increment_data_version()
+    return jsonify({'id': audit_id, 'status': 'created'})
+
+
+@app.route('/api/audits/<int:audit_id>', methods=['GET'])
+def get_audit(audit_id):
+    """Get a single audit by ID."""
+    audit = db.get_audit(audit_id)
+    if not audit:
+        return not_found_response('Audit')
+    return jsonify(audit)
+
+
+@app.route('/api/audits/<int:audit_id>', methods=['PUT'])
+def update_audit(audit_id):
+    """Update an audit. Only updates fields present in the request."""
+    audit = db.get_audit(audit_id)
+    if not audit:
+        return not_found_response('Audit')
+
+    data = request.json
+    # Only pass fields that are actually in the request (partial update)
+    allowed_fields = {'title', 'description', 'audit_area', 'owner', 'planned_start',
+                      'planned_end', 'actual_start', 'actual_end', 'quarter', 'status',
+                      'priority', 'estimated_hours', 'actual_hours', 'risk_rating', 'notes'}
+    update_data = {k: v for k, v in data.items() if k in allowed_fields}
+
+    if update_data:
+        db.update_audit(audit_id, **update_data)
+        increment_data_version()
+    return jsonify({'status': 'updated'})
+
+
+@app.route('/api/audits/<int:audit_id>', methods=['DELETE'])
+def delete_audit(audit_id):
+    """Delete an audit from the annual plan."""
+    deleted = db.delete_audit(audit_id)
+    if not deleted:
+        return not_found_response('Audit')
+    increment_data_version()
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/api/audits/spreadsheet', methods=['GET'])
+def get_audits_spreadsheet():
+    """Get audits in spreadsheet format (array of arrays)."""
+    data = db.get_audits_as_spreadsheet()
+    return jsonify(data)
+
+
+@app.route('/api/audits/spreadsheet', methods=['POST'])
+def save_audits_spreadsheet():
+    """Save audits from spreadsheet format."""
+    data = request.json
+    if not isinstance(data, list):
+        return jsonify({'error': 'Expected array of arrays'}), 400
+    result = db.save_audits_from_spreadsheet(data)
+    increment_data_version()
+    return jsonify({'status': 'saved', **result})
+
+
+@app.route('/api/audits/kanban', methods=['GET'])
+def get_audits_kanban():
+    """Get audits in kanban board format."""
+    board = db.get_audits_as_kanban()
+    return jsonify(board)
+
+
+@app.route('/api/audits/summary', methods=['GET'])
+def get_audits_summary():
+    """Get summary statistics for the annual audit plan."""
+    summary = db.get_audit_summary()
+    return jsonify(summary)
+
+
 @app.route('/library')
 def library():
     """Audit Library page for managing reference documents."""

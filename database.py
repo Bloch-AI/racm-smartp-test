@@ -71,7 +71,7 @@ class RACMDatabase:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- Kanban Tasks
+            -- Kanban Tasks (for individual audit execution)
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -80,6 +80,28 @@ class RACMDatabase:
                 assignee TEXT,
                 column_id TEXT DEFAULT 'planning',
                 risk_id INTEGER REFERENCES risks(id) ON DELETE SET NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Annual Audit Plan (list of all audits planned for the year)
+            CREATE TABLE IF NOT EXISTS audits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                audit_area TEXT,
+                owner TEXT,
+                planned_start DATE,
+                planned_end DATE,
+                actual_start DATE,
+                actual_end DATE,
+                quarter TEXT,
+                status TEXT DEFAULT 'planning',
+                priority TEXT DEFAULT 'medium',
+                estimated_hours REAL,
+                actual_hours REAL,
+                risk_rating TEXT,
+                notes TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -129,6 +151,8 @@ class RACMDatabase:
             CREATE INDEX IF NOT EXISTS idx_test_docs_risk ON test_documents(risk_id);
             CREATE INDEX IF NOT EXISTS idx_issues_risk ON issues(risk_id);
             CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
+            CREATE INDEX IF NOT EXISTS idx_audits_status ON audits(status);
+            CREATE INDEX IF NOT EXISTS idx_audits_quarter ON audits(quarter);
 
             -- Issue Attachments (file evidence)
             CREATE TABLE IF NOT EXISTS issue_attachments (
@@ -427,6 +451,214 @@ class RACMDatabase:
             'total': total,
             'by_column': {row['column_id']: row['count'] for row in by_column},
             'by_priority': {row['priority']: row['count'] for row in by_priority}
+        }
+
+    # ==================== AUDITS (Annual Audit Plan) ====================
+
+    def get_all_audits(self) -> List[Dict]:
+        """Get all audits from the annual audit plan."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM audits ORDER BY
+                CASE quarter
+                    WHEN 'Q1' THEN 1
+                    WHEN 'Q2' THEN 2
+                    WHEN 'Q3' THEN 3
+                    WHEN 'Q4' THEN 4
+                    ELSE 5
+                END,
+                planned_start,
+                title
+        """).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_audit(self, audit_id: int) -> Optional[Dict]:
+        """Get a single audit by ID."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM audits WHERE id = ?", (audit_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def create_audit(self, title: str, **kwargs) -> int:
+        """Create a new audit in the annual plan."""
+        conn = self._get_conn()
+        allowed = {'description', 'audit_area', 'owner', 'planned_start', 'planned_end',
+                   'actual_start', 'actual_end', 'quarter', 'status', 'priority',
+                   'estimated_hours', 'actual_hours', 'risk_rating', 'notes'}
+        filtered = {k: v for k, v in kwargs.items() if k in allowed}
+
+        columns = ['title'] + list(filtered.keys())
+        placeholders = ['?'] * len(columns)
+        values = [title] + list(filtered.values())
+
+        cursor = conn.execute(
+            f"INSERT INTO audits ({', '.join(columns)}) VALUES ({', '.join(placeholders)})",
+            values
+        )
+        conn.commit()
+        audit_id = cursor.lastrowid
+        conn.close()
+        return audit_id
+
+    def update_audit(self, audit_id: int, **kwargs) -> bool:
+        """Update an audit. Pass fields to update as kwargs."""
+        allowed = {'title', 'description', 'audit_area', 'owner', 'planned_start',
+                   'planned_end', 'actual_start', 'actual_end', 'quarter', 'status',
+                   'priority', 'estimated_hours', 'actual_hours', 'risk_rating', 'notes'}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+        updates['updated_at'] = 'CURRENT_TIMESTAMP'
+
+        conn = self._get_conn()
+        set_clause = ', '.join(f"{k} = ?" if k != 'updated_at' else f"{k} = CURRENT_TIMESTAMP"
+                               for k in updates.keys())
+        values = [v for k, v in updates.items() if k != 'updated_at']
+        conn.execute(f"UPDATE audits SET {set_clause} WHERE id = ?", (*values, audit_id))
+        conn.commit()
+        conn.close()
+        return True
+
+    def delete_audit(self, audit_id: int) -> bool:
+        """Delete an audit from the annual plan."""
+        conn = self._get_conn()
+        cursor = conn.execute("DELETE FROM audits WHERE id = ?", (audit_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def get_audits_as_spreadsheet(self) -> List[List]:
+        """Get audits in spreadsheet format (array of arrays)."""
+        audits = self.get_all_audits()
+        return [
+            [
+                str(a['id']),
+                a['title'] or '',
+                a['audit_area'] or '',
+                a['owner'] or '',
+                a['planned_start'] or '',
+                a['planned_end'] or '',
+                a['quarter'] or '',
+                a['status'] or 'planning',
+                a['priority'] or 'medium',
+                a['risk_rating'] or '',
+                str(a['estimated_hours']) if a['estimated_hours'] else '',
+                a['description'] or ''
+            ]
+            for a in audits
+        ]
+
+    def save_audits_from_spreadsheet(self, data: List[List]) -> Dict:
+        """Save audits from spreadsheet format. Returns stats."""
+        conn = self._get_conn()
+        existing_ids = {row['id'] for row in conn.execute("SELECT id FROM audits").fetchall()}
+        seen_ids = set()
+        created = 0
+        updated = 0
+
+        for row in data:
+            if not row or len(row) < 2:
+                continue
+
+            # Parse row data
+            audit_id = int(row[0]) if row[0] and str(row[0]).isdigit() else None
+            title = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+            if not title:
+                continue
+
+            audit_data = {
+                'title': title,
+                'audit_area': str(row[2]).strip() if len(row) > 2 and row[2] else None,
+                'owner': str(row[3]).strip() if len(row) > 3 and row[3] else None,
+                'planned_start': str(row[4]).strip() if len(row) > 4 and row[4] else None,
+                'planned_end': str(row[5]).strip() if len(row) > 5 and row[5] else None,
+                'quarter': str(row[6]).strip() if len(row) > 6 and row[6] else None,
+                'status': str(row[7]).strip() if len(row) > 7 and row[7] else 'planning',
+                'priority': str(row[8]).strip() if len(row) > 8 and row[8] else 'medium',
+                'risk_rating': str(row[9]).strip() if len(row) > 9 and row[9] else None,
+                'estimated_hours': float(row[10]) if len(row) > 10 and row[10] else None,
+                'description': str(row[11]).strip() if len(row) > 11 and row[11] else None
+            }
+
+            if audit_id and audit_id in existing_ids:
+                self.update_audit(audit_id, **audit_data)
+                seen_ids.add(audit_id)
+                updated += 1
+            else:
+                new_id = self.create_audit(**audit_data)
+                seen_ids.add(new_id)
+                created += 1
+
+        # Delete audits that were removed from spreadsheet
+        deleted = 0
+        for audit_id in existing_ids - seen_ids:
+            self.delete_audit(audit_id)
+            deleted += 1
+
+        conn.close()
+        return {'created': created, 'updated': updated, 'deleted': deleted}
+
+    def get_audits_as_kanban(self) -> Dict:
+        """Get audits grouped by status for kanban view."""
+        audits = self.get_all_audits()
+        columns = ['planning', 'in_progress', 'fieldwork', 'review', 'complete']
+        column_titles = {
+            'planning': 'Planning',
+            'in_progress': 'In Progress',
+            'fieldwork': 'Fieldwork',
+            'review': 'Review',
+            'complete': 'Complete'
+        }
+
+        board = {
+            'name': 'Annual Audit Plan',
+            'columns': []
+        }
+
+        for col_id in columns:
+            col_audits = [a for a in audits if (a['status'] or 'planning') == col_id]
+            board['columns'].append({
+                'id': col_id,
+                'title': column_titles.get(col_id, col_id.title()),
+                'items': [
+                    {
+                        'id': str(a['id']),
+                        'title': a['title'],
+                        'description': a['description'] or '',
+                        'priority': a['priority'] or 'medium',
+                        'owner': a['owner'] or '',
+                        'quarter': a['quarter'] or '',
+                        'audit_area': a['audit_area'] or '',
+                        'planned_start': a['planned_start'] or '',
+                        'planned_end': a['planned_end'] or ''
+                    }
+                    for a in col_audits
+                ]
+            })
+
+        return board
+
+    def get_audit_summary(self) -> Dict:
+        """Get summary statistics for annual audit plan."""
+        conn = self._get_conn()
+        total = conn.execute("SELECT COUNT(*) FROM audits").fetchone()[0]
+        by_status = conn.execute("""
+            SELECT status, COUNT(*) as count FROM audits GROUP BY status
+        """).fetchall()
+        by_quarter = conn.execute("""
+            SELECT quarter, COUNT(*) as count FROM audits GROUP BY quarter
+        """).fetchall()
+        by_area = conn.execute("""
+            SELECT audit_area, COUNT(*) as count FROM audits GROUP BY audit_area
+        """).fetchall()
+        conn.close()
+        return {
+            'total': total,
+            'by_status': {row['status'] or 'planning': row['count'] for row in by_status},
+            'by_quarter': {row['quarter']: row['count'] for row in by_quarter if row['quarter']},
+            'by_area': {row['audit_area']: row['count'] for row in by_area if row['audit_area']}
         }
 
     # ==================== FLOWCHARTS ====================
@@ -1237,7 +1469,7 @@ TABLE risks (RACM - Risk and Control Matrix):
   - created_at: TIMESTAMP
   - updated_at: TIMESTAMP
 
-TABLE tasks (Kanban board items):
+TABLE tasks (Kanban board items - for individual audit execution):
   - id: INTEGER PRIMARY KEY
   - title: TEXT
   - description: TEXT
@@ -1247,6 +1479,33 @@ TABLE tasks (Kanban board items):
   - risk_id: INTEGER (FK to risks.id)
   - created_at: TIMESTAMP
   - updated_at: TIMESTAMP
+
+TABLE audits (Annual Audit Plan - all audits planned for the year):
+  - id: INTEGER PRIMARY KEY
+  - title: TEXT (audit name, e.g., 'IT Security Audit', 'Financial Controls Audit')
+  - description: TEXT (scope and objectives)
+  - audit_area: TEXT (IT, Finance, Operations, HR, Compliance, Other)
+  - owner: TEXT (lead auditor)
+  - planned_start: DATE (planned start date)
+  - planned_end: DATE (planned end date)
+  - actual_start: DATE (actual start date)
+  - actual_end: DATE (actual completion date)
+  - quarter: TEXT (Q1, Q2, Q3, Q4 - fiscal quarter)
+  - status: TEXT (planning, in_progress, fieldwork, review, complete)
+  - priority: TEXT (low, medium, high)
+  - estimated_hours: REAL (estimated effort)
+  - actual_hours: REAL (actual effort)
+  - risk_rating: TEXT (low, medium, high - audit risk level)
+  - notes: TEXT
+  - created_at: TIMESTAMP
+  - updated_at: TIMESTAMP
+
+USEFUL QUERIES FOR ANNUAL AUDIT PLAN:
+  - Audits by quarter: SELECT * FROM audits WHERE quarter = 'Q1'
+  - Audits in progress: SELECT * FROM audits WHERE status IN ('in_progress', 'fieldwork')
+  - Overdue audits: SELECT * FROM audits WHERE planned_end < DATE('now') AND status != 'complete'
+  - Workload by owner: SELECT owner, COUNT(*) as count, SUM(estimated_hours) as hours FROM audits GROUP BY owner
+  - Progress summary: SELECT status, COUNT(*) FROM audits GROUP BY status
 
 TABLE flowcharts (Process diagrams):
   - id: INTEGER PRIMARY KEY
@@ -1335,12 +1594,14 @@ RELATIONSHIPS:
             'risk_summary': self.get_risk_summary(),
             'task_summary': self.get_task_summary(),
             'issue_summary': self.get_issue_summary(),
+            'audit_summary': self.get_audit_summary(),
             'flowchart_count': len(flowcharts),
             'test_doc_count': len(test_docs),
             'issue_attachment_count': len(issue_attachments),
             'risk_attachment_count': len(risk_attachments),
             'risks': self.get_all_risks(),
             'tasks': self.get_all_tasks(),
+            'audits': self.get_all_audits(),  # Annual audit plan
             'issues': issues_with_doc_status,  # With has_documentation flag
             'flowcharts': [{'name': f['name'], 'risk_id': f['risk_id']}
                           for f in flowcharts],
