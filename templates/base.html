@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SmartPapers{% endblock %}</title>
+
+    <!-- Google Fonts - Bloch AI Design System -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+                        'mono': ['DM Mono', 'monospace'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#e6f4fa',
+                            100: '#cce9f5',
+                            200: '#99d3eb',
+                            300: '#66bde1',
+                            400: '#33a7d7',
+                            500: '#008bd1',
+                            600: '#007ab8',
+                            700: '#00689e',
+                            800: '#005785',
+                            900: '#00456b',
+                        },
+                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
+                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
+                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' },
+                        info: { light: '#dbeafe', DEFAULT: '#3b82f6', dark: '#1d4ed8' },
+                        felix: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Shared CSS -->
+    <link rel="stylesheet" href="/static/css/common.css">
+
+    {% block head_extra %}{% endblock %}
+
+    <style>
+        {% block page_styles %}{% endblock %}
+    </style>
+</head>
+<body class="h-full">
+    <div class="min-h-full {% block body_class %}{% endblock %}">
+        {% block navigation %}
+        <!-- Navigation -->
+        <nav class="bg-white border-b border-slate-200">
+            <div class="flex h-16 items-center justify-between px-4 sm:px-6">
+                <!-- Left: Logo + Nav Links -->
+                <div class="flex items-center">
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <img src="/static/logo.png" alt="SmartPapers Logo" class="h-8 w-auto">
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-slate-900 leading-tight font-display">SmartPapers</span>
+                            <span class="text-xs text-slate-400 -mt-0.5">Internal Audit</span>
+                        </div>
+                    </div>
+                    <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
+                        <a href="/audit-plan" class="{% if active_page == 'audit-plan' %}bg-primary-50 text-primary-700{% else %}text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %} rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Plan
+                        </a>
+                        <a href="/" class="{% if active_page == 'workpapers' %}bg-primary-50 text-primary-700{% else %}text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %} rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Workpapers
+                        </a>
+                    </div>
+                </div>
+                <!-- Right: Felix AI + Library -->
+                <div class="flex items-center gap-4">
+                    <div class="hidden sm:flex sm:items-center sm:space-x-1">
+                        <a href="/felix" class="flex items-center gap-1.5 {% if active_page == 'felix' %}bg-primary-50 text-primary-700{% else %}text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %} rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+                            </svg>
+                            Felix AI
+                        </a>
+                        <a href="/library" class="flex items-center gap-1.5 {% if active_page == 'library' %}bg-primary-50 text-primary-700{% else %}text-slate-500 hover:bg-slate-100 hover:text-slate-700{% endif %} rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            Library
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        {% endblock %}
+
+        <!-- Main Content -->
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Toast notifications container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"></div>
+
+    <!-- Shared JavaScript utilities -->
+    <script src="/static/js/utils.js"></script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

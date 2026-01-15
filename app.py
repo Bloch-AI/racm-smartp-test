@@ -342,7 +342,7 @@ def process_library_document(filepath: str, doc_id: int, mime_type: str = None) 
 def index():
     # TODO: Load audit_name from database/config when audit management is implemented
     audit_name = None  # Placeholder for audit name
-    return render_template('index.html', audit_name=audit_name)
+    return render_template('index.html', audit_name=audit_name, active_page='workpapers')
 
 # ==================== RACM (Spreadsheet) API ====================
 
@@ -423,7 +423,7 @@ def delete_risk(risk_id):
 @app.route('/flowchart')
 @app.route('/flowchart/<flowchart_id>')
 def flowchart(flowchart_id=None):
-    return render_template('flowchart.html', flowchart_id=flowchart_id)
+    return render_template('flowchart.html', flowchart_id=flowchart_id, active_page='flowchart')
 
 @app.route('/api/flowchart/<flowchart_id>', methods=['GET'])
 def get_flowchart(flowchart_id):
@@ -486,14 +486,14 @@ def test_document_exists(risk_code, doc_type):
 def kanban(board_id='default'):
     # TODO: Load audit_name from database/config when audit management is implemented
     audit_name = None  # Placeholder for audit name
-    return render_template('kanban.html', board_id=board_id, audit_name=audit_name)
+    return render_template('kanban.html', board_id=board_id, audit_name=audit_name, active_page='kanban')
 
 
 @app.route('/audit-plan')
 def audit_plan():
     """Annual Audit Plan page with spreadsheet and kanban views."""
     audit_name = None
-    return render_template('audit_plan.html', audit_name=audit_name)
+    return render_template('audit_plan.html', audit_name=audit_name, active_page='audit-plan')
 
 
 # ==================== Annual Audit Plan API ====================
@@ -606,7 +606,7 @@ def get_audits_summary():
 def library():
     """Audit Library page for managing reference documents."""
     audit_name = None
-    return render_template('library.html', audit_name=audit_name)
+    return render_template('library.html', audit_name=audit_name, active_page='library')
 
 
 # ==================== LIBRARY API ====================
@@ -2312,7 +2312,7 @@ init_felix_tables()
 def felix_chat():
     """Felix AI full-screen chat page."""
     user_id = session.get('user_id', 'default_user')
-    return render_template('felix.html', user_id=user_id)
+    return render_template('felix.html', user_id=user_id, active_page='felix')
 
 
 @app.route('/api/felix/conversations', methods=['GET'])

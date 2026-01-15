@@ -1,0 +1,507 @@
+/* ========================================
+   SmartPapers Design System
+   Shared CSS for all pages
+   ======================================== */
+
+/* ========================================
+   CSS CUSTOM PROPERTIES
+   ======================================== */
+:root {
+    /* Bloch AI Brand Colors */
+    --primary: #008bd1;
+    --primary-light: #e6f4fa;
+    --primary-dark: #00689e;
+    --success: #22c55e;
+    --success-light: #dcfce7;
+    --warning: #f59e0b;
+    --warning-light: #fef3c7;
+    --danger: #ef4444;
+    --danger-light: #fee2e2;
+    --radius: 8px;
+    --radius-lg: 8px;
+}
+
+/* ========================================
+   TYPOGRAPHY
+   ======================================== */
+* {
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+h1, h2, h3, .font-display {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+code, pre, .font-mono {
+    font-family: 'DM Mono', monospace;
+}
+
+/* ========================================
+   BUTTON SYSTEM
+   ======================================== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.btn svg { width: 16px; height: 16px; }
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    border: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.btn-primary:hover {
+    background: var(--primary-dark);
+    transform: scale(1.02);
+}
+.btn-primary:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-secondary {
+    background: white;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+.btn-secondary:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+    transform: scale(1.02);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: #6b7280;
+    border: none;
+}
+.btn-ghost:hover { background: #f3f4f6; color: #374151; }
+
+.btn-text {
+    background: transparent;
+    color: #6b7280;
+    border: none;
+    padding: 8px 12px;
+}
+.btn-text:hover { color: #111827; }
+
+/* ========================================
+   STATUS CHIPS / BADGES
+   ======================================== */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 9999px;
+    white-space: nowrap;
+}
+.chip-neutral { background: #f3f4f6; color: #4b5563; }
+.chip-success { background: var(--success-light); color: #15803d; }
+.chip-warning { background: var(--warning-light); color: #b45309; }
+.chip-danger { background: var(--danger-light); color: #b91c1c; }
+.chip-info { background: var(--primary-light); color: var(--primary-dark); }
+
+.badge {
+    display: inline-flex;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    background: #f3f4f6;
+    color: #4b5563;
+}
+.badge-blue { background: #e6f4fa; color: #007ab8; }
+.badge-high { background: #fee2e2; color: #b91c1c; }
+.badge-medium { background: #fef3c7; color: #b45309; }
+.badge-low { background: #dcfce7; color: #15803d; }
+
+/* ========================================
+   FORM STYLES
+   ======================================== */
+.form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 6px;
+}
+.form-input {
+    width: 100%;
+    height: 38px;
+    padding: 0 12px;
+    font-size: 14px;
+    border: 1px solid #d1d5db;
+    border-radius: var(--radius);
+    transition: all 0.15s;
+    background: white;
+}
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 139, 209, 0.15);
+}
+textarea.form-input {
+    height: auto;
+    padding: 10px 12px;
+}
+.form-hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+/* ========================================
+   TAB STYLES
+   ======================================== */
+.tab-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    background: transparent;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+}
+.tab-btn:hover { color: #374151; }
+.tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+/* ========================================
+   DRAWER / PANEL STYLES
+   ======================================== */
+.drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--primary);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.drawer-header-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.drawer-header-icon svg { width: 20px; height: 20px; color: white; }
+.drawer-header-title { font-size: 15px; font-weight: 600; color: white; }
+.drawer-header-subtitle { font-size: 12px; color: rgba(255,255,255,0.7); }
+.drawer-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.drawer-close:hover { background: rgba(255,255,255,0.1); color: white; }
+
+/* Panel transition classes */
+.panel-backdrop {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.panel-content {
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+}
+.open .panel-backdrop {
+    opacity: 1;
+}
+.open .panel-content {
+    transform: translateX(0);
+}
+
+/* ========================================
+   MODAL STYLES
+   ======================================== */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+.modal-title { font-size: 16px; font-weight: 600; color: #1e293b; }
+.modal-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    transition: all 0.15s;
+}
+.modal-close:hover { background: #f1f5f9; color: #4b5563; }
+
+.modal-overlay {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+}
+
+/* ========================================
+   KANBAN BOARD STYLES
+   ======================================== */
+.kanban-container {
+    display: flex;
+    gap: 16px;
+    padding: 8px 0;
+    overflow-x: auto;
+}
+.kanban-board {
+    background: white;
+    border-radius: 8px;
+    min-width: 240px;
+    max-width: 280px;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+    border: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+.kanban-board header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 8px 8px 0 0;
+}
+.kanban-board header .kanban-title-board {
+    font-weight: 600;
+    font-size: 13px;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.kanban-drag {
+    min-height: 100px;
+    padding: 12px;
+    background: #fafafa;
+}
+.kanban-item {
+    background: white;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    border: 1px solid #e5e7eb;
+    cursor: grab;
+    transition: all 0.15s ease;
+}
+.kanban-item:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    border-color: #d1d5db;
+}
+.kanban-item[data-priority="high"] {
+    border-left: 3px solid #ef4444;
+}
+.kanban-item[data-priority="medium"] {
+    border-left: 3px solid #f59e0b;
+}
+.kanban-item[data-priority="low"] {
+    border-left: 3px solid #22c55e;
+}
+.kanban-item-title { font-weight: 500; font-size: 14px; color: #1e293b; margin-bottom: 4px; }
+.kanban-item-meta { font-size: 12px; color: #64748b; display: flex; gap: 8px; flex-wrap: wrap; }
+.kanban-item-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 9999px;
+}
+
+/* Kanban view toggle buttons */
+.kanban-view-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+}
+.kanban-view-btn:hover {
+    color: #374151;
+    background: #f8fafc;
+}
+.kanban-view-btn.active {
+    color: white;
+    background: var(--primary);
+}
+
+/* ========================================
+   TOAST NOTIFICATIONS
+   ======================================== */
+.toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 9999;
+    animation: toastSlideIn 0.3s ease;
+}
+@keyframes toastSlideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+.toast-success { background: #22c55e; }
+.toast-error { background: #ef4444; }
+.toast-info { background: #3b82f6; }
+
+/* ========================================
+   EMPTY STATES
+   ======================================== */
+.empty-state {
+    text-align: center;
+    padding: 32px 16px;
+    color: #6b7280;
+}
+.empty-state-icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 12px;
+    color: #d1d5db;
+}
+.empty-state-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #4b5563;
+    margin-bottom: 4px;
+}
+.empty-state-text {
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+/* ========================================
+   TABLE STYLES - jSpreadsheet
+   ======================================== */
+.jexcel_content, .jspreadsheet_content {
+    font-family: inherit;
+}
+.jexcel tbody td, .jspreadsheet tbody td {
+    font-size: 13px;
+    white-space: normal !important;
+    word-wrap: break-word;
+    vertical-align: top;
+    padding: 10px 12px;
+    border-color: #f1f5f9 !important;
+}
+/* Clean header - light background */
+.jexcel thead tr:first-child td, .jspreadsheet thead tr:first-child td {
+    background: #f8fafc !important;
+    color: #475569 !important;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: normal !important;
+    word-wrap: break-word;
+    vertical-align: middle;
+    padding: 12px 12px;
+    line-height: 1.4;
+    border-bottom: 2px solid #e2e8f0 !important;
+}
+/* Zebra striping */
+.jexcel tbody tr:nth-child(even) td, .jspreadsheet tbody tr:nth-child(even) td {
+    background-color: #fafafa;
+}
+.jexcel tbody tr:hover td, .jspreadsheet tbody tr:hover td {
+    background-color: #f0f9ff !important;
+}
+.jexcel_container, .jspreadsheet_container {
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+    border: 1px solid #e2e8f0;
+}
+
+/* Filter row styling */
+.jexcel thead tr.jexcel_filter td, .jspreadsheet thead tr.jexcel_filter td {
+    background: white !important;
+    padding: 8px 8px;
+}
+.jexcel thead tr.jexcel_filter td input,
+.jspreadsheet thead tr.jexcel_filter td input {
+    width: 100% !important;
+    padding: 6px 10px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: var(--radius) !important;
+    font-size: 12px !important;
+    background: #f9fafb !important;
+    color: #374151 !important;
+    box-sizing: border-box;
+}
+.jexcel thead tr.jexcel_filter td input:focus,
+.jspreadsheet thead tr.jexcel_filter td input:focus {
+    border-color: var(--primary) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(0, 139, 209, 0.15) !important;
+    background: white !important;
+}
+
+/* ========================================
+   INLINE ACTIONS
+   ======================================== */
+.action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--primary);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+.action-link:hover { color: var(--primary-dark); }
+.action-link svg { width: 14px; height: 14px; }
+
+/* ========================================
+   UPLOAD ZONE
+   ======================================== */
+.upload-zone {
+    border: 2px dashed #e5e7eb;
+    border-radius: 12px;
+    transition: all 0.15s;
+}
+.upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--primary);
+    background: #f0f9ff;
+}
+
+/* ========================================
+   SCROLLBAR
+   ======================================== */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #9ca3af; }

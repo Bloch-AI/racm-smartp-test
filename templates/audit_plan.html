@@ -1,118 +1,16 @@
-<!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-50">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Annual Audit Plan - SmartPapers</title>
+{% extends "base.html" %}
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+{% block title %}Annual Audit Plan - SmartPapers{% endblock %}
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        'sans': ['Inter', 'system-ui', 'sans-serif'],
-                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-                        'mono': ['DM Mono', 'monospace'],
-                    },
-                    colors: {
-                        primary: {
-                            50: '#e6f4fa',
-                            100: '#cce9f5',
-                            200: '#99d3eb',
-                            300: '#66bde1',
-                            400: '#33a7d7',
-                            500: '#008bd1',
-                            600: '#007ab8',
-                            700: '#00689e',
-                            800: '#005785',
-                            900: '#00456b',
-                        },
-                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
-                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
-                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' }
-                    }
-                }
-            }
-        }
-    </script>
-
+{% block head_extra %}
     <!-- jspreadsheet -->
     <link rel="stylesheet" href="https://bossanova.uk/jspreadsheet/v4/jspreadsheet.css" type="text/css" />
     <link rel="stylesheet" href="https://jsuites.net/v5/jsuites.css" type="text/css" />
-
     <!-- jKanban -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jkanban@1.3.1/dist/jkanban.min.css">
+{% endblock %}
 
-    <style>
-        * { font-family: 'Inter', system-ui, sans-serif; }
-        h1, h2, h3, .font-display { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
-
-        :root {
-            --primary: #008bd1;
-            --primary-light: #e6f4fa;
-            --primary-dark: #00689e;
-        }
-
-        /* Buttons */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            height: 36px;
-            padding: 0 16px;
-            font-size: 13px;
-            font-weight: 500;
-            border-radius: 8px;
-            transition: all 0.15s ease;
-            cursor: pointer;
-        }
-        .btn svg { width: 16px; height: 16px; }
-        .btn-primary { background: var(--primary); color: white; border: none; }
-        .btn-primary:hover { background: var(--primary-dark); }
-        .btn-secondary { background: white; color: #374151; border: 1px solid #d1d5db; }
-        .btn-secondary:hover { background: #f9fafb; }
-        .btn-ghost { background: transparent; color: #6b7280; border: none; }
-        .btn-ghost:hover { background: #f3f4f6; color: #374151; }
-
-        /* Tabs */
-        .tab-btn {
-            padding: 8px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            color: #6b7280;
-            border-bottom: 2px solid transparent;
-            transition: all 0.15s ease;
-            cursor: pointer;
-        }
-        .tab-btn:hover { color: #374151; }
-        .tab-btn.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        /* Kanban view toggle */
-        .kanban-view-btn {
-            padding: 6px 14px;
-            font-size: 13px;
-            font-weight: 500;
-            color: #6b7280;
-            border-radius: 6px;
-            transition: all 0.15s ease;
-        }
-        .kanban-view-btn:hover {
-            color: #374151;
-            background: #f8fafc;
-        }
-        .kanban-view-btn.active {
-            color: white;
-            background: var(--primary);
-        }
-
+{% block page_styles %}
         /* Spreadsheet customization */
         .jexcel { font-size: 13px; }
         .jexcel td { vertical-align: middle; }
@@ -127,215 +25,41 @@
             width: 100% !important;
         }
 
-        /* Custom jKanban styles */
-        .kanban-container {
-            display: flex;
-            gap: 16px;
-            padding: 8px 0;
-            overflow-x: auto;
-        }
-        .kanban-board {
+        /* Kanban container - full width with white background */
+        #kanban-container {
             background: white;
             border-radius: 8px;
-            min-width: 240px;
-            max-width: 240px;
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
             border: 1px solid #e2e8f0;
-            flex-shrink: 0;
+            padding: 16px;
         }
-        .kanban-board header {
-            padding: 14px 16px;
-            border-bottom: 1px solid #e2e8f0;
-            background: #f8fafc;
-            border-radius: 8px 8px 0 0;
+        #kanban-board {
+            width: 100%;
         }
-        .kanban-board header .kanban-title-board {
-            font-weight: 600;
-            font-size: 13px;
-            color: #374151;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
+        /* Override ALL grey backgrounds in kanban */
+        #kanban-container .kanban-drag,
+        #kanban-container .kanban-board,
+        #kanban-board .kanban-drag,
+        #kanban-board .kanban-board {
+            background: white !important;
         }
-        .kanban-drag {
-            min-height: 150px;
-            padding: 12px;
-            background: #fafafa;
+        /* Keep header slightly different for visual separation */
+        #kanban-container .kanban-board header,
+        #kanban-board .kanban-board header {
+            background: #f8fafc !important;
         }
-        .kanban-item {
-            background: white;
-            border-radius: 6px;
-            padding: 12px;
-            margin-bottom: 8px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            border: 1px solid #e5e7eb;
-            cursor: grab;
-            transition: all 0.15s ease;
-        }
-        .kanban-item:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            border-color: #d1d5db;
-        }
-        .kanban-item[data-priority="high"] {
-            border-left: 3px solid #ef4444;
-        }
-        .kanban-item[data-priority="medium"] {
-            border-left: 3px solid #f59e0b;
-        }
-        .kanban-item[data-priority="low"] {
-            border-left: 3px solid #22c55e;
-        }
-        .kanban-item-title { font-weight: 500; font-size: 14px; color: #1e293b; margin-bottom: 4px; }
-        .kanban-item-meta { font-size: 12px; color: #64748b; display: flex; gap: 8px; flex-wrap: wrap; }
-        .kanban-item-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-weight: 500;
-            border-radius: 9999px;
-        }
-        .badge-high { background: #fee2e2; color: #b91c1c; }
-        .badge-medium { background: #fef3c7; color: #b45309; }
-        .badge-low { background: #dcfce7; color: #15803d; }
 
-        /* Slide-in Panel */
-        .panel-backdrop {
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .panel-content {
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-        }
+        /* Slide-in Panel animation override */
         #edit-modal.open .panel-backdrop {
             opacity: 1;
         }
         #edit-modal.open .panel-content {
             transform: translateX(0);
         }
+{% endblock %}
 
-        /* Drawer header - matches AI panel */
-        .drawer-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            background: var(--primary);
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .drawer-header-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.15);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .drawer-header-icon svg { width: 20px; height: 20px; color: white; }
-        .drawer-header-title { font-size: 15px; font-weight: 600; color: white; }
-        .drawer-header-subtitle { font-size: 12px; color: rgba(255,255,255,0.7); }
-        .drawer-close {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: rgba(255,255,255,0.7);
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .drawer-close:hover { background: rgba(255,255,255,0.1); color: white; }
+{% block body_class %}flex flex-col{% endblock %}
 
-        /* Form styles - matches index.html */
-        .form-label {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-            color: #374151;
-            margin-bottom: 6px;
-        }
-        .form-input {
-            width: 100%;
-            height: 38px;
-            padding: 0 12px;
-            font-size: 14px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            transition: all 0.15s;
-        }
-        .form-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(0, 139, 209, 0.15);
-        }
-        textarea.form-input {
-            height: auto;
-            padding: 10px 12px;
-        }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            padding: 12px 20px;
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 9999;
-            animation: toastSlideIn 0.3s ease;
-        }
-        @keyframes toastSlideIn {
-            from { transform: translateY(20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-    </style>
-</head>
-<body class="h-full">
-    <div class="min-h-full flex flex-col">
-        <!-- Navigation -->
-        <nav class="bg-white border-b border-slate-200">
-            <div class="flex h-16 items-center justify-between px-4 sm:px-6">
-                <div class="flex items-center">
-                    <div class="flex items-center gap-2 flex-shrink-0">
-                        <img src="/static/logo.png" alt="SmartPapers Logo" class="h-8 w-auto">
-                        <div class="flex flex-col">
-                            <span class="text-xl font-bold text-slate-900 leading-tight font-display">SmartPapers</span>
-                            <span class="text-xs text-slate-400 -mt-0.5">Internal Audit</span>
-                        </div>
-                    </div>
-                    <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
-                        <a href="/audit-plan" class="bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
-                            Audit Plan
-                        </a>
-                        <a href="/" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            Audit Workpapers
-                        </a>
-                    </div>
-                </div>
-                <!-- Right side -->
-                <div class="flex items-center gap-4">
-                    <div class="hidden sm:flex sm:items-center sm:space-x-1">
-                        <a href="/felix" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
-                            </svg>
-                            Felix AI
-                        </a>
-                        <a href="/library" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                            </svg>
-                            Library
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </nav>
-
+{% block content %}
         <!-- Main Content -->
         <main class="flex-1 py-6">
             <div class="mx-auto px-4 sm:px-6">
@@ -410,7 +134,6 @@
                 </div>
             </div>
         </main>
-    </div>
 
     <!-- Edit Panel (Slide-in from right) -->
     <div id="edit-modal" class="fixed inset-0 z-50 hidden">
@@ -555,10 +278,9 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
-    <!-- Toast Container -->
-    <div id="toast-container"></div>
-
+{% block scripts %}
     <!-- Scripts -->
     <script src="https://bossanova.uk/jspreadsheet/v4/jspreadsheet.js"></script>
     <script src="https://jsuites.net/v5/jsuites.js"></script>
@@ -567,12 +289,13 @@
     <script>
         // State
         let currentTab = 'spreadsheet';
-        let kanbanViewMode = 'stage'; // 'stage' or 'quarter'
+        let kanbanViewMode = 'stage';
         let spreadsheet = null;
         let kanban = null;
         let audits = [];
         let saveTimeout = null;
         let isSaving = false;
+        let currentEditAuditId = null;
 
         // Column definitions for spreadsheet
         const columns = [
@@ -604,27 +327,27 @@
                     const container = document.getElementById('spreadsheet-container');
                     const width = container.offsetWidth - 2;
                     const tableEl = container.querySelector('.jexcel_container');
-                    if (tableEl) {
-                        tableEl.style.width = width + 'px';
-                    }
+                    if (tableEl) tableEl.style.width = width + 'px';
                     const jexcelTable = container.querySelector('.jexcel');
-                    if (jexcelTable) {
-                        jexcelTable.style.width = width + 'px';
-                    }
+                    if (jexcelTable) jexcelTable.style.width = width + 'px';
                 }
             }, 150));
-        }
 
-        function debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
-                    clearTimeout(timeout);
-                    func(...args);
-                };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
+            // File upload handler
+            document.getElementById('attachment-upload').addEventListener('change', async (e) => {
+                if (e.target.files.length > 0) {
+                    await uploadAttachment(e.target.files);
+                    e.target.value = '';
+                }
+            });
+
+            // Click handler for "View →" links in spreadsheet
+            document.getElementById('spreadsheet').addEventListener('click', (e) => {
+                if (e.target.classList.contains('open-audit-panel')) {
+                    const auditId = parseInt(e.target.getAttribute('data-audit-id'));
+                    if (auditId) openEditModal(auditId);
+                }
+            });
         }
 
         async function loadAudits() {
@@ -641,7 +364,6 @@
             const container = document.getElementById('spreadsheet');
             const data = auditsToSpreadsheetFormat(audits);
 
-            // Add empty row if no data
             if (data.length === 0) {
                 data.push(['', '', '', '', '', '', '', 'planning', 'medium', '', '', '', '']);
             }
@@ -678,7 +400,7 @@
                 a.risk_rating || '',
                 a.estimated_hours ? String(a.estimated_hours) : '',
                 a.description || '',
-                '' // Details column - rendered via updateTable
+                ''
             ]);
         }
 
@@ -718,7 +440,6 @@
             }
         }
 
-        // Auto-save spreadsheet changes with debounce
         function onSpreadsheetChange() {
             if (saveTimeout) clearTimeout(saveTimeout);
             saveTimeout = setTimeout(autoSaveSpreadsheet, 500);
@@ -730,23 +451,18 @@
 
             const data = spreadsheet.getData();
             try {
-                const response = await fetch('/api/audits/spreadsheet', {
+                await fetch('/api/audits/spreadsheet', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                const result = await response.json();
 
-                // Reload audits to get updated IDs for new rows
                 await loadAudits();
-
-                // Update spreadsheet with new IDs (without triggering another save)
                 const newData = auditsToSpreadsheetFormat(audits);
                 if (newData.length === 0) {
                     newData.push(['', '', '', '', '', '', '', 'planning', 'medium', '', '', '']);
                 }
 
-                // Only update if IDs changed (new rows were created)
                 const currentData = spreadsheet.getData();
                 let needsUpdate = false;
                 for (let i = 0; i < Math.min(currentData.length, newData.length); i++) {
@@ -756,7 +472,6 @@
                     }
                 }
                 if (needsUpdate || currentData.length !== newData.length) {
-                    // Temporarily remove onchange to prevent loop
                     spreadsheet.setData(newData);
                 }
 
@@ -803,22 +518,17 @@
                 }
             });
 
-            // Set data-priority attribute on kanban items for CSS styling
             document.querySelectorAll('.kanban-item').forEach(item => {
                 const auditId = parseInt(item.getAttribute('data-eid'));
                 const audit = audits.find(a => a.id === auditId);
-                if (audit) {
-                    item.setAttribute('data-priority', audit.priority || 'medium');
-                }
+                if (audit) item.setAttribute('data-priority', audit.priority || 'medium');
             });
         }
 
         function setKanbanView(viewMode) {
             kanbanViewMode = viewMode;
-            // Update toggle buttons
             document.getElementById('view-stage').classList.toggle('active', viewMode === 'stage');
             document.getElementById('view-quarter').classList.toggle('active', viewMode === 'quarter');
-            // Re-render kanban
             initKanban();
         }
 
@@ -830,22 +540,12 @@
                     columns: columns.map(col => ({
                         id: col,
                         title: col,
-                        items: audits.filter(a => {
-                            if (col === 'Unassigned') return !a.quarter;
-                            return a.quarter === col;
-                        })
+                        items: audits.filter(a => col === 'Unassigned' ? !a.quarter : a.quarter === col)
                     }))
                 };
             } else {
-                // Stage view (default)
                 const columns = ['planning', 'in_progress', 'fieldwork', 'review', 'complete'];
-                const titles = {
-                    'planning': 'Planning',
-                    'in_progress': 'In Progress',
-                    'fieldwork': 'Fieldwork',
-                    'review': 'Review',
-                    'complete': 'Complete'
-                };
+                const titles = { 'planning': 'Planning', 'in_progress': 'In Progress', 'fieldwork': 'Fieldwork', 'review': 'Review', 'complete': 'Complete' };
                 return {
                     name: 'Annual Audit Plan',
                     columns: columns.map(col => ({
@@ -860,13 +560,7 @@
         function buildKanbanItemHtml(audit, viewMode = 'stage') {
             const priority = audit.priority || 'medium';
             const badgeClass = `badge-${priority}`;
-            const statusLabels = {
-                'planning': 'Planning',
-                'in_progress': 'In Progress',
-                'fieldwork': 'Fieldwork',
-                'review': 'Review',
-                'complete': 'Complete'
-            };
+            const statusLabels = { 'planning': 'Planning', 'in_progress': 'In Progress', 'fieldwork': 'Fieldwork', 'review': 'Review', 'complete': 'Complete' };
 
             let html = `<div class="kanban-item-title">${escapeHtml(audit.title)}</div>`;
             if (audit.description) {
@@ -877,7 +571,6 @@
             if (audit.audit_area) {
                 html += `<span class="kanban-item-badge bg-slate-100 text-slate-600">${escapeHtml(audit.audit_area)}</span>`;
             }
-            // Show quarter in stage view, show status in quarter view
             if (viewMode === 'stage' && audit.quarter) {
                 html += `<span class="text-slate-500">${audit.quarter}</span>`;
             } else if (viewMode === 'quarter' && audit.status) {
@@ -898,26 +591,21 @@
         async function switchTab(tab) {
             if (tab === currentTab) return;
 
-            // Update tab buttons
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.tab === tab);
             });
 
-            // Show/hide containers
             document.getElementById('spreadsheet-container').classList.toggle('hidden', tab !== 'spreadsheet');
             document.getElementById('kanban-container').classList.toggle('hidden', tab !== 'kanban');
 
-            // Show/hide kanban view toggle
             const kanbanToggle = document.getElementById('kanban-view-toggle');
             if (kanbanToggle) {
                 kanbanToggle.classList.toggle('hidden', tab !== 'kanban');
                 kanbanToggle.classList.toggle('flex', tab === 'kanban');
             }
 
-            // Reload data from server
             await loadAudits();
 
-            // Refresh the active view
             if (tab === 'spreadsheet') {
                 const data = auditsToSpreadsheetFormat(audits);
                 if (data.length === 0) {
@@ -932,7 +620,6 @@
         }
 
         async function saveData() {
-            // Force immediate save (for manual save button)
             if (currentTab === 'spreadsheet') {
                 if (saveTimeout) clearTimeout(saveTimeout);
                 await autoSaveSpreadsheet();
@@ -945,17 +632,11 @@
             if (currentTab === 'spreadsheet' && spreadsheet) {
                 spreadsheet.search(query);
             } else {
-                // Search kanban items
                 const kanbanItems = document.querySelectorAll('#kanban-board .kanban-item');
                 const lowerQuery = query.toLowerCase();
-
                 kanbanItems.forEach(item => {
                     const text = item.textContent.toLowerCase();
-                    if (!query || text.includes(lowerQuery)) {
-                        item.style.display = '';
-                    } else {
-                        item.style.display = 'none';
-                    }
+                    item.style.display = (!query || text.includes(lowerQuery)) ? '' : 'none';
                 });
             }
         }
@@ -1015,9 +696,7 @@
                 loadAttachments(null);
             }
 
-            // Show modal with slide-in animation
             modal.classList.remove('hidden');
-            // Trigger reflow for animation
             modal.offsetHeight;
             modal.classList.add('open');
         }
@@ -1025,10 +704,7 @@
         function closeModal() {
             const modal = document.getElementById('edit-modal');
             modal.classList.remove('open');
-            // Wait for animation to complete before hiding
-            setTimeout(() => {
-                modal.classList.add('hidden');
-            }, 300);
+            setTimeout(() => modal.classList.add('hidden'), 300);
         }
 
         async function saveAudit() {
@@ -1070,7 +746,6 @@
                         body: JSON.stringify(data)
                     });
                     const result = await response.json();
-                    // Update form to editing mode so attachments can be added
                     document.getElementById('edit-audit-id').value = result.id;
                     currentEditAuditId = result.id;
                     document.getElementById('modal-title').textContent = 'Edit Audit';
@@ -1079,7 +754,6 @@
                     showToast('Audit created - you can now attach files', 'success');
                 }
 
-                // Don't close modal for new audits (so user can attach files)
                 await loadAudits();
                 if (currentTab === 'kanban') {
                     initKanban();
@@ -1097,9 +771,7 @@
 
         async function deleteAudit() {
             const auditId = document.getElementById('edit-audit-id').value;
-            if (!auditId) return;
-
-            if (!confirm('Are you sure you want to delete this audit?')) return;
+            if (!auditId || !confirm('Are you sure you want to delete this audit?')) return;
 
             try {
                 await fetch(`/api/audits/${auditId}`, { method: 'DELETE' });
@@ -1127,13 +799,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: newStatus })
                 });
-                // Update local state
                 const audit = audits.find(a => a.id === auditId);
                 if (audit) audit.status = newStatus;
-
-                // Update column counts in headers
                 updateKanbanCounts();
-
                 showToast('Status updated', 'success');
             } catch (e) {
                 showToast('Failed to update status', 'error');
@@ -1147,13 +815,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ quarter: newQuarter || null })
                 });
-                // Update local state
                 const audit = audits.find(a => a.id === auditId);
                 if (audit) audit.quarter = newQuarter;
-
-                // Update column counts in headers
                 updateKanbanCounts();
-
                 showToast('Quarter updated', 'success');
             } catch (e) {
                 showToast('Failed to update quarter', 'error');
@@ -1187,16 +851,7 @@
             });
         }
 
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
         // ==================== Attachment Functions ====================
-
-        let currentEditAuditId = null;
 
         async function loadAttachments(auditId) {
             const listDiv = document.getElementById('attachments-list');
@@ -1215,8 +870,7 @@
                 }
 
                 listDiv.innerHTML = attachments.map(att => {
-                    const sizeKB = Math.round(att.file_size / 1024);
-                    const sizeStr = sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)} MB` : `${sizeKB} KB`;
+                    const sizeStr = formatFileSize(att.file_size);
                     const icon = getFileIcon(att.mime_type);
                     return `
                         <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -1293,36 +947,5 @@
                 showToast('Delete failed', 'error');
             }
         }
-
-        // Setup event handlers
-        document.addEventListener('DOMContentLoaded', () => {
-            // File upload handler
-            document.getElementById('attachment-upload').addEventListener('change', async (e) => {
-                if (e.target.files.length > 0) {
-                    await uploadAttachment(e.target.files);
-                    e.target.value = ''; // Reset input
-                }
-            });
-
-            // Click handler for "View →" links in spreadsheet
-            document.getElementById('spreadsheet').addEventListener('click', (e) => {
-                if (e.target.classList.contains('open-audit-panel')) {
-                    const auditId = parseInt(e.target.getAttribute('data-audit-id'));
-                    if (auditId) {
-                        openEditModal(auditId);
-                    }
-                }
-            });
-        });
-
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast ${type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-green-600' : 'bg-slate-800'}`;
-            toast.textContent = message;
-            container.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
     </script>
-</body>
-</html>
+{% endblock %}

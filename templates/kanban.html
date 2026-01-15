@@ -1,272 +1,26 @@
-<!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-50">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartPapers - Audit Plan</title>
+{% extends "base.html" %}
 
-    <!-- Google Fonts - Bloch AI Design System -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+{% block title %}SmartPapers - Task Board{% endblock %}
 
-    <!-- Tailwind CSS via CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        'sans': ['Inter', 'system-ui', 'sans-serif'],
-                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-                        'mono': ['DM Mono', 'monospace'],
-                    },
-                    colors: {
-                        // Bloch AI brand blue
-                        primary: {
-                            50: '#e6f4fa',
-                            100: '#cce9f5',
-                            200: '#99d3eb',
-                            300: '#66bde1',
-                            400: '#33a7d7',
-                            500: '#008bd1',
-                            600: '#007ab8',
-                            700: '#00689e',
-                            800: '#005785',
-                            900: '#00456b',
-                        },
-                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
-                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
-                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' }
-                    }
-                }
-            }
-        }
-    </script>
-
+{% block head_extra %}
     <!-- jKanban CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jkanban@1.3.1/dist/jkanban.min.css">
+{% endblock %}
 
-    <style>
-        /* Bloch AI Design System */
-        * {
-            font-family: 'Inter', system-ui, sans-serif;
-        }
-        h1, h2, h3, .font-display {
-            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-        }
+{% block page_styles %}
+        /* PAGE-SPECIFIC: Additional kanban board styling overrides if needed */
+        /* Most kanban styles are in common.css */
 
-        :root {
-            --primary: #008bd1;
-            --primary-light: #e6f4fa;
-            --primary-dark: #00689e;
-            --radius: 8px;
-        }
-
-        /* Button system */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            height: 36px;
-            padding: 0 16px;
-            font-size: 13px;
-            font-weight: 500;
-            border-radius: var(--radius);
-            transition: all 0.2s ease;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        .btn svg { width: 16px; height: 16px; }
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-            border: none;
-        }
-        .btn-primary:hover { background: var(--primary-dark); transform: scale(1.02); }
-        .btn-secondary {
-            background: white;
-            color: #374151;
-            border: 1px solid #d1d5db;
-        }
-        .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; transform: scale(1.02); }
-        .btn-ghost {
-            background: transparent;
-            color: #6b7280;
-            border: none;
-        }
-        .btn-ghost:hover { background: #f3f4f6; color: #374151; }
+        /* Danger button variant for delete */
         .btn-danger {
             background: #ef4444;
             color: white;
             border: none;
         }
         .btn-danger:hover { background: #dc2626; transform: scale(1.02); }
+{% endblock %}
 
-        /* Status chips */
-        .chip {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-weight: 500;
-            border-radius: 9999px;
-        }
-        .chip-neutral { background: #f3f4f6; color: #4b5563; }
-        .chip-success { background: #dcfce7; color: #15803d; }
-        .chip-warning { background: #fef3c7; color: #b45309; }
-        .chip-danger { background: #fee2e2; color: #b91c1c; }
-
-        /* Custom jKanban styles */
-        .kanban-container {
-            display: flex;
-            gap: 16px;
-            padding: 8px 0;
-        }
-        .kanban-board {
-            background: white;
-            border-radius: 8px;
-            min-width: 280px;
-            max-width: 280px;
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
-            border: 1px solid #e2e8f0;
-        }
-        .kanban-board header {
-            padding: 14px 16px;
-            border-bottom: 1px solid #e2e8f0;
-            background: #f8fafc;
-            border-radius: 8px 8px 0 0;
-        }
-        .kanban-board header .kanban-title-board {
-            font-weight: 600;
-            font-size: 13px;
-            color: #374151;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-        }
-        .kanban-drag {
-            min-height: 100px;
-            padding: 12px;
-            background: #fafafa;
-        }
-        .kanban-item {
-            background: white;
-            border-radius: 6px;
-            padding: 12px;
-            margin-bottom: 8px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            border: 1px solid #e5e7eb;
-            cursor: grab;
-            transition: all 0.15s ease;
-        }
-        .kanban-item:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            border-color: #d1d5db;
-        }
-        .kanban-item[data-priority="high"] {
-            border-left: 3px solid #ef4444;
-        }
-        .kanban-item[data-priority="medium"] {
-            border-left: 3px solid #f59e0b;
-        }
-        .kanban-item[data-priority="low"] {
-            border-left: 3px solid #22c55e;
-        }
-
-        /* Toast animations */
-        .toast {
-            animation: slideIn 0.3s ease-out;
-        }
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(100%); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        /* Empty state */
-        .empty-state {
-            text-align: center;
-            padding: 24px 16px;
-            color: #9ca3af;
-        }
-
-        /* Modal styles */
-        .modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            background: #f8fafc;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .modal-close {
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 6px;
-            color: #64748b;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            transition: all 0.15s ease;
-        }
-        .modal-close:hover { background: #e2e8f0; color: #334155; }
-        .modal-close svg { width: 18px; height: 18px; }
-
-        /* Form styles */
-        .form-label {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-            color: #374151;
-            margin-bottom: 6px;
-        }
-    </style>
-</head>
-<body class="h-full">
-    <div class="min-h-full">
-        <!-- Navigation -->
-        <nav class="bg-white border-b border-slate-200">
-            <div class="flex h-16 items-center justify-between px-4 sm:px-6">
-                <div class="flex items-center">
-                    <div class="flex items-center gap-2 flex-shrink-0">
-                        <img src="/static/logo.png" alt="SmartPapers Logo" class="h-8 w-auto">
-                        <div class="flex flex-col">
-                            <span class="text-xl font-bold text-slate-900 leading-tight">SmartPapers</span>
-                            <span class="text-xs text-slate-400 -mt-0.5">Internal Audit</span>
-                        </div>
-                    </div>
-                    <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
-                        <a href="/" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            Risk Matrix
-                        </a>
-                        <a href="/audit-plan" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            Audit Plan
-                        </a>
-                        <a href="/kanban" class="bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
-                            Task Board
-                        </a>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="addColumn()" class="btn btn-secondary">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Column
-                    </button>
-                    <button onclick="saveBoard()" class="btn btn-primary">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                        </svg>
-                        Save
-                    </button>
-                </div>
-            </div>
-        </nav>
-
+{% block content %}
         <!-- Main content -->
         <main class="py-8">
             <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -280,16 +34,26 @@
                             Audit planning board
                         </p>
                     </div>
+                    <div class="flex items-center gap-2 mt-4 md:mt-0">
+                        <button onclick="addColumn()" class="btn btn-secondary">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add Column
+                        </button>
+                        <button onclick="saveBoard()" class="btn btn-primary">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                            </svg>
+                            Save
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Kanban Board -->
                 <div id="kanban-board" class="overflow-x-auto pb-4"></div>
-
-                <!-- Toast notifications -->
-                <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"></div>
             </div>
         </main>
-    </div>
 
     <!-- Edit Card Modal -->
     <div id="editModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
@@ -308,18 +72,18 @@
 
                 <div>
                     <label class="form-label">Title</label>
-                    <input type="text" id="editTitle" placeholder="Task title..." class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                    <input type="text" id="editTitle" placeholder="Task title..." class="form-input">
                 </div>
 
                 <div>
                     <label class="form-label">Description</label>
-                    <textarea id="editDescription" placeholder="Task description..." rows="3" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"></textarea>
+                    <textarea id="editDescription" placeholder="Task description..." rows="3" class="form-input" style="height: auto; padding: 10px 12px;"></textarea>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="form-label">Priority</label>
-                        <select id="editPriority" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                        <select id="editPriority" class="form-input">
                             <option value="low">Low</option>
                             <option value="medium">Medium</option>
                             <option value="high">High</option>
@@ -327,13 +91,13 @@
                     </div>
                     <div>
                         <label class="form-label">Due Date</label>
-                        <input type="date" id="editDueDate" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                        <input type="date" id="editDueDate" class="form-input">
                     </div>
                 </div>
 
                 <div>
                     <label class="form-label">Assignee</label>
-                    <input type="text" id="editAssignee" placeholder="Who is responsible?" class="w-full rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                    <input type="text" id="editAssignee" placeholder="Who is responsible?" class="form-input">
                 </div>
             </div>
             <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
@@ -350,7 +114,9 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
+{% block scripts %}
     <!-- jKanban JS -->
     <script src="https://cdn.jsdelivr.net/npm/jkanban@1.3.1/dist/jkanban.min.js"></script>
 
@@ -438,13 +204,6 @@
             if (item.dueDate) html += `<span class="text-xs text-slate-500 flex items-center gap-1"><svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>${item.dueDate}</span>`;
             html += `</div>`;
             return html;
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
 
         function updateBoardData() {
@@ -580,29 +339,10 @@
             showToast('Board saved!', 'success');
         }
 
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast rounded-lg shadow-lg p-4 flex items-center gap-3 ${
-                type === 'success' ? 'bg-emerald-600 text-white' :
-                type === 'error' ? 'bg-red-600 text-white' :
-                type === 'warning' ? 'bg-amber-500 text-white' :
-                'bg-slate-700 text-white'
-            }`;
-            toast.innerHTML = `<p class="text-sm font-medium">${message}</p>`;
-            container.appendChild(toast);
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateX(100%)';
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-
         document.getElementById('editModal').addEventListener('click', function(e) {
             if (e.target === this) closeModal();
         });
 
         init();
     </script>
-</body>
-</html>
+{% endblock %}
