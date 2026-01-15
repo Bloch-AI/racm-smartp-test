@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, session
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import json
@@ -600,6 +600,28 @@ def delete_library_document_route(doc_id):
     # Delete from database
     db.delete_library_document(doc_id)
     return jsonify({'status': 'deleted'})
+
+
+@app.route('/api/library/documents/<int:doc_id>/file', methods=['GET'])
+def download_library_document(doc_id):
+    """Download/view the original library document file."""
+    doc = db.get_library_document(doc_id)
+    if not doc:
+        return not_found_response('Document')
+
+    filepath = os.path.join(LIBRARY_FOLDER, doc['filename'])
+    if not os.path.exists(filepath):
+        return error_response('File not found on disk')
+
+    # Determine if we should display inline (view) or download
+    disposition = request.args.get('disposition', 'inline')
+
+    return send_file(
+        filepath,
+        mimetype=doc.get('mime_type', 'application/octet-stream'),
+        as_attachment=(disposition == 'attachment'),
+        download_name=doc.get('original_filename', doc['filename'])
+    )
 
 
 @app.route('/api/library/documents/<int:doc_id>/chunks', methods=['GET'])

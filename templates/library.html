@@ -195,11 +195,11 @@
                     <!-- Table Header -->
                     <div class="bg-gray-50 px-6 py-3 border-b border-gray-200">
                         <div class="grid grid-cols-12 gap-4 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                            <div class="col-span-5">Document</div>
+                            <div class="col-span-4">Document</div>
                             <div class="col-span-2">Type</div>
                             <div class="col-span-2">Source</div>
-                            <div class="col-span-2">Chunks</div>
-                            <div class="col-span-1"></div>
+                            <div class="col-span-1">Chunks</div>
+                            <div class="col-span-3 text-right">Actions</div>
                         </div>
                     </div>
                     <!-- Table Body -->
@@ -368,7 +368,21 @@
                         </svg>
                         Delete
                     </button>
-                    <button type="button" onclick="closeViewModal()" class="btn btn-secondary">Close</button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="openFile(currentDocumentId)" class="btn btn-secondary">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            View File
+                        </button>
+                        <button type="button" onclick="downloadFile(currentDocumentId)" class="btn btn-primary">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -421,10 +435,10 @@
             emptyState.classList.add('hidden');
 
             body.innerHTML = documents.map(doc => `
-                <div class="doc-row px-6 py-4 border-b border-gray-100 cursor-pointer" onclick="viewDocument(${doc.id})">
+                <div class="doc-row px-6 py-4 border-b border-gray-100">
                     <div class="grid grid-cols-12 gap-4 items-center">
-                        <div class="col-span-5">
-                            <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(doc.name)}</p>
+                        <div class="col-span-4 cursor-pointer" onclick="viewDocument(${doc.id})">
+                            <p class="text-sm font-medium text-gray-900 truncate hover:text-primary-600">${escapeHtml(doc.name)}</p>
                             <p class="text-xs text-gray-500 truncate mt-0.5">${escapeHtml(doc.description || 'No description')}</p>
                         </div>
                         <div class="col-span-2">
@@ -433,13 +447,31 @@
                         <div class="col-span-2">
                             <span class="text-sm text-gray-600">${escapeHtml(doc.source || '-')}</span>
                         </div>
-                        <div class="col-span-2">
+                        <div class="col-span-1">
                             <span class="text-sm text-gray-600 font-mono">${doc.total_chunks || 0}</span>
                         </div>
-                        <div class="col-span-1 text-right">
-                            <svg class="w-4 h-4 text-gray-400 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
+                        <div class="col-span-3 text-right flex items-center justify-end gap-1">
+                            <button onclick="openFile(${doc.id})" title="View file" class="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg transition-colors">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                            </button>
+                            <button onclick="downloadFile(${doc.id})" title="Download" class="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg transition-colors">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                            </button>
+                            <button onclick="viewDocument(${doc.id})" title="Details" class="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg transition-colors">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </button>
+                            <button onclick="confirmDelete(${doc.id}, '${escapeHtml(doc.name).replace(/'/g, "\\'")}', event)" title="Delete" class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -567,9 +599,38 @@
             currentDocumentId = null;
         }
 
+        function openFile(docId) {
+            // Open file in new tab for viewing (PDFs will render in browser)
+            window.open(`/api/library/documents/${docId}/file`, '_blank');
+        }
+
+        function downloadFile(docId) {
+            // Trigger download
+            window.location.href = `/api/library/documents/${docId}/file?disposition=attachment`;
+        }
+
+        async function confirmDelete(docId, docName, event) {
+            event.stopPropagation();
+            if (!confirm(`Delete "${docName}"?\n\nThis will permanently remove the document and all its indexed content.`)) return;
+
+            try {
+                const response = await fetch(`/api/library/documents/${docId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    showToast('Document deleted', 'success');
+                    loadDocuments();
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
         async function deleteDocument() {
             if (!currentDocumentId) return;
-            if (!confirm('Delete this document?')) return;
+            const doc = documents.find(d => d.id === currentDocumentId);
+            const docName = doc ? doc.name : 'this document';
+            if (!confirm(`Delete "${docName}"?\n\nThis will permanently remove the document and all its indexed content.`)) return;
 
             try {
                 const response = await fetch(`/api/library/documents/${currentDocumentId}`, { method: 'DELETE' });
