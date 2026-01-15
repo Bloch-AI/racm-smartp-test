@@ -636,7 +636,7 @@
                     <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
                         <a href="/felix" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 2L2 19h20L12 2zm0 4l6.5 11h-13L12 6z"/>
+                                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
                             </svg>
                             Felix AI
                         </a>
@@ -647,15 +647,6 @@
                             Flowcharts
                         </a>
                     </div>
-                </div>
-                <!-- Right: AI Chat Toggle -->
-                <div class="flex items-center gap-3">
-                    <button onclick="toggleChat()" class="btn btn-secondary">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                        </svg>
-                        AI Assistant
-                    </button>
                 </div>
             </div>
         </nav>
@@ -677,13 +668,13 @@
                             </svg>
                             Add Row
                         </button>
-                        <button onclick="mergeSelected()" class="btn btn-ghost" title="Merge cells">
-                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z" />
-                            </svg>
-                            Merge
-                        </button>
                         <div class="w-px h-6 bg-slate-200 mx-1"></div>
+                        <button onclick="toggleChat()" class="btn btn-secondary">
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
+                            </svg>
+                            Ask Felix
+                        </button>
                         <!-- Import/Export dropdown -->
                         <div class="relative" id="importExportDropdown">
                             <button onclick="toggleImportExport()" class="btn btn-secondary">

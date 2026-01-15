@@ -1433,6 +1433,20 @@ def init_felix_tables():
 
             CREATE INDEX IF NOT EXISTS idx_felix_messages_conv ON felix_messages(conversation_id);
             CREATE INDEX IF NOT EXISTS idx_felix_conversations_user ON felix_conversations(user_id);
+
+            CREATE TABLE IF NOT EXISTS felix_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_size INTEGER,
+                mime_type TEXT,
+                extracted_text TEXT,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES felix_conversations(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_felix_attachments_conv ON felix_attachments(conversation_id);
         ''')
 
 # Initialize Felix tables
@@ -1499,7 +1513,7 @@ def send_felix_message(conv_id):
     if not content:
         return jsonify({'error': 'Empty message'}), 400
 
-    # Save user message and get history
+    # Save user message and get history + attachments
     with db._connection() as conn:
         conn.execute(
             'INSERT INTO felix_messages (conversation_id, role, content) VALUES (?, ?, ?)',
@@ -1511,9 +1525,16 @@ def send_felix_message(conv_id):
         ''', (conv_id,))
         history = [dict(row) for row in cursor.fetchall()]
 
-    # Call Claude API
+        # Fetch conversation attachments
+        cursor = conn.execute('''
+            SELECT original_filename, extracted_text FROM felix_attachments
+            WHERE conversation_id = ? ORDER BY uploaded_at ASC
+        ''', (conv_id,))
+        attachments = [dict(row) for row in cursor.fetchall()]
+
+    # Call Claude API with attachments context
     try:
-        response_text = call_felix_ai(history)
+        response_text = call_felix_ai(history, attachments)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1539,7 +1560,105 @@ def send_felix_message(conv_id):
     return jsonify({'role': 'assistant', 'content': response_text})
 
 
-def call_felix_ai(messages):
+# ===== Felix Attachment Routes =====
+
+@app.route('/api/felix/conversations/<conv_id>/attachments', methods=['GET'])
+def get_felix_attachments(conv_id):
+    """Get all attachments for a conversation."""
+    with db._connection() as conn:
+        cursor = conn.execute('''
+            SELECT id, original_filename, file_size, mime_type, uploaded_at
+            FROM felix_attachments WHERE conversation_id = ?
+            ORDER BY uploaded_at DESC
+        ''', (conv_id,))
+        return jsonify([dict(row) for row in cursor.fetchall()])
+
+
+@app.route('/api/felix/conversations/<conv_id>/attachments', methods=['POST'])
+def upload_felix_attachment(conv_id):
+    """Upload file(s) to a conversation."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    # Use existing file processing
+    try:
+        file_info = _process_file_upload(file)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    # Save to database
+    with db._connection() as conn:
+        cursor = conn.execute('''
+            INSERT INTO felix_attachments
+            (conversation_id, filename, original_filename, file_size, mime_type, extracted_text)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            conv_id,
+            file_info['unique_filename'],
+            file_info['original_filename'],
+            file_info['file_size'],
+            file_info['mime_type'],
+            file_info.get('extracted_text', '')
+        ))
+        attachment_id = cursor.lastrowid
+
+    return jsonify({
+        'id': attachment_id,
+        'original_filename': file_info['original_filename'],
+        'file_size': file_info['file_size'],
+        'mime_type': file_info['mime_type']
+    })
+
+
+@app.route('/api/felix/attachments/<int:attachment_id>', methods=['DELETE'])
+def delete_felix_attachment(attachment_id):
+    """Delete an attachment."""
+    with db._connection() as conn:
+        # Get filename to delete from disk
+        cursor = conn.execute(
+            'SELECT filename FROM felix_attachments WHERE id = ?',
+            (attachment_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'error': 'Attachment not found'}), 404
+
+        # Delete file from disk
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], row['filename'])
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+        # Delete from database
+        conn.execute('DELETE FROM felix_attachments WHERE id = ?', (attachment_id,))
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/felix/attachments/<int:attachment_id>/download')
+def download_felix_attachment(attachment_id):
+    """Download an attachment."""
+    with db._connection() as conn:
+        cursor = conn.execute(
+            'SELECT filename, original_filename, mime_type FROM felix_attachments WHERE id = ?',
+            (attachment_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'error': 'Attachment not found'}), 404
+
+        return send_from_directory(
+            app.config['UPLOAD_FOLDER'],
+            row['filename'],
+            download_name=row['original_filename'],
+            mimetype=row['mime_type']
+        )
+
+
+def call_felix_ai(messages, attachments=None):
     """Call Claude API for Felix chat."""
     if not ANTHROPIC_API_KEY:
         raise Exception('ANTHROPIC_API_KEY not configured')
@@ -1548,6 +1667,20 @@ def call_felix_ai(messages):
 
     # Get audit context
     context = db.get_full_context()
+
+    # Build attachments context if any
+    attachments_context = ""
+    if attachments:
+        attachments_context = "\n\n## Uploaded Documents\nThe user has uploaded the following documents to this conversation:\n"
+        for att in attachments:
+            text = att.get('extracted_text', '').strip()
+            if text:
+                # Limit each attachment to ~10KB to avoid context overflow
+                if len(text) > 10000:
+                    text = text[:10000] + "\n... [truncated]"
+                attachments_context += f"\n### {att['original_filename']}\n```\n{text}\n```\n"
+            else:
+                attachments_context += f"\n### {att['original_filename']}\n[No text content extracted - this may be an image or unsupported format]\n"
 
     system_prompt = f"""You are Felix, an AI assistant for SmartPapers - an internal audit workpaper application.
 
@@ -1562,13 +1695,14 @@ def call_felix_ai(messages):
 - Total Issues: {context['issue_summary']['total']}
 - Issues by Status: {json.dumps(context['issue_summary']['by_status'])}
 - Tasks: {context['task_summary']['total']}
-
+{attachments_context}
 ## You can help with:
 1. Answering questions about audit methodology and best practices
 2. Explaining the current audit status and findings
 3. Drafting test procedures, issue descriptions, and recommendations
 4. Summarizing risks, controls, and testing results
 5. Providing guidance on internal audit standards (IIA, SOX, etc.)
+6. Analyzing uploaded documents and extracting relevant information
 
 Be concise but thorough. Use markdown formatting for clarity."""
 
