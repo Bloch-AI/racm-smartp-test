@@ -2319,6 +2319,151 @@ def download_felix_attachment(attachment_id):
         )
 
 
+def analyze_query(query: str) -> dict:
+    """Analyze user query to extract risk IDs, keywords, and intent.
+
+    Returns dict with:
+        - risk_ids: List of risk IDs mentioned (e.g., ['R001', 'R002'])
+        - keywords: Key terms for searching
+        - intent: 'create', 'read', 'update', 'delete', or 'general'
+    """
+    import re
+
+    query_lower = query.lower()
+
+    # Extract risk IDs (R001, R002, etc.)
+    risk_ids = re.findall(r'\b[Rr]\d{3}\b', query)
+    risk_ids = [rid.upper() for rid in risk_ids]
+
+    # Determine intent
+    intent = 'general'
+    if any(word in query_lower for word in ['create', 'add', 'new', 'build', 'make', 'write']):
+        intent = 'create'
+    elif any(word in query_lower for word in ['delete', 'remove', 'drop']):
+        intent = 'delete'
+    elif any(word in query_lower for word in ['update', 'change', 'modify', 'edit', 'set']):
+        intent = 'update'
+    elif any(word in query_lower for word in ['show', 'list', 'get', 'find', 'what', 'tell me', 'read']):
+        intent = 'read'
+
+    # Extract keywords (filter out common words)
+    stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                  'should', 'may', 'might', 'must', 'shall', 'can', 'to', 'of', 'in',
+                  'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through',
+                  'and', 'or', 'but', 'if', 'then', 'else', 'when', 'where', 'why',
+                  'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other',
+                  'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so',
+                  'than', 'too', 'very', 'just', 'about', 'this', 'that', 'these',
+                  'those', 'am', 'it', 'its', 'me', 'my', 'i', 'you', 'your', 'we',
+                  'our', 'they', 'their', 'them', 'what', 'which', 'who', 'whom',
+                  'create', 'add', 'new', 'build', 'make', 'show', 'list', 'get', 'find',
+                  'tell', 'please', 'help', 'want', 'need', 'like', 'using', 'use'}
+
+    words = re.findall(r'\b[a-zA-Z]{3,}\b', query_lower)
+    keywords = [w for w in words if w not in stop_words]
+
+    return {
+        'risk_ids': risk_ids,
+        'keywords': keywords,
+        'intent': intent
+    }
+
+
+def build_smart_context(query: str, context: dict) -> str:
+    """Build a smart, query-relevant system prompt using RAG approach.
+
+    1. Always search library for relevant guidance
+    2. Search RACM for relevant risks based on query
+    3. Build focused prompt with just relevant data
+    """
+    analysis = analyze_query(query)
+
+    # 1. Search audit library for relevant guidance
+    library_results = []
+    if analysis['keywords']:
+        search_query = ' '.join(analysis['keywords'][:5])  # Use top 5 keywords
+        library_results = db.search_library_keyword(search_query, limit=3)
+
+    # 2. Get relevant RACM data
+    relevant_risks = []
+
+    # First, get any specifically mentioned risks
+    for risk_id in analysis['risk_ids']:
+        risk = db.get_risk(risk_id)
+        if risk:
+            relevant_risks.append(risk)
+
+    # Then search for keyword-relevant risks (if not too many already)
+    if len(relevant_risks) < 5 and analysis['keywords']:
+        all_risks = context.get('risks', [])
+        for risk in all_risks:
+            if len(relevant_risks) >= 5:
+                break
+            if risk in relevant_risks:
+                continue
+            # Check if any keyword matches risk description or control
+            risk_text = f"{risk.get('risk', '')} {risk.get('control_id', '')}".lower()
+            if any(kw in risk_text for kw in analysis['keywords']):
+                relevant_risks.append(risk)
+
+    # 3. Build the smart prompt
+    prompt = f"""You are Felix, an intelligent AI audit assistant with FULL ACCESS to the SmartPapers audit database.
+
+## Current Audit Summary:
+- **Risks:** {context['risk_summary']['total']} total - {json.dumps(context['risk_summary']['by_status'])}
+- **Tasks:** {context['task_summary']['total']} total
+- **Issues:** {context['issue_summary']['total']} total
+- **Flowcharts:** {context['flowchart_count']} | **Test Documents:** {context['test_doc_count']}
+"""
+
+    # Add relevant library guidance
+    if library_results:
+        prompt += "\n## Relevant Guidance from Audit Library:\n"
+        for result in library_results:
+            doc_name = result.get('document_name', 'Unknown')
+            section = result.get('section', '')
+            content = result.get('content', '')[:500]  # Limit content length
+            prompt += f"\n**{doc_name}**"
+            if section:
+                prompt += f" - {section}"
+            prompt += f"\n{content}...\n"
+
+    # Add relevant risks
+    if relevant_risks:
+        prompt += "\n## Relevant Risks/Controls:\n"
+        for risk in relevant_risks:
+            prompt += f"\n**{risk.get('risk_id', 'N/A')}** [{risk.get('status', 'Unknown')}]\n"
+            prompt += f"- Risk: {risk.get('risk', 'No description')[:200]}\n"
+            prompt += f"- Control: {risk.get('control_id', 'No control')[:200]}\n"
+    elif context.get('risks'):
+        # If no relevant risks found, show brief overview
+        prompt += "\n## RACM Overview (use execute_sql for details):\n"
+        for r in context['risks'][:10]:
+            prompt += f"- {r.get('risk_id', 'N/A')}: {r.get('risk', '')[:50]}... [{r.get('status', '')}]\n"
+        if len(context['risks']) > 10:
+            prompt += f"... and {len(context['risks']) - 10} more\n"
+
+    # Add capabilities
+    prompt += """
+## Your Capabilities - USE TOOLS TO TAKE ACTION:
+**CREATE:** Add risks, tasks, issues, flowcharts, test documents
+**READ:** Query data with SQL, read documents, search audit library
+**UPDATE:** Change statuses, update documentation
+**DELETE:** Remove risks, tasks, issues (confirm first)
+
+## Guidelines:
+1. **Take Action:** Use tools to do what the user asks, don't just describe
+2. **Use Library Guidance:** The audit library content above is from your reference documents - use it to inform your responses
+3. **Be Specific:** When creating controls, base them on the library guidance and existing RACM patterns
+4. **Avoid Duplicates:** Check relevant risks above before creating new ones
+5. **Ask if Unclear:** Use ask_clarifying_question when you need more details
+
+Be concise and professional. Use markdown formatting."""
+
+    return prompt
+
+
 def call_felix_ai(messages, attachments=None):
     """Call Claude API for Felix chat with full tool support."""
     if not ANTHROPIC_API_KEY:
@@ -2326,9 +2471,24 @@ def call_felix_ai(messages, attachments=None):
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # Get full audit context and build system prompt
+    # Get the latest user message for smart context
+    latest_query = ""
+    for msg in reversed(messages):
+        if msg.get('role') == 'user':
+            content = msg.get('content', '')
+            if isinstance(content, str):
+                latest_query = content
+            elif isinstance(content, list):
+                # Handle list of content blocks
+                for block in content:
+                    if isinstance(block, dict) and block.get('type') == 'text':
+                        latest_query = block.get('text', '')
+                        break
+            break
+
+    # Build smart context based on query
     context = db.get_full_context()
-    system_prompt = build_ai_system_prompt(context)
+    system_prompt = build_smart_context(latest_query, context) if latest_query else build_ai_system_prompt(context)
 
     # Add attachments context if any
     if attachments:
