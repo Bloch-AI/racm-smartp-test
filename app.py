@@ -2364,15 +2364,37 @@ def call_felix_ai(messages, attachments=None):
 
     # Process response and execute tools
     final_response = ""
+    tool_status_messages = []  # Brief status messages for tools used
     tool_results = []
     current_messages = list(messages)
     max_iterations = 10  # Safety limit to prevent infinite loops
+
+    # Friendly names for tool status messages
+    tool_status_names = {
+        "search_audit_library": "🔍 Searching audit library...",
+        "execute_sql": "🔍 Querying database...",
+        "get_audit_summary": "📊 Getting audit summary...",
+        "add_racm_row": "➕ Adding risk/control...",
+        "update_racm_status": "✏️ Updating status...",
+        "create_kanban_task": "📋 Creating task...",
+        "create_flowchart": "📐 Creating flowchart...",
+        "create_test_document": "📝 Creating test document...",
+        "read_test_document": "📖 Reading test document...",
+        "read_flowchart": "📐 Reading flowchart...",
+        "update_issue_documentation": "💾 Saving documentation...",
+        "read_issue_documentation": "📖 Reading documentation...",
+    }
 
     iteration = 0
     while response.stop_reason == "tool_use" and iteration < max_iterations:
         iteration += 1
         for content in response.content:
             if content.type == "tool_use":
+                # Add brief status message for this tool
+                status = tool_status_names.get(content.name, f"⚙️ Using {content.name}...")
+                if status not in tool_status_messages:
+                    tool_status_messages.append(status)
+
                 try:
                     result = execute_tool(content.name, content.input)
                     tool_results.append({
@@ -2390,8 +2412,7 @@ def call_felix_ai(messages, attachments=None):
                         "content": error_msg,
                         "is_error": True
                     })
-            elif content.type == "text":
-                final_response += content.text
+            # Skip intermediate text blocks - we only want the final response
 
         # Convert response.content to serializable format for messages
         assistant_content = []
@@ -2425,6 +2446,11 @@ def call_felix_ai(messages, attachments=None):
     for content in response.content:
         if hasattr(content, 'text'):
             final_response += content.text
+
+    # Prepend tool status messages if any tools were used
+    if tool_status_messages:
+        status_block = "\n".join(tool_status_messages) + "\n\n---\n\n"
+        final_response = status_block + final_response
 
     return final_response
 
