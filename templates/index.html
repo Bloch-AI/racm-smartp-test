@@ -222,10 +222,21 @@
             background: white !important;
         }
 
-        /* Ensure Issue Log table uses full width */
+        /* Ensure both tables use full width */
+        #spreadsheet-racm .jexcel_container,
+        #spreadsheet-racm .jexcel,
         #spreadsheet-issues .jexcel_container,
         #spreadsheet-issues .jexcel {
             width: 100% !important;
+        }
+
+        /* Make spreadsheet container fill available space */
+        #spreadsheet {
+            width: 100%;
+        }
+        #spreadsheet-racm,
+        #spreadsheet-issues {
+            width: 100%;
         }
 
         /* ========================================
@@ -914,6 +925,13 @@
             const issuesContainer = document.getElementById('spreadsheet-issues');
             const containerWidth = racmContainer.parentElement.offsetWidth - 2;
 
+            // Calculate proportional column widths to fill screen
+            // RACM has 16 columns with relative proportions
+            const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8, 0.6, 0.5, 0.8, 0.6, 0.7];
+            const racmTotalProp = racmProportions.reduce((a, b) => a + b, 0);
+            const racmBaseUnit = (containerWidth - 50) / racmTotalProp; // 50px for row numbers
+            const racmColWidths = racmProportions.map(p => Math.floor(racmBaseUnit * p));
+
             // Show issues container temporarily for proper initialization
             issuesContainer.style.display = 'block';
 
@@ -921,22 +939,22 @@
             table = jspreadsheet(racmContainer, {
                 data: racmData,
                 columns: [
-                    { type: 'text', width: 70, title: 'Risk ID' },
-                    { type: 'text', width: 150, title: 'Risk', wordWrap: true },
-                    { type: 'text', width: 80, title: 'Control ID' },
-                    { type: 'text', width: 100, title: 'Control Owner' },
-                    { type: 'text', width: 100, title: 'DE Testing', wordWrap: true },
-                    { type: 'text', width: 100, title: 'DE Conclusion', wordWrap: true },
-                    { type: 'text', width: 100, title: 'OE Testing', wordWrap: true },
-                    { type: 'text', width: 100, title: 'OE Conclusion', wordWrap: true },
-                    { type: 'dropdown', width: 100, title: 'Status', source: ['Effective', 'Not Effective', 'Not Complete'] },
-                    { type: 'checkbox', width: 80, title: 'Ready for Review?' },
-                    { type: 'text', width: 100, title: 'Reviewer' },
-                    { type: 'checkbox', width: 80, title: 'Raise Issue?' },
-                    { type: 'checkbox', width: 60, title: 'Closed' },
-                    { type: 'text', width: 100, title: 'Flowchart' },
-                    { type: 'text', width: 80, title: 'Task' },
-                    { type: 'text', width: 90, title: 'Evidence', readOnly: true },
+                    { type: 'text', width: racmColWidths[0], title: 'Risk ID' },
+                    { type: 'text', width: racmColWidths[1], title: 'Risk', wordWrap: true },
+                    { type: 'text', width: racmColWidths[2], title: 'Control ID' },
+                    { type: 'text', width: racmColWidths[3], title: 'Control Owner' },
+                    { type: 'text', width: racmColWidths[4], title: 'DE Testing', wordWrap: true },
+                    { type: 'text', width: racmColWidths[5], title: 'DE Conclusion', wordWrap: true },
+                    { type: 'text', width: racmColWidths[6], title: 'OE Testing', wordWrap: true },
+                    { type: 'text', width: racmColWidths[7], title: 'OE Conclusion', wordWrap: true },
+                    { type: 'dropdown', width: racmColWidths[8], title: 'Status', source: ['Effective', 'Not Effective', 'Not Complete'] },
+                    { type: 'checkbox', width: racmColWidths[9], title: 'Ready for Review?' },
+                    { type: 'text', width: racmColWidths[10], title: 'Reviewer' },
+                    { type: 'checkbox', width: racmColWidths[11], title: 'Raise Issue?' },
+                    { type: 'checkbox', width: racmColWidths[12], title: 'Closed' },
+                    { type: 'text', width: racmColWidths[13], title: 'Flowchart' },
+                    { type: 'text', width: racmColWidths[14], title: 'Task' },
+                    { type: 'text', width: racmColWidths[15], title: 'Evidence', readOnly: true },
                 ],
                 wordWrap: true,
                 defaultRowHeight: 40,
@@ -974,20 +992,25 @@
                 }
             });
 
-            // Create Issue Log spreadsheet - full width columns
-            const issueColWidth = Math.floor((containerWidth - 50) / 9); // Distribute width across 9 columns
+            // Create Issue Log spreadsheet - proportional widths to fill screen
+            // Issue Log has 9 columns with relative proportions
+            const issueProportions = [0.6, 0.6, 1.5, 2.0, 0.7, 0.7, 0.8, 0.8, 0.7];
+            const issueTotalProp = issueProportions.reduce((a, b) => a + b, 0);
+            const issueBaseUnit = (containerWidth - 50) / issueTotalProp;
+            const issueColWidths = issueProportions.map(p => Math.floor(issueBaseUnit * p));
+
             issueTable = jspreadsheet(issuesContainer, {
                 data: issuesData,
                 columns: [
-                    { type: 'text', width: 90, title: 'Issue ID', readOnly: true },
-                    { type: 'text', width: 90, title: 'Risk ID' },
-                    { type: 'text', width: Math.max(180, issueColWidth * 2), title: 'Title' },
-                    { type: 'text', width: Math.max(200, issueColWidth * 2), title: 'Description', wordWrap: true },
-                    { type: 'dropdown', width: 100, title: 'Severity', source: ['Low', 'Medium', 'High', 'Critical'] },
-                    { type: 'dropdown', width: 100, title: 'Status', source: ['Open', 'In Progress', 'Resolved', 'Closed'] },
-                    { type: 'text', width: Math.max(120, issueColWidth), title: 'Assigned To' },
-                    { type: 'calendar', width: 110, title: 'Due Date', options: { format: 'YYYY-MM-DD' } },
-                    { type: 'text', width: 100, title: 'Evidence', readOnly: true },
+                    { type: 'text', width: issueColWidths[0], title: 'Issue ID', readOnly: true },
+                    { type: 'text', width: issueColWidths[1], title: 'Risk ID' },
+                    { type: 'text', width: issueColWidths[2], title: 'Title' },
+                    { type: 'text', width: issueColWidths[3], title: 'Description', wordWrap: true },
+                    { type: 'dropdown', width: issueColWidths[4], title: 'Severity', source: ['Low', 'Medium', 'High', 'Critical'] },
+                    { type: 'dropdown', width: issueColWidths[5], title: 'Status', source: ['Open', 'In Progress', 'Resolved', 'Closed'] },
+                    { type: 'text', width: issueColWidths[6], title: 'Assigned To' },
+                    { type: 'calendar', width: issueColWidths[7], title: 'Due Date', options: { format: 'YYYY-MM-DD' } },
+                    { type: 'text', width: issueColWidths[8], title: 'Evidence', readOnly: true },
                 ],
                 wordWrap: true,
                 defaultRowHeight: 40,
@@ -1427,7 +1450,7 @@
             setTimeout(() => loadTestDocStatus(), 500);
         });
 
-        // Handle window resize
+        // Handle window resize - recalculate column widths
         let resizeTimeout;
         window.addEventListener('resize', function() {
             clearTimeout(resizeTimeout);
@@ -1435,22 +1458,24 @@
                 const wrapper = document.getElementById('spreadsheet');
                 const containerWidth = wrapper.offsetWidth - 2;
 
-                // Resize RACM table
+                // Recalculate and resize RACM table columns
                 if (table) {
-                    const racmContainer = document.getElementById('spreadsheet-racm');
-                    const racmTableEl = racmContainer.querySelector('.jexcel_container');
-                    if (racmTableEl) {
-                        racmTableEl.style.width = containerWidth + 'px';
-                    }
+                    const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8, 0.6, 0.5, 0.8, 0.6, 0.7];
+                    const racmTotalProp = racmProportions.reduce((a, b) => a + b, 0);
+                    const racmBaseUnit = (containerWidth - 50) / racmTotalProp;
+                    racmProportions.forEach((p, i) => {
+                        table.setWidth(i, Math.floor(racmBaseUnit * p));
+                    });
                 }
 
-                // Resize Issues table
+                // Recalculate and resize Issues table columns
                 if (issueTable) {
-                    const issuesContainer = document.getElementById('spreadsheet-issues');
-                    const issuesTableEl = issuesContainer.querySelector('.jexcel_container');
-                    if (issuesTableEl) {
-                        issuesTableEl.style.width = containerWidth + 'px';
-                    }
+                    const issueProportions = [0.6, 0.6, 1.5, 2.0, 0.7, 0.7, 0.8, 0.8, 0.7];
+                    const issueTotalProp = issueProportions.reduce((a, b) => a + b, 0);
+                    const issueBaseUnit = (containerWidth - 50) / issueTotalProp;
+                    issueProportions.forEach((p, i) => {
+                        issueTable.setWidth(i, Math.floor(issueBaseUnit * p));
+                    });
                 }
             }, 150);
         });
