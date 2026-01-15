@@ -437,7 +437,7 @@
             body.innerHTML = documents.map(doc => `
                 <div class="doc-row px-6 py-4 border-b border-gray-100">
                     <div class="grid grid-cols-12 gap-4 items-center">
-                        <div class="col-span-4 cursor-pointer" onclick="viewDocument(${doc.id})">
+                        <div class="col-span-4 cursor-pointer" onclick="openFile(${doc.id})">
                             <p class="text-sm font-medium text-gray-900 truncate hover:text-primary-600">${escapeHtml(doc.name)}</p>
                             <p class="text-xs text-gray-500 truncate mt-0.5">${escapeHtml(doc.description || 'No description')}</p>
                         </div>
