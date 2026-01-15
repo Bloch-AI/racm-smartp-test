@@ -547,7 +547,7 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    showToast(`Document uploaded (${data.chunks_created || 0} chunks)`, 'success');
+                    showToast(`Document uploaded (${data.chunks || 0} chunks)`, 'success');
                     closeUploadModal();
                     loadDocuments();
                 } else {
