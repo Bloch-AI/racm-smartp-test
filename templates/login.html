@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartPapers - Login</title>
+
+    <!-- Google Fonts - Bloch AI Design System -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+                        'mono': ['DM Mono', 'monospace'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#e6f4fa',
+                            100: '#cce9f5',
+                            200: '#99d3eb',
+                            300: '#66bde1',
+                            400: '#33a7d7',
+                            500: '#008bd1',
+                            600: '#007ab8',
+                            700: '#00689e',
+                            800: '#005785',
+                            900: '#00456b',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="h-full">
+    <div class="login-container py-12 px-4 sm:px-6 lg:px-8">
+        <div class="mx-auto w-full max-w-sm">
+            <!-- Logo and Title -->
+            <div class="text-center mb-8">
+                <div class="flex items-center justify-center gap-3 mb-4">
+                    <img src="/static/logo.png" alt="SmartPapers Logo" class="h-12 w-auto">
+                    <div class="text-left">
+                        <h1 class="text-2xl font-bold text-slate-900 font-display">SmartPapers</h1>
+                        <p class="text-sm text-slate-500">Internal Audit</p>
+                    </div>
+                </div>
+                <h2 class="text-lg font-medium text-slate-700">Sign in to your account</h2>
+            </div>
+
+            <!-- Login Form -->
+            <div class="bg-white rounded-xl shadow-lg border border-slate-200 p-8">
+                {% if error %}
+                <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex items-center gap-2 text-red-700">
+                        <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span class="text-sm font-medium">{{ error }}</span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <form method="POST" class="space-y-5">
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-slate-700 mb-1.5">
+                            Email address
+                        </label>
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            autocomplete="email"
+                            required
+                            class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                            placeholder="you@example.com"
+                        >
+                    </div>
+
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-slate-700 mb-1.5">
+                            Password
+                        </label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            autocomplete="current-password"
+                            required
+                            class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                            placeholder="Enter your password"
+                        >
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="w-full flex justify-center items-center gap-2 px-4 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors"
+                    >
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                        </svg>
+                        Sign in
+                    </button>
+                </form>
+            </div>
+
+            <!-- Footer -->
+            <p class="mt-6 text-center text-xs text-slate-500">
+                SmartPapers Internal Audit Platform
+            </p>
+        </div>
+    </div>
+</body>
+</html>

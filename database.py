@@ -227,6 +227,40 @@ class RACMDatabase:
             CREATE INDEX IF NOT EXISTS idx_library_chunks_doc ON library_chunks(document_id);
             CREATE INDEX IF NOT EXISTS idx_library_docs_type ON library_documents(doc_type);
             CREATE INDEX IF NOT EXISTS idx_library_docs_source ON library_documents(source);
+
+            -- Users (authentication)
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                is_admin INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+            CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
+
+            -- Roles (for RBAC)
+            CREATE TABLE IF NOT EXISTS roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                permissions TEXT
+            );
+
+            -- Audit Memberships (users assigned to audits with roles)
+            CREATE TABLE IF NOT EXISTS audit_memberships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                audit_id INTEGER NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role_id INTEGER NOT NULL REFERENCES roles(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(audit_id, user_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_memberships_audit ON audit_memberships(audit_id);
+            CREATE INDEX IF NOT EXISTS idx_memberships_user ON audit_memberships(user_id);
         """)
         conn.commit()
 
@@ -261,6 +295,114 @@ class RACMDatabase:
         except sqlite3.OperationalError:
             conn.execute("ALTER TABLE risk_attachments ADD COLUMN extracted_text TEXT")
             conn.commit()
+
+        # ==================== RBAC MIGRATIONS ====================
+
+        # Migration: Seed roles if empty
+        role_count = conn.execute("SELECT COUNT(*) FROM roles").fetchone()[0]
+        if role_count == 0:
+            conn.executescript("""
+                INSERT INTO roles (id, name, description, permissions) VALUES
+                    (1, 'admin', 'Full system access', '["*"]'),
+                    (2, 'auditor', 'Can edit assigned audits', '["audit.read", "audit.edit", "risk.read", "risk.edit", "issue.read", "issue.edit", "task.read", "task.edit"]'),
+                    (3, 'reviewer', 'Can read and add comments', '["audit.read", "risk.read", "issue.read", "task.read", "comment.create"]'),
+                    (4, 'viewer', 'Read-only access', '["audit.read", "risk.read", "issue.read", "task.read"]');
+            """)
+            conn.commit()
+
+        # Migration: Bootstrap default admin if no users exist
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if user_count == 0:
+            import os
+            from werkzeug.security import generate_password_hash
+            import logging
+
+            admin_email = os.environ.get('ADMIN_EMAIL', 'admin@localhost')
+            admin_password = os.environ.get('ADMIN_PASSWORD', 'changeme123')
+            password_hash = generate_password_hash(admin_password, method='pbkdf2:sha256')
+
+            conn.execute("""
+                INSERT INTO users (email, name, password_hash, is_active, is_admin)
+                VALUES (?, 'Default Admin', ?, 1, 1)
+            """, (admin_email, password_hash))
+            conn.commit()
+
+            # Log warning about default credentials
+            if admin_password == 'changeme123':
+                logging.warning(
+                    "Default admin created with email '%s' and default password. "
+                    "Please change the password immediately! "
+                    "Set ADMIN_EMAIL and ADMIN_PASSWORD environment variables for custom credentials.",
+                    admin_email
+                )
+
+        # Migration: Add audit_id column to tables that need scoping
+        tables_needing_audit_id = [
+            'risks', 'issues', 'tasks', 'flowcharts', 'test_documents',
+            'risk_attachments', 'issue_attachments'
+        ]
+        for table in tables_needing_audit_id:
+            try:
+                conn.execute(f"SELECT audit_id FROM {table} LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN audit_id INTEGER")
+                conn.commit()
+
+        # Migration: Add risk_row_id to issues for proper FK
+        try:
+            conn.execute("SELECT risk_row_id FROM issues LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE issues ADD COLUMN risk_row_id INTEGER")
+            conn.commit()
+
+        # Migration: Get or create default audit for backfilling existing data
+        existing_data = conn.execute("SELECT COUNT(*) FROM risks WHERE audit_id IS NULL").fetchone()[0]
+        if existing_data > 0:
+            # Check for existing default audit
+            default_audit = conn.execute(
+                "SELECT id FROM audits WHERE title = 'Default Audit (Migrated)'"
+            ).fetchone()
+
+            if default_audit:
+                default_audit_id = default_audit[0]
+            else:
+                # Check if any audits exist
+                first_audit = conn.execute("SELECT id FROM audits ORDER BY id LIMIT 1").fetchone()
+                if first_audit:
+                    default_audit_id = first_audit[0]
+                else:
+                    # Create new default audit
+                    cursor = conn.execute("""
+                        INSERT INTO audits (title, description, status)
+                        VALUES ('Default Audit (Migrated)',
+                                'Auto-created during migration to hold existing data',
+                                'in_progress')
+                    """)
+                    conn.commit()
+                    default_audit_id = cursor.lastrowid
+
+            # Backfill audit_id for all tables with NULL values
+            for table in tables_needing_audit_id:
+                conn.execute(f"UPDATE {table} SET audit_id = ? WHERE audit_id IS NULL", (default_audit_id,))
+            conn.commit()
+
+            # Backfill issues.risk_row_id from TEXT risk_id
+            conn.execute("""
+                UPDATE issues
+                SET risk_row_id = (
+                    SELECT risks.id FROM risks
+                    WHERE risks.risk_id = issues.risk_id
+                    AND risks.audit_id = issues.audit_id
+                )
+                WHERE risk_row_id IS NULL AND risk_id IS NOT NULL
+            """)
+            conn.commit()
+
+        # Create indexes for audit_id columns
+        for table in tables_needing_audit_id:
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_audit ON {table}(audit_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_risk_row ON issues(risk_row_id)")
+        conn.commit()
 
         conn.close()
 
@@ -1486,6 +1628,463 @@ class RACMDatabase:
             'total_chunks': chunk_count,
             'by_type': {row['doc_type']: row['count'] for row in type_counts}
         }
+
+    # ==================== USERS ====================
+
+    def get_all_users(self) -> List[Dict]:
+        """Get all users."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT id, email, name, is_active, is_admin, created_at, updated_at
+            FROM users ORDER BY name
+        """).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_user_by_id(self, user_id: int) -> Optional[Dict]:
+        """Get a user by ID."""
+        conn = self._get_conn()
+        row = conn.execute("""
+            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at
+            FROM users WHERE id = ?
+        """, (user_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """Get a user by email (for login)."""
+        conn = self._get_conn()
+        row = conn.execute("""
+            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at
+            FROM users WHERE email = ?
+        """, (email.lower(),)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def create_user(self, email: str, name: str, password_hash: str,
+                    is_active: int = 1, is_admin: int = 0) -> int:
+        """Create a new user. Returns the user ID."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO users (email, name, password_hash, is_active, is_admin)
+            VALUES (?, ?, ?, ?, ?)
+        """, (email.lower(), name, password_hash, is_active, is_admin))
+        conn.commit()
+        user_id = cursor.lastrowid
+        conn.close()
+        return user_id
+
+    def update_user(self, user_id: int, **kwargs) -> bool:
+        """Update a user. Allowed fields: name, email, password_hash, is_active, is_admin."""
+        allowed = {'name', 'email', 'password_hash', 'is_active', 'is_admin'}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return False
+
+        # Lowercase email if provided
+        if 'email' in updates:
+            updates['email'] = updates['email'].lower()
+
+        updates['updated_at'] = datetime.now().isoformat()
+        set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+
+        conn = self._get_conn()
+        cursor = conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?",
+                              (*updates.values(), user_id))
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def delete_user(self, user_id: int) -> bool:
+        """Delete a user (also removes their memberships via CASCADE)."""
+        conn = self._get_conn()
+        cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    # ==================== ROLES ====================
+
+    def get_all_roles(self) -> List[Dict]:
+        """Get all roles."""
+        conn = self._get_conn()
+        rows = conn.execute("SELECT * FROM roles ORDER BY id").fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_role_by_id(self, role_id: int) -> Optional[Dict]:
+        """Get a role by ID."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM roles WHERE id = ?", (role_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_role_by_name(self, name: str) -> Optional[Dict]:
+        """Get a role by name."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM roles WHERE name = ?", (name.lower(),)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    # ==================== AUDIT MEMBERSHIPS ====================
+
+    def get_audit_memberships(self, audit_id: int) -> List[Dict]:
+        """Get all memberships for an audit with user and role details."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT
+                am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
+                u.email, u.name as user_name, u.is_active,
+                r.name as role_name, r.description as role_description
+            FROM audit_memberships am
+            JOIN users u ON am.user_id = u.id
+            JOIN roles r ON am.role_id = r.id
+            WHERE am.audit_id = ?
+            ORDER BY r.id, u.name
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_audit_membership(self, user_id: int, audit_id: int) -> Optional[Dict]:
+        """Get a specific user's membership for an audit."""
+        conn = self._get_conn()
+        row = conn.execute("""
+            SELECT
+                am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
+                r.name as role_name
+            FROM audit_memberships am
+            JOIN roles r ON am.role_id = r.id
+            WHERE am.user_id = ? AND am.audit_id = ?
+        """, (user_id, audit_id)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_user_audit_ids(self, user_id: int) -> List[int]:
+        """Get list of audit IDs a user has access to."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT audit_id FROM audit_memberships WHERE user_id = ?
+        """, (user_id,)).fetchall()
+        conn.close()
+        return [row['audit_id'] for row in rows]
+
+    def get_user_memberships(self, user_id: int) -> List[Dict]:
+        """Get all audit memberships for a user with audit and role details."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT
+                am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
+                a.title as audit_title, a.status as audit_status,
+                r.name as role_name
+            FROM audit_memberships am
+            JOIN audits a ON am.audit_id = a.id
+            JOIN roles r ON am.role_id = r.id
+            WHERE am.user_id = ?
+            ORDER BY a.title
+        """, (user_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def add_audit_membership(self, audit_id: int, user_id: int, role_id: int) -> int:
+        """Add a user to an audit with a role. Returns membership ID."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO audit_memberships (audit_id, user_id, role_id)
+            VALUES (?, ?, ?)
+        """, (audit_id, user_id, role_id))
+        conn.commit()
+        membership_id = cursor.lastrowid
+        conn.close()
+        return membership_id
+
+    def update_audit_membership(self, audit_id: int, user_id: int, role_id: int) -> bool:
+        """Update a user's role in an audit."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            UPDATE audit_memberships SET role_id = ?
+            WHERE audit_id = ? AND user_id = ?
+        """, (role_id, audit_id, user_id))
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def remove_audit_membership(self, audit_id: int, user_id: int) -> bool:
+        """Remove a user from an audit."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            DELETE FROM audit_memberships WHERE audit_id = ? AND user_id = ?
+        """, (audit_id, user_id))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def user_has_audit_access(self, user_id: int, audit_id: int, min_role: str = 'viewer') -> bool:
+        """Check if a user has at least the specified role level for an audit.
+
+        Role hierarchy (higher number = more permissions):
+        - viewer (4): read-only
+        - reviewer (3): read + comments
+        - auditor (2): edit assigned audits
+        - admin (1): full access
+
+        Returns True if user's role level is <= min_role level (lower id = higher permission).
+        """
+        membership = self.get_audit_membership(user_id, audit_id)
+        if not membership:
+            return False
+
+        role_hierarchy = {'admin': 1, 'auditor': 2, 'reviewer': 3, 'viewer': 4}
+        user_level = role_hierarchy.get(membership['role_name'], 999)
+        required_level = role_hierarchy.get(min_role, 999)
+
+        return user_level <= required_level
+
+    # ==================== SCOPED QUERIES (BY AUDIT) ====================
+
+    def get_risks_by_audit(self, audit_id: int) -> List[Dict]:
+        """Get all risks for a specific audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM risks WHERE audit_id = ? ORDER BY risk_id
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_risks_by_audits(self, audit_ids: List[int]) -> List[Dict]:
+        """Get all risks for multiple audits."""
+        if not audit_ids:
+            return []
+        conn = self._get_conn()
+        placeholders = ','.join('?' * len(audit_ids))
+        rows = conn.execute(f"""
+            SELECT * FROM risks WHERE audit_id IN ({placeholders}) ORDER BY risk_id
+        """, audit_ids).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_issues_by_audit(self, audit_id: int) -> List[Dict]:
+        """Get all issues for a specific audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM issues WHERE audit_id = ? ORDER BY issue_id
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_issues_by_audits(self, audit_ids: List[int]) -> List[Dict]:
+        """Get all issues for multiple audits."""
+        if not audit_ids:
+            return []
+        conn = self._get_conn()
+        placeholders = ','.join('?' * len(audit_ids))
+        rows = conn.execute(f"""
+            SELECT * FROM issues WHERE audit_id IN ({placeholders}) ORDER BY issue_id
+        """, audit_ids).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_tasks_by_audit(self, audit_id: int) -> List[Dict]:
+        """Get all tasks for a specific audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT t.*, r.risk_id as linked_risk_id
+            FROM tasks t
+            LEFT JOIN risks r ON t.risk_id = r.id
+            WHERE t.audit_id = ?
+            ORDER BY t.created_at
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_tasks_by_audits(self, audit_ids: List[int]) -> List[Dict]:
+        """Get all tasks for multiple audits."""
+        if not audit_ids:
+            return []
+        conn = self._get_conn()
+        placeholders = ','.join('?' * len(audit_ids))
+        rows = conn.execute(f"""
+            SELECT t.*, r.risk_id as linked_risk_id
+            FROM tasks t
+            LEFT JOIN risks r ON t.risk_id = r.id
+            WHERE t.audit_id IN ({placeholders})
+            ORDER BY t.created_at
+        """, audit_ids).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_flowcharts_by_audit(self, audit_id: int) -> List[Dict]:
+        """Get all flowcharts for a specific audit (metadata only)."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT id, name, risk_id, created_at, updated_at
+            FROM flowcharts WHERE audit_id = ? ORDER BY name
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_test_documents_by_audit(self, audit_id: int) -> List[Dict]:
+        """Get all test document metadata for a specific audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT td.*, r.risk_id as risk_code
+            FROM test_documents td
+            JOIN risks r ON td.risk_id = r.id
+            WHERE td.audit_id = ?
+            ORDER BY r.risk_id, td.doc_type
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_context_for_audit(self, audit_id: int) -> Dict:
+        """Get full context for a specific audit (for AI)."""
+        audit = self.get_audit(audit_id)
+        risks = self.get_risks_by_audit(audit_id)
+        issues = self.get_issues_by_audit(audit_id)
+        tasks = self.get_tasks_by_audit(audit_id)
+        flowcharts = self.get_flowcharts_by_audit(audit_id)
+
+        # Get attachment counts
+        conn = self._get_conn()
+        risk_attachment_count = conn.execute(
+            "SELECT COUNT(*) FROM risk_attachments WHERE audit_id = ?", (audit_id,)
+        ).fetchone()[0]
+        issue_attachment_count = conn.execute(
+            "SELECT COUNT(*) FROM issue_attachments WHERE audit_id = ?", (audit_id,)
+        ).fetchone()[0]
+        conn.close()
+
+        # Add documentation status to issues
+        issues_with_doc_status = []
+        for issue in issues:
+            issue_copy = dict(issue)
+            issue_copy['has_documentation'] = bool(issue.get('documentation', '').strip())
+            if 'documentation' in issue_copy:
+                del issue_copy['documentation']
+            issues_with_doc_status.append(issue_copy)
+
+        return {
+            'audit': audit,
+            'risks': risks,
+            'issues': issues_with_doc_status,
+            'tasks': tasks,
+            'flowcharts': [{'name': f['name'], 'risk_id': f['risk_id']} for f in flowcharts],
+            'risk_attachment_count': risk_attachment_count,
+            'issue_attachment_count': issue_attachment_count,
+            'risk_summary': {
+                'total': len(risks),
+                'by_status': {}
+            },
+            'issue_summary': {
+                'total': len(issues),
+                'by_status': {}
+            },
+            'task_summary': {
+                'total': len(tasks),
+                'by_column': {}
+            }
+        }
+
+    def get_context_for_audits(self, audit_ids: List[int]) -> Dict:
+        """Get aggregated context for multiple audits (for AI)."""
+        if not audit_ids:
+            return {
+                'audits': [],
+                'risks': [],
+                'issues': [],
+                'tasks': [],
+                'flowcharts': [],
+                'schema': self.get_schema()
+            }
+
+        conn = self._get_conn()
+
+        # Get audits
+        placeholders = ','.join('?' * len(audit_ids))
+        audits = [dict(row) for row in conn.execute(f"""
+            SELECT * FROM audits WHERE id IN ({placeholders})
+        """, audit_ids).fetchall()]
+
+        # Get risks
+        risks = [dict(row) for row in conn.execute(f"""
+            SELECT * FROM risks WHERE audit_id IN ({placeholders}) ORDER BY risk_id
+        """, audit_ids).fetchall()]
+
+        # Get issues
+        issues_raw = conn.execute(f"""
+            SELECT * FROM issues WHERE audit_id IN ({placeholders}) ORDER BY issue_id
+        """, audit_ids).fetchall()
+        issues = []
+        for row in issues_raw:
+            issue = dict(row)
+            issue['has_documentation'] = bool(issue.get('documentation', '').strip())
+            if 'documentation' in issue:
+                del issue['documentation']
+            issues.append(issue)
+
+        # Get tasks
+        tasks = [dict(row) for row in conn.execute(f"""
+            SELECT t.*, r.risk_id as linked_risk_id
+            FROM tasks t
+            LEFT JOIN risks r ON t.risk_id = r.id
+            WHERE t.audit_id IN ({placeholders})
+            ORDER BY t.created_at
+        """, audit_ids).fetchall()]
+
+        # Get flowcharts
+        flowcharts = [dict(row) for row in conn.execute(f"""
+            SELECT id, name, risk_id FROM flowcharts
+            WHERE audit_id IN ({placeholders}) ORDER BY name
+        """, audit_ids).fetchall()]
+
+        conn.close()
+
+        return {
+            'schema': self.get_schema(),
+            'audits': audits,
+            'risks': risks,
+            'issues': issues,
+            'tasks': tasks,
+            'flowcharts': [{'name': f['name'], 'risk_id': f['risk_id']} for f in flowcharts],
+            'risk_summary': {
+                'total': len(risks),
+                'by_status': self._count_by_field(risks, 'status')
+            },
+            'issue_summary': {
+                'total': len(issues),
+                'by_status': self._count_by_field(issues, 'status')
+            },
+            'task_summary': {
+                'total': len(tasks),
+                'by_column': self._count_by_field(tasks, 'column_id')
+            }
+        }
+
+    def _count_by_field(self, items: List[Dict], field: str) -> Dict[str, int]:
+        """Helper to count items by a field value."""
+        counts = {}
+        for item in items:
+            value = item.get(field) or 'unknown'
+            counts[value] = counts.get(value, 0) + 1
+        return counts
+
+    def get_accessible_audits(self, user_id: int, is_admin: bool = False) -> List[Dict]:
+        """Get audits accessible to a user. Admins see all audits."""
+        if is_admin:
+            return self.get_all_audits()
+
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT a.* FROM audits a
+            JOIN audit_memberships am ON a.id = am.audit_id
+            WHERE am.user_id = ?
+            ORDER BY a.title
+        """, (user_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
 
     # ==================== AI QUERY HELPERS ====================
 

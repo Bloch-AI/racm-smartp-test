@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, session
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, session, redirect, url_for, g
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import json
@@ -35,6 +35,11 @@ except ImportError:
 
 load_dotenv()
 from database import get_db, RACMDatabase
+from auth import (
+    get_current_user, require_login, require_admin, require_audit_access,
+    login_user, logout_user, check_password, hash_password,
+    get_user_accessible_audits, get_active_audit_id, set_active_audit
+)
 
 
 # ==================== TEXT EXTRACTION ====================
@@ -338,27 +343,185 @@ def process_library_document(filepath: str, doc_id: int, mime_type: str = None) 
     return len(chunks)
 
 
+# ==================== AUTHENTICATION ====================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Handle user login."""
+    error = request.args.get('error')
+
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+
+        if not email or not password:
+            return render_template('login.html', error='Please enter email and password')
+
+        user = db.get_user_by_email(email)
+
+        if not user:
+            return render_template('login.html', error='Invalid email or password')
+
+        if not check_password(password, user['password_hash']):
+            return render_template('login.html', error='Invalid email or password')
+
+        if not user['is_active']:
+            return render_template('login.html', error='Your account has been deactivated')
+
+        # Login successful
+        login_user(user['id'], user['email'], user['name'], user['is_admin'])
+
+        # Set default active audit if user has access to any
+        accessible_audits = get_user_accessible_audits()
+        if accessible_audits and not get_active_audit_id():
+            set_active_audit(accessible_audits[0]['id'])
+
+        # Redirect to original destination or home
+        next_url = request.args.get('next') or url_for('index')
+        return redirect(next_url)
+
+    return render_template('login.html', error=error)
+
+
+@app.route('/logout')
+def logout():
+    """Log out the current user."""
+    logout_user()
+    return redirect(url_for('login'))
+
+
+@app.route('/api/auth/me', methods=['GET'])
+def api_auth_me():
+    """Get current user info."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'authenticated': False}), 401
+    return jsonify({
+        'authenticated': True,
+        'user': {
+            'id': user['id'],
+            'email': user['email'],
+            'name': user['name'],
+            'is_admin': user['is_admin']
+        }
+    })
+
+
+@app.route('/api/auth/set-audit', methods=['POST'])
+@require_login
+def api_set_active_audit():
+    """Set the active audit for the current session."""
+    data = request.get_json()
+    audit_id = data.get('audit_id')
+
+    if not audit_id:
+        return jsonify({'error': 'audit_id required'}), 400
+
+    if set_active_audit(audit_id):
+        return jsonify({'status': 'ok', 'active_audit_id': audit_id})
+    else:
+        return jsonify({'error': 'Access denied to this audit'}), 403
+
+
+@app.route('/api/auth/accessible-audits', methods=['GET'])
+@require_login
+def api_accessible_audits():
+    """Get list of audits accessible to current user."""
+    audits = get_user_accessible_audits()
+    return jsonify({
+        'audits': audits,
+        'active_audit_id': get_active_audit_id()
+    })
+
+
+# ==================== PAGE ROUTES ====================
+
 @app.route('/')
+@require_login
 def index():
-    # TODO: Load audit_name from database/config when audit management is implemented
-    audit_name = None  # Placeholder for audit name
-    return render_template('index.html', audit_name=audit_name, active_page='workpapers')
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+
+    # Auto-select first audit if none is selected
+    if accessible_audits and not active_audit_id:
+        set_active_audit(accessible_audits[0]['id'])
+        active_audit_id = accessible_audits[0]['id']
+
+    # Get the active audit details
+    active_audit = None
+    if active_audit_id:
+        for audit in accessible_audits:
+            if audit['id'] == active_audit_id:
+                active_audit = audit
+                break
+
+    return render_template('index.html',
+                           active_page='workpapers',
+                           accessible_audits=accessible_audits,
+                           active_audit_id=active_audit_id,
+                           active_audit=active_audit)
 
 # ==================== RACM (Spreadsheet) API ====================
 
 @app.route('/api/data', methods=['GET'])
+@require_login
 def get_data():
-    """Get all spreadsheet data (RACM + Issues) for multi-tab view."""
-    return jsonify({
-        'racm': db.get_as_spreadsheet(),
-        'issues': db.get_issues_as_spreadsheet()
-    })
+    """Get all spreadsheet data (RACM + Issues) for multi-tab view, filtered by active audit."""
+    audit_id = get_active_audit_id()
+
+    if audit_id:
+        # Get audit-filtered data
+        risks = db.get_risks_by_audit(audit_id)
+        issues = db.get_issues_by_audit(audit_id)
+
+        # Convert to spreadsheet format
+        racm_rows = []
+        conn = db._get_conn()
+        for r in risks:
+            fc = conn.execute("SELECT name FROM flowcharts WHERE risk_id = ?", (r['id'],)).fetchone()
+            task = conn.execute("SELECT title FROM tasks WHERE risk_id = ?", (r['id'],)).fetchone()
+            racm_rows.append([
+                r['risk_id'],
+                r['risk'] or '',
+                r['control_id'] or '',
+                r['control_owner'] or '',
+                fc['name'] if fc else '',
+                task['title'] if task else '',
+                r['status'] or ''
+            ])
+        conn.close()
+
+        issues_rows = [
+            [
+                issue['issue_id'],
+                issue['risk_id'] or '',
+                issue['title'],
+                issue['description'] or '',
+                issue['severity'],
+                issue['status'],
+                issue['assigned_to'] or '',
+                issue['due_date'] or ''
+            ]
+            for issue in issues
+        ]
+
+        return jsonify({
+            'racm': racm_rows,
+            'issues': issues_rows
+        })
+    else:
+        # No audit selected - return empty data
+        return jsonify({
+            'racm': [],
+            'issues': []
+        })
 
 @app.route('/api/data', methods=['POST'])
+@require_login
 def save_data():
     """Save all spreadsheet data from multi-tab view."""
-    # Thread-safe data version update
     data = request.json
+    audit_id = get_active_audit_id()
 
     # Handle both old format (array) and new format (object with racm/issues)
     if isinstance(data, list):
@@ -370,6 +533,14 @@ def save_data():
             db.save_from_spreadsheet(data['racm'])
         if 'issues' in data:
             db.save_issues_from_spreadsheet(data['issues'])
+
+    # Associate all risks and issues without audit_id to the active audit
+    if audit_id:
+        conn = db._get_conn()
+        conn.execute("UPDATE risks SET audit_id = ? WHERE audit_id IS NULL", (audit_id,))
+        conn.execute("UPDATE issues SET audit_id = ? WHERE audit_id IS NULL", (audit_id,))
+        conn.commit()
+        conn.close()
 
     increment_data_version()
     return jsonify({'status': 'saved'})
@@ -422,6 +593,7 @@ def delete_risk(risk_id):
 
 @app.route('/flowchart')
 @app.route('/flowchart/<flowchart_id>')
+@require_login
 def flowchart(flowchart_id=None):
     return render_template('flowchart.html', flowchart_id=flowchart_id, active_page='flowchart')
 
@@ -483,6 +655,7 @@ def test_document_exists(risk_code, doc_type):
 
 @app.route('/kanban')
 @app.route('/kanban/<board_id>')
+@require_login
 def kanban(board_id='default'):
     # TODO: Load audit_name from database/config when audit management is implemented
     audit_name = None  # Placeholder for audit name
@@ -490,6 +663,7 @@ def kanban(board_id='default'):
 
 
 @app.route('/audit-plan')
+@require_login
 def audit_plan():
     """Annual Audit Plan page with spreadsheet and kanban views."""
     audit_name = None
@@ -603,6 +777,7 @@ def get_audits_summary():
 
 
 @app.route('/library')
+@require_login
 def library():
     """Audit Library page for managing reference documents."""
     audit_name = None
@@ -863,9 +1038,14 @@ def update_kanban_task(board_id, task_id):
 # ==================== Tasks API (direct access) ====================
 
 @app.route('/api/tasks', methods=['GET'])
+@require_login
 def get_tasks():
-    """Get all tasks."""
-    return jsonify(db.get_all_tasks())
+    """Get tasks filtered by active audit."""
+    audit_id = get_active_audit_id()
+    if audit_id:
+        return jsonify(db.get_tasks_by_audit(audit_id))
+    else:
+        return jsonify([])
 
 @app.route('/api/tasks/<int:task_id>', methods=['GET'])
 def get_task(task_id):
@@ -874,9 +1054,9 @@ def get_task(task_id):
     return jsonify(task) if task else not_found_response('Task')
 
 @app.route('/api/tasks', methods=['POST'])
+@require_login
 def create_task():
-    """Create a new task."""
-    # Thread-safe data version update
+    """Create a new task and associate with active audit."""
     data = request.json
     task_id = db.create_task(
         title=data.get('title'),
@@ -886,14 +1066,24 @@ def create_task():
         column_id=data.get('column_id', 'planning'),
         risk_id=data.get('risk_id')
     )
+
+    # Associate with active audit
+    audit_id = get_active_audit_id()
+    if audit_id:
+        conn = db._get_conn()
+        conn.execute("UPDATE tasks SET audit_id = ? WHERE id = ?", (audit_id, task_id))
+        conn.commit()
+        conn.close()
+
     increment_data_version()
     return jsonify({'status': 'created', 'id': task_id})
 
 # ==================== AI Query API ====================
 
 @app.route('/api/query', methods=['POST'])
+@require_admin
 def query_database():
-    """Execute a read-only SQL query (for AI integration)."""
+    """Execute a read-only SQL query (for AI integration). Admin only."""
     data = request.json
     sql = data.get('sql', '')
     try:
@@ -903,14 +1093,25 @@ def query_database():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/schema', methods=['GET'])
+@require_login
 def get_schema():
     """Get database schema for AI context."""
     return jsonify({'schema': db.get_schema()})
 
 @app.route('/api/context', methods=['GET'])
+@require_login
 def get_context():
-    """Get full database context for AI."""
-    return jsonify(db.get_full_context())
+    """Get full database context for AI.
+
+    For non-admins, returns only data from audits they have access to.
+    """
+    user = get_current_user()
+    if user['is_admin']:
+        return jsonify(db.get_full_context())
+
+    # Non-admin: return scoped context
+    audit_ids = db.get_user_audit_ids(user['id'])
+    return jsonify(db.get_context_for_audits(audit_ids))
 
 # ==================== Issues API ====================
 
@@ -2309,9 +2510,11 @@ init_felix_tables()
 
 
 @app.route('/felix')
+@require_login
 def felix_chat():
     """Felix AI full-screen chat page."""
-    user_id = session.get('user_id', 'default_user')
+    user = get_current_user()
+    user_id = user['id'] if user else 'default_user'
     return render_template('felix.html', user_id=user_id, active_page='felix')
 
 
@@ -2819,6 +3022,185 @@ def call_felix_ai(messages, attachments=None):
         final_response = status_block + final_response
 
     return final_response
+
+
+# ==================== ADMIN ROUTES ====================
+
+@app.route('/admin')
+@require_admin
+def admin_dashboard():
+    """Admin dashboard page."""
+    return render_template('admin/dashboard.html', active_page='admin')
+
+
+@app.route('/admin/users')
+@require_admin
+def admin_users():
+    """User management page."""
+    return render_template('admin/users.html', active_page='admin')
+
+
+@app.route('/admin/audits')
+@require_admin
+def admin_audits():
+    """Audit membership management page."""
+    return render_template('admin/audits.html', active_page='admin')
+
+
+# ==================== ADMIN API: Users ====================
+
+@app.route('/api/admin/users', methods=['GET'])
+@require_admin
+def api_admin_get_users():
+    """Get all users."""
+    users = db.get_all_users()
+    return jsonify(users)
+
+
+@app.route('/api/admin/users', methods=['POST'])
+@require_admin
+def api_admin_create_user():
+    """Create a new user."""
+    data = request.get_json()
+
+    email = data.get('email', '').strip().lower()
+    name = data.get('name', '').strip()
+    password = data.get('password', '')
+    is_admin = int(data.get('is_admin', 0))
+
+    if not email or not name or not password:
+        return jsonify({'error': 'Email, name, and password are required'}), 400
+
+    # Check if email already exists
+    if db.get_user_by_email(email):
+        return jsonify({'error': 'A user with this email already exists'}), 400
+
+    password_hash = hash_password(password)
+    user_id = db.create_user(email, name, password_hash, is_active=1, is_admin=is_admin)
+
+    return jsonify({'status': 'created', 'id': user_id})
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['GET'])
+@require_admin
+def api_admin_get_user(user_id):
+    """Get a single user."""
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # Remove password hash from response
+    return jsonify({
+        'id': user['id'],
+        'email': user['email'],
+        'name': user['name'],
+        'is_active': user['is_active'],
+        'is_admin': user['is_admin'],
+        'created_at': user['created_at'],
+        'updated_at': user['updated_at']
+    })
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@require_admin
+def api_admin_update_user(user_id):
+    """Update a user."""
+    data = request.get_json()
+
+    updates = {}
+    if 'name' in data:
+        updates['name'] = data['name'].strip()
+    if 'email' in data:
+        updates['email'] = data['email'].strip().lower()
+    if 'is_active' in data:
+        updates['is_active'] = int(data['is_active'])
+    if 'is_admin' in data:
+        updates['is_admin'] = int(data['is_admin'])
+    if 'password' in data and data['password']:
+        updates['password_hash'] = hash_password(data['password'])
+
+    if not updates:
+        return jsonify({'error': 'No valid updates provided'}), 400
+
+    if db.update_user(user_id, **updates):
+        return jsonify({'status': 'updated'})
+    else:
+        return jsonify({'error': 'User not found'}), 404
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@require_admin
+def api_admin_delete_user(user_id):
+    """Deactivate a user (soft delete)."""
+    # Don't allow deleting yourself
+    current = get_current_user()
+    if current and current['id'] == user_id:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+
+    if db.update_user(user_id, is_active=0):
+        return jsonify({'status': 'deactivated'})
+    else:
+        return jsonify({'error': 'User not found'}), 404
+
+
+@app.route('/api/admin/users/<int:user_id>/memberships', methods=['GET'])
+@require_admin
+def api_admin_get_user_memberships(user_id):
+    """Get all audit memberships for a user."""
+    memberships = db.get_user_memberships(user_id)
+    return jsonify(memberships)
+
+
+# ==================== ADMIN API: Roles ====================
+
+@app.route('/api/admin/roles', methods=['GET'])
+@require_admin
+def api_admin_get_roles():
+    """Get all available roles."""
+    roles = db.get_all_roles()
+    return jsonify(roles)
+
+
+# ==================== ADMIN API: Audit Memberships ====================
+
+@app.route('/api/admin/audits/<int:audit_id>/memberships', methods=['GET'])
+@require_admin
+def api_admin_get_audit_memberships(audit_id):
+    """Get all users assigned to an audit."""
+    memberships = db.get_audit_memberships(audit_id)
+    return jsonify(memberships)
+
+
+@app.route('/api/admin/audits/<int:audit_id>/memberships', methods=['POST'])
+@require_admin
+def api_admin_add_audit_membership(audit_id):
+    """Add a user to an audit."""
+    data = request.get_json()
+
+    user_id = data.get('user_id')
+    role_id = data.get('role_id')
+
+    if not user_id or not role_id:
+        return jsonify({'error': 'user_id and role_id are required'}), 400
+
+    # Check if membership already exists
+    if db.get_audit_membership(user_id, audit_id):
+        # Update existing membership role
+        db.update_audit_membership(audit_id, user_id, role_id)
+        return jsonify({'status': 'updated'})
+
+    membership_id = db.add_audit_membership(audit_id, user_id, role_id)
+    return jsonify({'status': 'created', 'id': membership_id})
+
+
+@app.route('/api/admin/audits/<int:audit_id>/memberships/<int:user_id>', methods=['DELETE'])
+@require_admin
+def api_admin_remove_audit_membership(audit_id, user_id):
+    """Remove a user from an audit."""
+    if db.remove_audit_membership(audit_id, user_id):
+        return jsonify({'status': 'removed'})
+    else:
+        return jsonify({'error': 'Membership not found'}), 404
 
 
 if __name__ == '__main__':

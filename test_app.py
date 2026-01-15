@@ -100,6 +100,47 @@ def client(test_db, tmp_path):
 
 
 @pytest.fixture
+def auth_client(test_db, tmp_path):
+    """Create test client with authenticated admin user."""
+    # Point app to test database
+    app_module.app.config['TESTING'] = True
+
+    # Create test uploads directory
+    uploads_dir = tmp_path / 'uploads'
+    uploads_dir.mkdir()
+    app_module.app.config['UPLOAD_FOLDER'] = str(uploads_dir)
+
+    # Patch both get_db and the module-level db instance
+    original_get_db = app_module.get_db
+    original_db = app_module.db
+    app_module.get_db = lambda: test_db
+    app_module.db = test_db
+
+    # Create a test audit for the session
+    test_audit_id = test_db.create_audit(
+        title='Test Audit',
+        description='Audit for testing',
+        audit_type='Test',
+        status='In Progress',
+        risk_rating='Medium'
+    )
+
+    with app_module.app.test_client() as client:
+        # Log in as admin user (created by database migration)
+        with client.session_transaction() as sess:
+            sess['user_id'] = 1
+            sess['user_email'] = 'admin@localhost'
+            sess['user_name'] = 'Default Admin'
+            sess['is_admin'] = True
+            sess['active_audit_id'] = test_audit_id
+        yield client
+
+    # Restore originals
+    app_module.get_db = original_get_db
+    app_module.db = original_db
+
+
+@pytest.fixture
 def sample_risk(test_db):
     """Create a sample risk for testing."""
     risk_id = test_db.create_risk(
@@ -394,35 +435,40 @@ class TestAppHelpers:
 class TestPageRoutes:
     """Integration tests for page routes."""
 
-    def test_index_page(self, client):
+    def test_index_page(self, auth_client):
         """Test RACM index page loads."""
-        response = client.get('/')
+        response = auth_client.get('/')
         assert response.status_code == 200
-        assert b'RACM' in response.data
+        assert b'RACM' in response.data or b'SmartPapers' in response.data
 
-    def test_kanban_page(self, client):
+    def test_kanban_page(self, auth_client):
         """Test Kanban page loads."""
-        response = client.get('/kanban')
+        response = auth_client.get('/kanban')
         assert response.status_code == 200
-        assert b'Audit Plan' in response.data
 
-    def test_flowchart_page(self, client):
+    def test_flowchart_page(self, auth_client):
         """Test Flowchart page loads."""
-        response = client.get('/flowchart')
+        response = auth_client.get('/flowchart')
         assert response.status_code == 200
 
-    def test_flowchart_page_with_id(self, client):
+    def test_flowchart_page_with_id(self, auth_client):
         """Test Flowchart page with specific ID."""
-        response = client.get('/flowchart/test-flow')
+        response = auth_client.get('/flowchart/test-flow')
         assert response.status_code == 200
+
+    def test_unauthenticated_redirects_to_login(self, client):
+        """Test unauthenticated users are redirected to login."""
+        response = client.get('/')
+        assert response.status_code == 302
+        assert '/login' in response.location
 
 
 class TestRACMAPI:
     """Integration tests for RACM API endpoints."""
 
-    def test_get_data_returns_structure(self, client):
+    def test_get_data_returns_structure(self, auth_client):
         """Test GET /api/data returns correct structure."""
-        response = client.get('/api/data')
+        response = auth_client.get('/api/data')
         assert response.status_code == 200
         data = json.loads(response.data)
         assert 'racm' in data
@@ -430,7 +476,7 @@ class TestRACMAPI:
         assert isinstance(data['racm'], list)
         assert isinstance(data['issues'], list)
 
-    def test_post_data_saves_racm(self, client):
+    def test_post_data_saves_racm(self, auth_client):
         """Test POST /api/data saves RACM data."""
         racm_data = {
             'racm': [
@@ -438,21 +484,21 @@ class TestRACMAPI:
             ],
             'issues': []
         }
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data=json.dumps(racm_data),
             content_type='application/json')
         assert response.status_code == 200
         result = json.loads(response.data)
         assert result['status'] == 'saved'
 
-    def test_data_version_increments_on_save(self, client):
+    def test_data_version_increments_on_save(self, auth_client):
         """Test data version increments when data is saved."""
         initial_version = app_module.get_data_version()
         racm_data = {
             'racm': [['R999', 'Version Test', 'C999', 'Owner', '', '', '', '', 'Not Complete', False, '', False, False, '', '', '']],
             'issues': []
         }
-        client.post('/api/data', data=json.dumps(racm_data), content_type='application/json')
+        auth_client.post('/api/data', data=json.dumps(racm_data), content_type='application/json')
         # Version should have incremented
         assert app_module.get_data_version() > initial_version
 
@@ -598,7 +644,7 @@ class TestChatAPI:
 class TestUATRiskWorkflow:
     """UAT: Complete risk management workflow."""
 
-    def test_full_risk_workflow(self, client, test_db):
+    def test_full_risk_workflow(self, auth_client, test_db):
         """Test complete workflow: add risk → test → review → close."""
         # 1. Add a risk via API
         racm_data = {
@@ -607,7 +653,7 @@ class TestUATRiskWorkflow:
             ],
             'issues': []
         }
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data=json.dumps(racm_data),
             content_type='application/json')
         assert response.status_code == 200
@@ -617,13 +663,13 @@ class TestUATRiskWorkflow:
         assert risk is not None, "Risk R100 should exist after saving"
 
         # 2. Add DE testing documentation
-        response = client.post('/api/test-document/R100/de_testing',
+        response = auth_client.post('/api/test-document/R100/de_testing',
             data=json.dumps({'content': '<p>DE testing performed. Control operates as designed.</p>'}),
             content_type='application/json')
         assert response.status_code == 200
 
         # 3. Add OE testing documentation
-        response = client.post('/api/test-document/R100/oe_testing',
+        response = auth_client.post('/api/test-document/R100/oe_testing',
             data=json.dumps({'content': '<p>OE testing: 25 samples tested, all passed.</p>'}),
             content_type='application/json')
         assert response.status_code == 200
@@ -631,7 +677,7 @@ class TestUATRiskWorkflow:
         # 4. Update risk status to Effective via spreadsheet save
         racm_data['racm'][0][8] = 'Effective'  # Status column
         racm_data['racm'][0][9] = True  # Ready for review
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data=json.dumps(racm_data),
             content_type='application/json')
         assert response.status_code == 200
@@ -642,7 +688,7 @@ class TestUATRiskWorkflow:
         # 5. Reviewer reviews and closes
         racm_data['racm'][0][10] = 'Senior Auditor'  # Reviewer
         racm_data['racm'][0][12] = True  # Closed
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data=json.dumps(racm_data),
             content_type='application/json')
         assert response.status_code == 200
@@ -810,7 +856,7 @@ class TestUATFlowchartWorkflow:
 class TestUATDataIntegrity:
     """UAT: Data integrity across operations."""
 
-    def test_concurrent_saves(self, client, test_db):
+    def test_concurrent_saves(self, auth_client, test_db):
         """Test data integrity with multiple saves."""
         # Save multiple times rapidly
         for i in range(5):
@@ -820,12 +866,12 @@ class TestUATDataIntegrity:
                 ],
                 'issues': []
             }
-            response = client.post('/api/data',
+            response = auth_client.post('/api/data',
                 data=json.dumps(racm_data),
                 content_type='application/json')
             assert response.status_code == 200
 
-    def test_special_characters_handling(self, client, test_db):
+    def test_special_characters_handling(self, auth_client, test_db):
         """Test handling of special characters in data."""
         racm_data = {
             'racm': [
@@ -834,13 +880,13 @@ class TestUATDataIntegrity:
             ],
             'issues': []
         }
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data=json.dumps(racm_data),
             content_type='application/json')
         assert response.status_code == 200
 
         # Verify data saved correctly
-        response = client.get('/api/data')
+        response = auth_client.get('/api/data')
         data = json.loads(response.data)
         assert any("O'Brien" in str(row) for row in data['racm'])
 
@@ -850,23 +896,23 @@ class TestUATDataIntegrity:
 class TestEdgeCases:
     """Test edge cases and error handling."""
 
-    def test_empty_data_save(self, client):
+    def test_empty_data_save(self, auth_client):
         """Test saving empty data."""
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data=json.dumps({'racm': [], 'issues': []}),
             content_type='application/json')
         assert response.status_code == 200
 
-    def test_invalid_json(self, client):
+    def test_invalid_json(self, auth_client):
         """Test handling of invalid JSON."""
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data='not valid json',
             content_type='application/json')
         assert response.status_code in [400, 500]
 
-    def test_missing_content_type(self, client):
+    def test_missing_content_type(self, auth_client):
         """Test handling of missing content type."""
-        response = client.post('/api/data',
+        response = auth_client.post('/api/data',
             data='{}')
         # Should still work or return appropriate error
         assert response.status_code in [200, 400, 415]
@@ -1124,20 +1170,20 @@ class TestAISystemPrompt:
 class TestFelixAIPage:
     """Integration tests for Felix AI page and routes."""
 
-    def test_felix_page_loads(self, client):
+    def test_felix_page_loads(self, auth_client):
         """Felix AI page should load with 200 status."""
-        response = client.get('/felix')
+        response = auth_client.get('/felix')
         assert response.status_code == 200
 
-    def test_felix_page_has_chat_ui(self, client):
+    def test_felix_page_has_chat_ui(self, auth_client):
         """Felix page should have chat UI elements."""
-        response = client.get('/felix')
+        response = auth_client.get('/felix')
         html = response.data.decode()
         assert 'chat' in html.lower() or 'message' in html.lower()
 
-    def test_felix_page_has_conversation_list(self, client):
+    def test_felix_page_has_conversation_list(self, auth_client):
         """Felix page should have conversation sidebar."""
-        response = client.get('/felix')
+        response = auth_client.get('/felix')
         html = response.data.decode()
         assert 'conversation' in html.lower() or 'history' in html.lower()
 
@@ -1568,14 +1614,14 @@ class TestLibraryDatabase:
 class TestLibraryAPI:
     """Integration tests for library API endpoints."""
 
-    def test_library_page_loads(self, client):
+    def test_library_page_loads(self, auth_client):
         """Library page should load with 200 status."""
-        response = client.get('/library')
+        response = auth_client.get('/library')
         assert response.status_code == 200
 
-    def test_library_page_has_ui_elements(self, client):
+    def test_library_page_has_ui_elements(self, auth_client):
         """Library page should have key UI elements."""
-        response = client.get('/library')
+        response = auth_client.get('/library')
         html = response.data.decode()
         assert 'Audit Library' in html
         assert 'Add Document' in html

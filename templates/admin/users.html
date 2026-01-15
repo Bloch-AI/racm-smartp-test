@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}SmartPapers - User Management{% endblock %}
+
+{% block page_styles %}
+.user-row:hover {
+    background-color: #f8fafc;
+}
+.badge-active {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+.badge-inactive {
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+.badge-admin {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+{% endblock %}
+
+{% block content %}
+<main class="py-8">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="md:flex md:items-center md:justify-between mb-6">
+            <div class="min-w-0 flex-1">
+                <nav class="flex items-center gap-2 text-sm mb-2">
+                    <a href="/admin" class="text-slate-500 hover:text-slate-700">Admin</a>
+                    <span class="text-slate-400">/</span>
+                    <span class="text-slate-900">Users</span>
+                </nav>
+                <h1 class="text-2xl font-bold leading-7 text-slate-900 sm:truncate sm:text-3xl sm:tracking-tight font-display">
+                    User Management
+                </h1>
+            </div>
+            <div class="mt-4 md:mt-0">
+                <button onclick="openCreateModal()" class="btn btn-primary">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="h-5 w-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add User
+                </button>
+            </div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <table class="min-w-full divide-y divide-slate-200">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">User</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table" class="bg-white divide-y divide-slate-200">
+                    <tr>
+                        <td colspan="5" class="px-6 py-4 text-center text-slate-500">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+<!-- Create/Edit User Modal -->
+<div id="userModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        <div class="modal-header">
+            <h3 id="modalTitle" class="text-base font-semibold text-slate-900">Create User</h3>
+            <button onclick="closeModal()" class="modal-close" aria-label="Close">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <form id="userForm" onsubmit="saveUser(event)" class="p-6 space-y-4">
+            <input type="hidden" id="userId">
+
+            <div>
+                <label class="form-label">Name</label>
+                <input type="text" id="userName" required class="form-input" placeholder="Full name">
+            </div>
+
+            <div>
+                <label class="form-label">Email</label>
+                <input type="email" id="userEmail" required class="form-input" placeholder="email@example.com">
+            </div>
+
+            <div>
+                <label class="form-label">Password <span id="passwordHint" class="text-slate-400 font-normal">(required)</span></label>
+                <input type="password" id="userPassword" class="form-input" placeholder="Enter password">
+            </div>
+
+            <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="userIsActive" checked class="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500">
+                    <span class="text-sm text-slate-700">Active</span>
+                </label>
+
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="userIsAdmin" class="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500">
+                    <span class="text-sm text-slate-700">Administrator</span>
+                </label>
+            </div>
+        </form>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+            <button onclick="closeModal()" class="btn btn-secondary">Cancel</button>
+            <button onclick="document.getElementById('userForm').requestSubmit()" class="btn btn-primary">Save</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let users = [];
+
+    async function loadUsers() {
+        const res = await fetch('/api/admin/users');
+        users = await res.json();
+        renderUsers();
+    }
+
+    function renderUsers() {
+        const tbody = document.getElementById('users-table');
+
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-slate-500">No users found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = users.map(user => `
+            <tr class="user-row">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <div class="h-10 w-10 flex-shrink-0 bg-slate-200 rounded-full flex items-center justify-center">
+                            <span class="text-sm font-medium text-slate-600">${user.name.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-slate-900">${escapeHtml(user.name)}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                    ${escapeHtml(user.email)}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.is_active ? 'badge-active' : 'badge-inactive'}">
+                        ${user.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    ${user.is_admin ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium badge-admin">Admin</span>' : '<span class="text-sm text-slate-500">User</span>'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onclick="openEditModal(${user.id})" class="text-primary-600 hover:text-primary-900 mr-3">Edit</button>
+                    ${user.is_active ?
+                        `<button onclick="deactivateUser(${user.id})" class="text-red-600 hover:text-red-900">Deactivate</button>` :
+                        `<button onclick="reactivateUser(${user.id})" class="text-emerald-600 hover:text-emerald-900">Reactivate</button>`
+                    }
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function openCreateModal() {
+        document.getElementById('modalTitle').textContent = 'Create User';
+        document.getElementById('userId').value = '';
+        document.getElementById('userName').value = '';
+        document.getElementById('userEmail').value = '';
+        document.getElementById('userPassword').value = '';
+        document.getElementById('userPassword').required = true;
+        document.getElementById('passwordHint').textContent = '(required)';
+        document.getElementById('userIsActive').checked = true;
+        document.getElementById('userIsAdmin').checked = false;
+        document.getElementById('userModal').classList.remove('hidden');
+        document.getElementById('userModal').classList.add('flex');
+    }
+
+    function openEditModal(userId) {
+        const user = users.find(u => u.id === userId);
+        if (!user) return;
+
+        document.getElementById('modalTitle').textContent = 'Edit User';
+        document.getElementById('userId').value = user.id;
+        document.getElementById('userName').value = user.name;
+        document.getElementById('userEmail').value = user.email;
+        document.getElementById('userPassword').value = '';
+        document.getElementById('userPassword').required = false;
+        document.getElementById('passwordHint').textContent = '(leave blank to keep current)';
+        document.getElementById('userIsActive').checked = user.is_active;
+        document.getElementById('userIsAdmin').checked = user.is_admin;
+        document.getElementById('userModal').classList.remove('hidden');
+        document.getElementById('userModal').classList.add('flex');
+    }
+
+    function closeModal() {
+        document.getElementById('userModal').classList.add('hidden');
+        document.getElementById('userModal').classList.remove('flex');
+    }
+
+    async function saveUser(event) {
+        event.preventDefault();
+
+        const userId = document.getElementById('userId').value;
+        const data = {
+            name: document.getElementById('userName').value,
+            email: document.getElementById('userEmail').value,
+            is_active: document.getElementById('userIsActive').checked ? 1 : 0,
+            is_admin: document.getElementById('userIsAdmin').checked ? 1 : 0
+        };
+
+        const password = document.getElementById('userPassword').value;
+        if (password) {
+            data.password = password;
+        }
+
+        try {
+            const res = await fetch(userId ? `/api/admin/users/${userId}` : '/api/admin/users', {
+                method: userId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await res.json();
+
+            if (!res.ok) {
+                showToast(result.error || 'Error saving user', 'error');
+                return;
+            }
+
+            showToast(userId ? 'User updated successfully' : 'User created successfully', 'success');
+            closeModal();
+            loadUsers();
+        } catch (error) {
+            showToast('Error saving user', 'error');
+        }
+    }
+
+    async function deactivateUser(userId) {
+        if (!confirm('Are you sure you want to deactivate this user?')) return;
+
+        try {
+            const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+            const result = await res.json();
+
+            if (!res.ok) {
+                showToast(result.error || 'Error deactivating user', 'error');
+                return;
+            }
+
+            showToast('User deactivated', 'success');
+            loadUsers();
+        } catch (error) {
+            showToast('Error deactivating user', 'error');
+        }
+    }
+
+    async function reactivateUser(userId) {
+        try {
+            const res = await fetch(`/api/admin/users/${userId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: 1 })
+            });
+
+            if (!res.ok) {
+                showToast('Error reactivating user', 'error');
+                return;
+            }
+
+            showToast('User reactivated', 'success');
+            loadUsers();
+        } catch (error) {
+            showToast('Error reactivating user', 'error');
+        }
+    }
+
+    // Close modal on backdrop click
+    document.getElementById('userModal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+
+    loadUsers();
+</script>
+{% endblock %}

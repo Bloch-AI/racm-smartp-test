@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}SmartPapers - Audit Access Management{% endblock %}
+
+{% block page_styles %}
+.audit-card {
+    transition: all 0.2s;
+}
+.audit-card:hover {
+    border-color: #008bd1;
+}
+.member-row:hover {
+    background-color: #f8fafc;
+}
+{% endblock %}
+
+{% block content %}
+<main class="py-8">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="md:flex md:items-center md:justify-between mb-6">
+            <div class="min-w-0 flex-1">
+                <nav class="flex items-center gap-2 text-sm mb-2">
+                    <a href="/admin" class="text-slate-500 hover:text-slate-700">Admin</a>
+                    <span class="text-slate-400">/</span>
+                    <span class="text-slate-900">Audit Access</span>
+                </nav>
+                <h1 class="text-2xl font-bold leading-7 text-slate-900 sm:truncate sm:text-3xl sm:tracking-tight font-display">
+                    Audit Access Management
+                </h1>
+                <p class="mt-1 text-sm text-slate-500">
+                    Manage team members and their roles for each audit
+                </p>
+            </div>
+        </div>
+
+        <!-- Audits Grid -->
+        <div id="audits-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="animate-pulse">
+                <div class="h-48 bg-slate-200 rounded-xl"></div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- Add Member Modal -->
+<div id="addMemberModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        <div class="modal-header">
+            <h3 id="addMemberTitle" class="text-base font-semibold text-slate-900">Add Team Member</h3>
+            <button onclick="closeAddMemberModal()" class="modal-close" aria-label="Close">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <form id="addMemberForm" onsubmit="addMember(event)" class="p-6 space-y-4">
+            <input type="hidden" id="addMemberAuditId">
+
+            <div>
+                <label class="form-label">User</label>
+                <select id="addMemberUserId" required class="form-input">
+                    <option value="">Select a user...</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="form-label">Role</label>
+                <select id="addMemberRoleId" required class="form-input">
+                    <option value="">Select a role...</option>
+                </select>
+            </div>
+        </form>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+            <button onclick="closeAddMemberModal()" class="btn btn-secondary">Cancel</button>
+            <button onclick="document.getElementById('addMemberForm').requestSubmit()" class="btn btn-primary">Add</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let audits = [];
+    let users = [];
+    let roles = [];
+
+    async function loadData() {
+        const [auditsRes, usersRes, rolesRes] = await Promise.all([
+            fetch('/api/audits'),
+            fetch('/api/admin/users'),
+            fetch('/api/admin/roles')
+        ]);
+
+        audits = await auditsRes.json();
+        users = await usersRes.json();
+        roles = await rolesRes.json();
+
+        // Load memberships for each audit
+        await Promise.all(audits.map(async (audit) => {
+            const res = await fetch(`/api/admin/audits/${audit.id}/memberships`);
+            audit.memberships = await res.json();
+        }));
+
+        renderAudits();
+    }
+
+    function renderAudits() {
+        const container = document.getElementById('audits-container');
+
+        if (audits.length === 0) {
+            container.innerHTML = '<div class="col-span-2 text-center py-12 text-slate-500">No audits found. Create audits in the Annual Audit Plan.</div>';
+            return;
+        }
+
+        container.innerHTML = audits.map(audit => `
+            <div class="audit-card bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <h3 class="font-semibold text-slate-900">${escapeHtml(audit.title)}</h3>
+                        <p class="text-sm text-slate-500">${audit.memberships?.length || 0} team members</p>
+                    </div>
+                    <button onclick="openAddMemberModal(${audit.id}, '${escapeHtml(audit.title)}')" class="btn btn-secondary text-sm py-1.5 px-3">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="h-4 w-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add
+                    </button>
+                </div>
+                <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                    ${audit.memberships?.length > 0 ? audit.memberships.map(member => `
+                        <div class="member-row px-6 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="h-8 w-8 bg-slate-200 rounded-full flex items-center justify-center">
+                                    <span class="text-xs font-medium text-slate-600">${member.user_name.charAt(0).toUpperCase()}</span>
+                                </div>
+                                <div>
+                                    <div class="text-sm font-medium text-slate-900">${escapeHtml(member.user_name)}</div>
+                                    <div class="text-xs text-slate-500">${escapeHtml(member.email)}</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                                    ${escapeHtml(member.role_name)}
+                                </span>
+                                <button onclick="removeMember(${audit.id}, ${member.user_id}, '${escapeHtml(member.user_name)}')" class="text-slate-400 hover:text-red-600 p-1">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('') : '<div class="px-6 py-8 text-center text-slate-400 text-sm">No team members assigned</div>'}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function openAddMemberModal(auditId, auditTitle) {
+        const audit = audits.find(a => a.id === auditId);
+        const existingUserIds = audit?.memberships?.map(m => m.user_id) || [];
+
+        // Filter to only active users not already in the audit
+        const availableUsers = users.filter(u => u.is_active && !existingUserIds.includes(u.id));
+
+        document.getElementById('addMemberTitle').textContent = `Add Member to ${auditTitle}`;
+        document.getElementById('addMemberAuditId').value = auditId;
+
+        // Populate user select
+        const userSelect = document.getElementById('addMemberUserId');
+        userSelect.innerHTML = '<option value="">Select a user...</option>' +
+            availableUsers.map(u => `<option value="${u.id}">${escapeHtml(u.name)} (${escapeHtml(u.email)})</option>`).join('');
+
+        // Populate role select (exclude admin role from assignment)
+        const roleSelect = document.getElementById('addMemberRoleId');
+        roleSelect.innerHTML = '<option value="">Select a role...</option>' +
+            roles.filter(r => r.name !== 'admin').map(r => `<option value="${r.id}">${escapeHtml(r.name)} - ${escapeHtml(r.description)}</option>`).join('');
+
+        document.getElementById('addMemberModal').classList.remove('hidden');
+        document.getElementById('addMemberModal').classList.add('flex');
+    }
+
+    function closeAddMemberModal() {
+        document.getElementById('addMemberModal').classList.add('hidden');
+        document.getElementById('addMemberModal').classList.remove('flex');
+    }
+
+    async function addMember(event) {
+        event.preventDefault();
+
+        const auditId = document.getElementById('addMemberAuditId').value;
+        const userId = document.getElementById('addMemberUserId').value;
+        const roleId = document.getElementById('addMemberRoleId').value;
+
+        if (!userId || !roleId) {
+            showToast('Please select a user and role', 'warning');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/admin/audits/${auditId}/memberships`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: parseInt(userId), role_id: parseInt(roleId) })
+            });
+
+            const result = await res.json();
+
+            if (!res.ok) {
+                showToast(result.error || 'Error adding member', 'error');
+                return;
+            }
+
+            showToast('Member added successfully', 'success');
+            closeAddMemberModal();
+            loadData();
+        } catch (error) {
+            showToast('Error adding member', 'error');
+        }
+    }
+
+    async function removeMember(auditId, userId, userName) {
+        if (!confirm(`Remove ${userName} from this audit?`)) return;
+
+        try {
+            const res = await fetch(`/api/admin/audits/${auditId}/memberships/${userId}`, {
+                method: 'DELETE'
+            });
+
+            if (!res.ok) {
+                showToast('Error removing member', 'error');
+                return;
+            }
+
+            showToast('Member removed', 'success');
+            loadData();
+        } catch (error) {
+            showToast('Error removing member', 'error');
+        }
+    }
+
+    // Close modal on backdrop click
+    document.getElementById('addMemberModal').addEventListener('click', function(e) {
+        if (e.target === this) closeAddMemberModal();
+    });
+
+    loadData();
+</script>
+{% endblock %}
