@@ -533,16 +533,22 @@ def assign_admin_to_audits(db, audit_ids):
 
 
 def clear_existing_data(db):
-    """Clear existing RACM data (but keep audits and users)."""
+    """Clear all existing audit data to start fresh."""
     conn = db._get_conn()
+    # Clear RACM data
     conn.execute("DELETE FROM tasks")
     conn.execute("DELETE FROM issues")
     conn.execute("DELETE FROM risks")
     conn.execute("DELETE FROM flowcharts")
     conn.execute("DELETE FROM test_documents")
+    conn.execute("DELETE FROM risk_attachments")
+    conn.execute("DELETE FROM issue_attachments")
+    # Clear audit memberships and audits
+    conn.execute("DELETE FROM audit_memberships")
+    conn.execute("DELETE FROM audits")
     conn.commit()
     conn.close()
-    print("  Cleared existing RACM data")
+    print("  Cleared all existing audit data")
 
 
 def main():
