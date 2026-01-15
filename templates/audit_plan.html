@@ -171,6 +171,83 @@
         .badge-medium { background: #fef3c7; color: #b45309; }
         .badge-low { background: #dcfce7; color: #15803d; }
 
+        /* Slide-in Panel */
+        .panel-backdrop {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .panel-content {
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+        #edit-modal.open .panel-backdrop {
+            opacity: 1;
+        }
+        #edit-modal.open .panel-content {
+            transform: translateX(0);
+        }
+
+        /* Drawer header - matches AI panel */
+        .drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: var(--primary);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .drawer-header-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .drawer-header-icon svg { width: 20px; height: 20px; color: white; }
+        .drawer-header-title { font-size: 15px; font-weight: 600; color: white; }
+        .drawer-header-subtitle { font-size: 12px; color: rgba(255,255,255,0.7); }
+        .drawer-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .drawer-close:hover { background: rgba(255,255,255,0.1); color: white; }
+
+        /* Form styles - matches index.html */
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        .form-input {
+            width: 100%;
+            height: 38px;
+            padding: 0 12px;
+            font-size: 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            transition: all 0.15s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 139, 209, 0.15);
+        }
+        textarea.form-input {
+            height: auto;
+            padding: 10px 12px;
+        }
+
         /* Toast */
         .toast {
             position: fixed;
@@ -182,9 +259,9 @@
             font-size: 14px;
             font-weight: 500;
             z-index: 9999;
-            animation: slideIn 0.3s ease;
+            animation: toastSlideIn 0.3s ease;
         }
-        @keyframes slideIn {
+        @keyframes toastSlideIn {
             from { transform: translateY(20px); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
         }
@@ -286,55 +363,68 @@
         </main>
     </div>
 
-    <!-- Edit Modal -->
-    <div id="edit-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
-            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                <h2 class="text-lg font-semibold text-slate-900 font-display" id="modal-title">Edit Audit</h2>
-                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600">
+    <!-- Edit Panel (Slide-in from right) -->
+    <div id="edit-modal" class="fixed inset-0 z-50 hidden">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm panel-backdrop" onclick="closeModal()"></div>
+        <!-- Panel -->
+        <div class="absolute top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col panel-content">
+            <!-- Header - unified drawer style -->
+            <div class="drawer-header flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="drawer-header-icon">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="drawer-header-title" id="modal-title">Edit Audit</h2>
+                        <p class="drawer-header-subtitle" id="modal-subtitle">Annual Audit Plan</p>
+                    </div>
+                </div>
+                <button onclick="closeModal()" class="drawer-close">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </div>
-            <div class="p-6 space-y-4">
+            <!-- Body (scrollable) -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
                 <input type="hidden" id="edit-audit-id">
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Audit Name</label>
-                    <input type="text" id="edit-title" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                    <label class="form-label">Audit Name</label>
+                    <input type="text" id="edit-title" class="form-input">
+                </div>
+                <div>
+                    <label class="form-label">Audit Area</label>
+                    <select id="edit-area" class="form-input">
+                        <option value="">Select...</option>
+                        <option value="IT">IT</option>
+                        <option value="Finance">Finance</option>
+                        <option value="Operations">Operations</option>
+                        <option value="HR">HR</option>
+                        <option value="Compliance">Compliance</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Owner</label>
+                    <input type="text" id="edit-owner" class="form-input">
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Audit Area</label>
-                        <select id="edit-area" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                            <option value="">Select...</option>
-                            <option value="IT">IT</option>
-                            <option value="Finance">Finance</option>
-                            <option value="Operations">Operations</option>
-                            <option value="HR">HR</option>
-                            <option value="Compliance">Compliance</option>
-                            <option value="Other">Other</option>
-                        </select>
+                        <label class="form-label">Planned Start</label>
+                        <input type="date" id="edit-start" class="form-input">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Owner</label>
-                        <input type="text" id="edit-owner" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                        <label class="form-label">Planned End</label>
+                        <input type="date" id="edit-end" class="form-input">
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Planned Start</label>
-                        <input type="date" id="edit-start" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Planned End</label>
-                        <input type="date" id="edit-end" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                    </div>
-                </div>
-                <div class="grid grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Quarter</label>
-                        <select id="edit-quarter" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                        <label class="form-label">Quarter</label>
+                        <select id="edit-quarter" class="form-input">
                             <option value="">Select...</option>
                             <option value="Q1">Q1</option>
                             <option value="Q2">Q2</option>
@@ -343,8 +433,8 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                        <select id="edit-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                        <label class="form-label">Status</label>
+                        <select id="edit-status" class="form-input">
                             <option value="planning">Planning</option>
                             <option value="in_progress">In Progress</option>
                             <option value="fieldwork">Fieldwork</option>
@@ -352,9 +442,20 @@
                             <option value="complete">Complete</option>
                         </select>
                     </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-                        <select id="edit-priority" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                        <label class="form-label">Priority</label>
+                        <select id="edit-priority" class="form-input">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Risk Rating</label>
+                        <select id="edit-risk" class="form-input">
+                            <option value="">Select...</option>
                             <option value="low">Low</option>
                             <option value="medium">Medium</option>
                             <option value="high">High</option>
@@ -362,15 +463,45 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                    <textarea id="edit-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"></textarea>
+                    <label class="form-label">Estimated Hours</label>
+                    <input type="number" id="edit-hours" class="form-input">
+                </div>
+                <div>
+                    <label class="form-label">Description</label>
+                    <textarea id="edit-description" rows="3" class="form-input" placeholder="Brief overview of the audit scope and objectives"></textarea>
+                </div>
+                <div>
+                    <label class="form-label">Notes & Documentation</label>
+                    <textarea id="edit-notes" rows="4" class="form-input" placeholder="Additional notes, links to documentation, references, or working papers..."></textarea>
+                </div>
+                <!-- Attachments Section -->
+                <div class="border-t border-slate-200 pt-4 mt-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="form-label mb-0">Attachments</label>
+                        <label class="btn btn-secondary text-xs cursor-pointer">
+                            <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Upload
+                            <input type="file" id="attachment-upload" class="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.msg,.eml,.png,.jpg,.jpeg">
+                        </label>
+                    </div>
+                    <div id="attachments-list" class="space-y-2">
+                        <p class="text-sm text-slate-500 italic">No files attached.</p>
+                    </div>
                 </div>
             </div>
-            <div class="flex justify-between px-6 py-4 border-t border-slate-100">
-                <button onclick="deleteAudit()" id="delete-btn" class="btn text-red-600 hover:bg-red-50 hidden">Delete</button>
+            <!-- Footer -->
+            <div class="flex justify-between items-center px-6 py-4 border-t border-slate-200 bg-white">
+                <button onclick="deleteAudit()" id="delete-btn" class="btn text-red-600 hover:bg-red-50 hidden">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                </button>
                 <div class="flex gap-2 ml-auto">
                     <button onclick="closeModal()" class="btn btn-secondary">Cancel</button>
-                    <button onclick="saveAudit()" class="btn btn-primary">Save</button>
+                    <button onclick="saveAudit()" class="btn btn-primary">Save Changes</button>
                 </div>
             </div>
         </div>
@@ -406,7 +537,8 @@
             { type: 'dropdown', width: 80, title: 'Priority', source: ['low', 'medium', 'high'] },
             { type: 'dropdown', width: 80, title: 'Risk Rating', source: ['low', 'medium', 'high'] },
             { type: 'numeric', width: 80, title: 'Est. Hours' },
-            { type: 'text', width: 200, title: 'Description' }
+            { type: 'text', width: 200, title: 'Description' },
+            { type: 'text', width: 70, title: 'Details', readOnly: true }
         ];
 
         // Initialize
@@ -433,7 +565,7 @@
 
             // Add empty row if no data
             if (data.length === 0) {
-                data.push(['', '', '', '', '', '', '', 'planning', 'medium', '', '', '']);
+                data.push(['', '', '', '', '', '', '', 'planning', 'medium', '', '', '', '']);
             }
 
             spreadsheet = jspreadsheet(container, {
@@ -467,7 +599,8 @@
                 a.priority || 'medium',
                 a.risk_rating || '',
                 a.estimated_hours ? String(a.estimated_hours) : '',
-                a.description || ''
+                a.description || '',
+                '' // Details column - rendered via updateTable
             ]);
         }
 
@@ -497,6 +630,13 @@
                 const c = colors[priority] || colors['medium'];
                 cell.style.backgroundColor = c.bg;
                 cell.style.color = c.text;
+            }
+            // Details column - clickable link to open panel
+            if (col == 12) {
+                const auditId = instance.jexcel.getValueFromCoords(0, row);
+                if (auditId && auditId.trim()) {
+                    cell.innerHTML = '<span class="open-audit-panel text-primary hover:text-primary-dark cursor-pointer text-sm font-medium" data-audit-id="' + auditId + '">View →</span>';
+                }
             }
         }
 
@@ -657,7 +797,7 @@
             if (tab === 'spreadsheet') {
                 const data = auditsToSpreadsheetFormat(audits);
                 if (data.length === 0) {
-                    data.push(['', '', '', '', '', '', '', 'planning', 'medium', '', '', '']);
+                    data.push(['', '', '', '', '', '', '', 'planning', 'medium', '', '', '', '']);
                 }
                 spreadsheet.setData(data);
             } else {
@@ -694,6 +834,7 @@
                 if (!audit) return;
 
                 document.getElementById('modal-title').textContent = 'Edit Audit';
+                document.getElementById('modal-subtitle').textContent = audit.audit_area ? `${audit.audit_area} • ${audit.quarter || 'No Quarter'}` : 'Annual Audit Plan';
                 document.getElementById('edit-audit-id').value = audit.id;
                 document.getElementById('edit-title').value = audit.title || '';
                 document.getElementById('edit-area').value = audit.audit_area || '';
@@ -703,10 +844,16 @@
                 document.getElementById('edit-quarter').value = audit.quarter || '';
                 document.getElementById('edit-status').value = audit.status || 'planning';
                 document.getElementById('edit-priority').value = audit.priority || 'medium';
+                document.getElementById('edit-risk').value = audit.risk_rating || '';
+                document.getElementById('edit-hours').value = audit.estimated_hours || '';
                 document.getElementById('edit-description').value = audit.description || '';
+                document.getElementById('edit-notes').value = audit.notes || '';
+                currentEditAuditId = audit.id;
                 deleteBtn.classList.remove('hidden');
+                loadAttachments(audit.id);
             } else {
                 document.getElementById('modal-title').textContent = 'Add Audit';
+                document.getElementById('modal-subtitle').textContent = 'New audit entry';
                 document.getElementById('edit-audit-id').value = '';
                 document.getElementById('edit-title').value = '';
                 document.getElementById('edit-area').value = '';
@@ -716,19 +863,34 @@
                 document.getElementById('edit-quarter').value = '';
                 document.getElementById('edit-status').value = 'planning';
                 document.getElementById('edit-priority').value = 'medium';
+                document.getElementById('edit-risk').value = '';
+                document.getElementById('edit-hours').value = '';
                 document.getElementById('edit-description').value = '';
+                document.getElementById('edit-notes').value = '';
+                currentEditAuditId = null;
                 deleteBtn.classList.add('hidden');
+                loadAttachments(null);
             }
 
+            // Show modal with slide-in animation
             modal.classList.remove('hidden');
+            // Trigger reflow for animation
+            modal.offsetHeight;
+            modal.classList.add('open');
         }
 
         function closeModal() {
-            document.getElementById('edit-modal').classList.add('hidden');
+            const modal = document.getElementById('edit-modal');
+            modal.classList.remove('open');
+            // Wait for animation to complete before hiding
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
         }
 
         async function saveAudit() {
             const auditId = document.getElementById('edit-audit-id').value;
+            const hoursVal = document.getElementById('edit-hours').value;
             const data = {
                 title: document.getElementById('edit-title').value,
                 audit_area: document.getElementById('edit-area').value,
@@ -738,7 +900,10 @@
                 quarter: document.getElementById('edit-quarter').value,
                 status: document.getElementById('edit-status').value,
                 priority: document.getElementById('edit-priority').value,
-                description: document.getElementById('edit-description').value
+                risk_rating: document.getElementById('edit-risk').value,
+                estimated_hours: hoursVal ? parseFloat(hoursVal) : null,
+                description: document.getElementById('edit-description').value,
+                notes: document.getElementById('edit-notes').value
             };
 
             if (!data.title.trim()) {
@@ -754,16 +919,24 @@
                         body: JSON.stringify(data)
                     });
                     showToast('Audit updated', 'success');
+                    closeModal();
                 } else {
-                    await fetch('/api/audits', {
+                    const response = await fetch('/api/audits', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                     });
-                    showToast('Audit created', 'success');
+                    const result = await response.json();
+                    // Update form to editing mode so attachments can be added
+                    document.getElementById('edit-audit-id').value = result.id;
+                    currentEditAuditId = result.id;
+                    document.getElementById('modal-title').textContent = 'Edit Audit';
+                    document.getElementById('delete-btn').classList.remove('hidden');
+                    loadAttachments(result.id);
+                    showToast('Audit created - you can now attach files', 'success');
                 }
 
-                closeModal();
+                // Don't close modal for new audits (so user can attach files)
                 await loadAudits();
                 if (currentTab === 'kanban') {
                     initKanban();
@@ -849,6 +1022,127 @@
             div.textContent = text;
             return div.innerHTML;
         }
+
+        // ==================== Attachment Functions ====================
+
+        let currentEditAuditId = null;
+
+        async function loadAttachments(auditId) {
+            const listDiv = document.getElementById('attachments-list');
+            if (!auditId) {
+                listDiv.innerHTML = '<p class="text-sm text-slate-500 italic">Save the audit first to attach files.</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/audits/${auditId}/attachments`);
+                const attachments = await response.json();
+
+                if (attachments.length === 0) {
+                    listDiv.innerHTML = '<p class="text-sm text-slate-500 italic">No files attached.</p>';
+                    return;
+                }
+
+                listDiv.innerHTML = attachments.map(att => {
+                    const sizeKB = Math.round(att.file_size / 1024);
+                    const sizeStr = sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)} MB` : `${sizeKB} KB`;
+                    const icon = getFileIcon(att.mime_type);
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="text-xl flex-shrink-0">${icon}</span>
+                                <div class="min-w-0">
+                                    <a href="/api/audit-attachments/${att.id}" target="_blank" class="text-sm font-medium text-slate-900 hover:text-primary truncate block">${escapeHtml(att.original_filename)}</a>
+                                    <p class="text-xs text-slate-500">${sizeStr} • ${new Date(att.uploaded_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <button onclick="deleteAttachment(${att.id})" class="text-slate-400 hover:text-red-600 flex-shrink-0 ml-2" title="Delete">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load attachments:', e);
+                listDiv.innerHTML = '<p class="text-sm text-red-500">Failed to load attachments.</p>';
+            }
+        }
+
+        function getFileIcon(mimeType) {
+            if (!mimeType) return '📄';
+            if (mimeType.includes('pdf')) return '📕';
+            if (mimeType.includes('word') || mimeType.includes('document')) return '📘';
+            if (mimeType.includes('sheet') || mimeType.includes('excel')) return '📗';
+            if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📙';
+            if (mimeType.includes('image')) return '🖼️';
+            if (mimeType.includes('text')) return '📝';
+            if (mimeType.includes('message')) return '📧';
+            return '📄';
+        }
+
+        async function uploadAttachment(files) {
+            if (!currentEditAuditId) {
+                showToast('Please save the audit first', 'error');
+                return;
+            }
+
+            for (let file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch(`/api/audits/${currentEditAuditId}/attachments`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    if (result.error) {
+                        showToast(`Upload failed: ${result.error}`, 'error');
+                    } else {
+                        showToast(`Uploaded: ${result.filename}`, 'success');
+                    }
+                } catch (e) {
+                    showToast('Upload failed', 'error');
+                }
+            }
+
+            await loadAttachments(currentEditAuditId);
+        }
+
+        async function deleteAttachment(attachmentId) {
+            if (!confirm('Delete this attachment?')) return;
+
+            try {
+                await fetch(`/api/audit-attachments/${attachmentId}`, { method: 'DELETE' });
+                showToast('Attachment deleted', 'success');
+                await loadAttachments(currentEditAuditId);
+            } catch (e) {
+                showToast('Delete failed', 'error');
+            }
+        }
+
+        // Setup event handlers
+        document.addEventListener('DOMContentLoaded', () => {
+            // File upload handler
+            document.getElementById('attachment-upload').addEventListener('change', async (e) => {
+                if (e.target.files.length > 0) {
+                    await uploadAttachment(e.target.files);
+                    e.target.value = ''; // Reset input
+                }
+            });
+
+            // Click handler for "View →" links in spreadsheet
+            document.getElementById('spreadsheet').addEventListener('click', (e) => {
+                if (e.target.classList.contains('open-audit-panel')) {
+                    const auditId = parseInt(e.target.getAttribute('data-audit-id'));
+                    if (auditId) {
+                        openEditModal(auditId);
+                    }
+                }
+            });
+        });
 
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');

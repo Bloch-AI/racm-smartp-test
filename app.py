@@ -1189,6 +1189,76 @@ def delete_risk_attachment(attachment_id):
     increment_data_version()
     return jsonify({'status': 'deleted'})
 
+# ==================== Audit Attachments API ====================
+
+@app.route('/api/audits/<int:audit_id>/attachments', methods=['GET'])
+def get_audit_attachments(audit_id):
+    """Get all attachments for an audit."""
+    attachments = db.get_attachments_for_audit(audit_id)
+    return jsonify(attachments)
+
+@app.route('/api/audits/<int:audit_id>/attachments', methods=['POST'])
+def upload_audit_attachment(audit_id):
+    """Upload a file attachment for an audit."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    try:
+        file_info = _process_file_upload(request.files['file'])
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    description = request.form.get('description', '')
+
+    # Save to database
+    attachment_id = db.add_audit_attachment(
+        audit_id=audit_id,
+        filename=file_info['unique_filename'],
+        original_filename=file_info['original_filename'],
+        file_size=file_info['file_size'],
+        mime_type=file_info['mime_type'],
+        description=description,
+        extracted_text=file_info['extracted_text']
+    )
+
+    increment_data_version()
+    return jsonify({
+        'status': 'uploaded',
+        'attachment_id': attachment_id,
+        'filename': file_info['original_filename']
+    })
+
+@app.route('/api/audit-attachments/<int:attachment_id>', methods=['GET'])
+def download_audit_attachment(attachment_id):
+    """Download an audit attachment file."""
+    attachment = db.get_audit_attachment(attachment_id)
+    if not attachment:
+        return not_found_response('Attachment')
+
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'],
+        attachment['filename'],
+        download_name=attachment['original_filename'],
+        as_attachment=True
+    )
+
+@app.route('/api/audit-attachments/<int:attachment_id>', methods=['DELETE'])
+def delete_audit_attachment(attachment_id):
+    """Delete an audit attachment."""
+    attachment = db.get_audit_attachment(attachment_id)
+    if not attachment:
+        return not_found_response('Attachment')
+
+    # Delete file from disk
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], attachment['filename'])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    # Delete from database
+    db.delete_audit_attachment(attachment_id)
+    increment_data_version()
+    return jsonify({'status': 'deleted'})
+
 @app.route('/api/issues/from-risk/<risk_id>', methods=['POST'])
 def create_issue_from_risk(risk_id):
     """Create an issue from a RACM risk (used when checkbox is ticked)."""
@@ -1592,15 +1662,26 @@ def build_ai_system_prompt(context, include_capabilities=True):
     if len(context['risks']) > 20:
         risk_summary_text += f"\n... and {len(context['risks']) - 20} more risks (use execute_sql to see all)"
 
+    # Build audit plan list
+    audit_summary = context.get('audit_summary', {})
+    audit_list = []
+    for a in context.get('audits', []):
+        audit_list.append(f"- **{a.get('title', 'Untitled')}** [{a.get('quarter', 'N/A')}] - {a.get('status', 'unknown')} | {a.get('owner', 'Unassigned')} | {a.get('audit_area', 'N/A')}")
+    audit_plan_text = "\n".join(audit_list) if audit_list else "No audits in the annual plan"
+
     prompt = f"""You are Felix, an intelligent AI audit assistant with FULL ACCESS to the SmartPapers audit database.
 
 ## Current Audit Summary:
+- **Annual Audit Plan:** {audit_summary.get('total', 0)} audits - By Quarter: {json.dumps(audit_summary.get('by_quarter', {}))} | Status: {json.dumps(audit_summary.get('by_status', {}))}
 - **Risks:** {context['risk_summary']['total']} total - {json.dumps(context['risk_summary']['by_status'])}
 - **Tasks:** {context['task_summary']['total']} total - {json.dumps(context['task_summary']['by_column'])}
 - **Issues:** {context['issue_summary']['total']} total - {json.dumps(context['issue_summary']['by_status'])}
 - **Flowcharts:** {context['flowchart_count']}
 - **Test Documents:** {context['test_doc_count']}
 - **Attachments:** {context['issue_attachment_count']} issue files, {context['risk_attachment_count']} risk files
+
+## Annual Audit Plan (All Planned Audits):
+{audit_plan_text}
 
 ## RACM Overview (use execute_sql for full details):
 {risk_summary_text}
@@ -2521,14 +2602,26 @@ def build_smart_context(query: str, context: dict) -> str:
                 relevant_risks.append(risk)
 
     # 3. Build the smart prompt
+    audit_summary = context.get('audit_summary', {})
     prompt = f"""You are Felix, an intelligent AI audit assistant with FULL ACCESS to the SmartPapers audit database.
 
 ## Current Audit Summary:
+- **Annual Audit Plan:** {audit_summary.get('total', 0)} audits planned - By Quarter: {json.dumps(audit_summary.get('by_quarter', {}))}
+- **Audit Status:** {json.dumps(audit_summary.get('by_status', {}))}
 - **Risks:** {context['risk_summary']['total']} total - {json.dumps(context['risk_summary']['by_status'])}
 - **Tasks:** {context['task_summary']['total']} total
 - **Issues:** {context['issue_summary']['total']} total
 - **Flowcharts:** {context['flowchart_count']} | **Test Documents:** {context['test_doc_count']}
+
+## Annual Audit Plan (All Planned Audits):
 """
+    # Add all audits from the plan
+    audits = context.get('audits', [])
+    if audits:
+        for audit in audits:
+            prompt += f"- **{audit.get('title', 'Untitled')}** [{audit.get('quarter', 'N/A')}] - {audit.get('status', 'unknown')} | Owner: {audit.get('owner', 'Unassigned')} | Area: {audit.get('audit_area', 'N/A')}\n"
+    else:
+        prompt += "No audits in the annual plan yet.\n"
 
     # Add relevant library guidance
     if library_results:

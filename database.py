@@ -183,6 +183,20 @@ class RACMDatabase:
             );
             CREATE INDEX IF NOT EXISTS idx_attachments_risk ON risk_attachments(risk_id);
 
+            -- Audit Attachments (file evidence for annual audit plan)
+            CREATE TABLE IF NOT EXISTS audit_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                audit_id INTEGER NOT NULL,
+                filename TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_size INTEGER,
+                mime_type TEXT,
+                description TEXT,
+                extracted_text TEXT,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_attachments_audit ON audit_attachments(audit_id);
+
             -- Audit Library Documents (reference materials like COBIT, COSO, IIA Standards)
             CREATE TABLE IF NOT EXISTS library_documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1148,6 +1162,65 @@ class RACMDatabase:
         conn = self._get_conn()
         row = conn.execute("SELECT COUNT(*) as count FROM risk_attachments WHERE risk_id = ?",
                           (risk_id.upper(),)).fetchone()
+        conn.close()
+        return row['count'] if row else 0
+
+    # ==================== AUDIT ATTACHMENTS ====================
+
+    def add_audit_attachment(self, audit_id: int, filename: str, original_filename: str,
+                             file_size: int, mime_type: str, description: str = '',
+                             extracted_text: str = '') -> int:
+        """Add an audit attachment record. Returns the attachment ID."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO audit_attachments (audit_id, filename, original_filename, file_size, mime_type, description, extracted_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (audit_id, filename, original_filename, file_size, mime_type, description, extracted_text))
+        conn.commit()
+        attachment_id = cursor.lastrowid
+        conn.close()
+        return attachment_id
+
+    def get_attachments_for_audit(self, audit_id: int) -> List[Dict]:
+        """Get all attachments for an audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM audit_attachments WHERE audit_id = ? ORDER BY uploaded_at DESC
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_audit_attachment(self, attachment_id: int) -> Optional[Dict]:
+        """Get a single audit attachment by ID."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM audit_attachments WHERE id = ?", (attachment_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def delete_audit_attachment(self, attachment_id: int) -> bool:
+        """Delete an audit attachment record."""
+        conn = self._get_conn()
+        cursor = conn.execute("DELETE FROM audit_attachments WHERE id = ?", (attachment_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def get_all_audit_attachments_metadata(self) -> List[Dict]:
+        """Get metadata for all audit attachments (for AI context)."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT audit_id, original_filename, file_size, mime_type, description, uploaded_at
+            FROM audit_attachments ORDER BY audit_id, uploaded_at
+        """).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def count_attachments_for_audit(self, audit_id: int) -> int:
+        """Count attachments for an audit."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT COUNT(*) as count FROM audit_attachments WHERE audit_id = ?",
+                          (audit_id,)).fetchone()
         conn.close()
         return row['count'] if row else 0
 
