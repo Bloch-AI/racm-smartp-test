@@ -301,12 +301,17 @@ def process_library_document(filepath: str, doc_id: int, mime_type: str = None) 
     """
     # Extract text
     text = extract_text_from_file(filepath, mime_type)
-    if not text or text.startswith('['):
+    # Check for error messages (e.g., "[PDF extraction not available...]")
+    # but allow normal page markers like "[Page 1]"
+    if not text or (text.startswith('[') and 'not available' in text.lower()):
         print(f"[Library] Warning: Could not extract text from document {doc_id}")
         return 0
 
-    # Remove excessive whitespace
-    text = ' '.join(text.split())
+    # Normalize whitespace while preserving paragraph breaks
+    # Replace multiple spaces/tabs with single space, but keep newlines for chunking
+    import re
+    text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces/tabs -> single space
+    text = re.sub(r'\n{3,}', '\n\n', text)  # 3+ newlines -> double newline
 
     # Chunk the document
     chunks = chunk_document(text)
