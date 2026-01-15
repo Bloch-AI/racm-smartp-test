@@ -1965,10 +1965,10 @@ def call_felix_ai(messages, attachments=None):
     # Get tools
     tools = get_ai_tools()
 
-    # Call Claude with tools
+    # Call Claude with tools - use higher max_tokens for complex multi-tool requests
     response = client.messages.create(
         model=CLAUDE_MODEL,
-        max_tokens=2048,
+        max_tokens=4096,
         system=system_prompt,
         tools=tools,
         messages=messages
@@ -1978,25 +1978,55 @@ def call_felix_ai(messages, attachments=None):
     final_response = ""
     tool_results = []
     current_messages = list(messages)
+    max_iterations = 10  # Safety limit to prevent infinite loops
 
-    while response.stop_reason == "tool_use":
+    iteration = 0
+    while response.stop_reason == "tool_use" and iteration < max_iterations:
+        iteration += 1
         for content in response.content:
             if content.type == "tool_use":
-                result = execute_tool(content.name, content.input)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": content.id,
-                    "content": result
-                })
+                try:
+                    result = execute_tool(content.name, content.input)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": content.id,
+                        "content": result
+                    })
+                except Exception as e:
+                    # Log error but continue with other tools
+                    error_msg = f"Error executing {content.name}: {str(e)}"
+                    print(f"[Felix AI] {error_msg}")
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": content.id,
+                        "content": error_msg,
+                        "is_error": True
+                    })
             elif content.type == "text":
                 final_response += content.text
 
-        current_messages.append({"role": "assistant", "content": response.content})
+        # Convert response.content to serializable format for messages
+        assistant_content = []
+        for content in response.content:
+            if content.type == "tool_use":
+                assistant_content.append({
+                    "type": "tool_use",
+                    "id": content.id,
+                    "name": content.name,
+                    "input": content.input
+                })
+            elif content.type == "text":
+                assistant_content.append({
+                    "type": "text",
+                    "text": content.text
+                })
+
+        current_messages.append({"role": "assistant", "content": assistant_content})
         current_messages.append({"role": "user", "content": tool_results})
 
         response = client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
             system=system_prompt,
             tools=tools,
             messages=current_messages
