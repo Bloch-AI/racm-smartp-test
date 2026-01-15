@@ -819,21 +819,319 @@ def chat_status():
     """Check if API key is configured."""
     return jsonify({'configured': bool(ANTHROPIC_API_KEY)})
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    # Thread-safe data version update
-    data = request.json
-    user_message = data.get('message', '')
-    api_key = ANTHROPIC_API_KEY
+# ==================== Unified AI Tools & Functions ====================
 
-    if not api_key:
-        return jsonify({'error': 'No API key provided. Set ANTHROPIC_API_KEY environment variable.'})
+def get_ai_tools():
+    """Return the list of tools available to both Felix and sidebar chat."""
+    return [
+        # Data Creation Tools
+        {
+            "name": "add_racm_row",
+            "description": "Add a new row to the Risk and Control Matrix (RACM).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_id": {"type": "string", "description": "Risk ID (e.g., R004)"},
+                    "risk_description": {"type": "string", "description": "Description of the risk"},
+                    "control_description": {"type": "string", "description": "Description of the control"},
+                    "control_owner": {"type": "string", "description": "Who owns this control"},
+                    "frequency": {"type": "string", "description": "How often (Daily, Weekly, Monthly, Quarterly)"},
+                    "status": {"type": "string", "description": "Status (Effective, Needs Improvement, Ineffective, Not Tested)"}
+                },
+                "required": ["risk_id", "risk_description", "control_description"]
+            }
+        },
+        {
+            "name": "create_kanban_task",
+            "description": "Create a new task on the Kanban board.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Task title"},
+                    "description": {"type": "string", "description": "Task description"},
+                    "priority": {"type": "string", "enum": ["low", "medium", "high"]},
+                    "assignee": {"type": "string", "description": "Who is assigned"},
+                    "column": {"type": "string", "enum": ["planning", "fieldwork", "testing", "review", "complete"]},
+                    "risk_id": {"type": "string", "description": "Link to RACM Risk ID (e.g., 'R001')"}
+                },
+                "required": ["title"]
+            }
+        },
+        {
+            "name": "create_flowchart",
+            "description": "Create a new process flowchart.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Flowchart name"},
+                    "risk_id": {"type": "string", "description": "Link to RACM Risk ID"},
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string", "enum": ["start", "process", "decision", "control", "end"]},
+                                "label": {"type": "string"},
+                                "description": {"type": "string"}
+                            },
+                            "required": ["type", "label"]
+                        }
+                    }
+                },
+                "required": ["name", "steps"]
+            }
+        },
+        {
+            "name": "create_test_document",
+            "description": "Create or update a test document (working paper) with testing procedures, findings, and evidence.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_code": {"type": "string", "description": "Risk ID (e.g., 'R001')"},
+                    "doc_type": {"type": "string", "enum": ["de_testing", "oe_testing"], "description": "Type of testing document"},
+                    "content": {"type": "string", "description": "The document content (can include HTML formatting)"}
+                },
+                "required": ["risk_code", "doc_type", "content"]
+            }
+        },
+        {
+            "name": "create_issue",
+            "description": "Create a new issue in the issue log linked to a RACM risk.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_id": {"type": "string", "description": "RACM Risk ID to link to (e.g., 'R001')"},
+                    "title": {"type": "string", "description": "Issue title"},
+                    "description": {"type": "string", "description": "Issue description"},
+                    "severity": {"type": "string", "enum": ["Low", "Medium", "High", "Critical"]},
+                    "assigned_to": {"type": "string", "description": "Who should address this issue"},
+                    "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format"}
+                },
+                "required": ["risk_id", "title"]
+            }
+        },
+        # Data Update Tools
+        {
+            "name": "update_racm_status",
+            "description": "Update the status of an existing RACM row.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_id": {"type": "string", "description": "Risk ID to update (e.g., R001)"},
+                    "new_status": {"type": "string", "enum": ["Effective", "Needs Improvement", "Ineffective", "Not Tested"]}
+                },
+                "required": ["risk_id", "new_status"]
+            }
+        },
+        {
+            "name": "update_issue_documentation",
+            "description": "Add or update documentation/evidence for an issue.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"},
+                    "documentation": {"type": "string", "description": "The documentation content (can include HTML formatting)"}
+                },
+                "required": ["issue_id", "documentation"]
+            }
+        },
+        {
+            "name": "update_issue_status",
+            "description": "Update the status of an issue.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"},
+                    "new_status": {"type": "string", "enum": ["Open", "In Progress", "Resolved", "Closed"]}
+                },
+                "required": ["issue_id", "new_status"]
+            }
+        },
+        {
+            "name": "update_task",
+            "description": "Update a Kanban task (move to different column, change priority, etc).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "integer", "description": "Task ID number"},
+                    "title": {"type": "string", "description": "New title (optional)"},
+                    "description": {"type": "string", "description": "New description (optional)"},
+                    "priority": {"type": "string", "enum": ["low", "medium", "high"]},
+                    "column": {"type": "string", "enum": ["planning", "fieldwork", "testing", "review", "complete"]},
+                    "assignee": {"type": "string", "description": "New assignee (optional)"}
+                },
+                "required": ["task_id"]
+            }
+        },
+        # Data Deletion Tools
+        {
+            "name": "delete_risk",
+            "description": "Delete a risk from the RACM. WARNING: This also deletes associated tasks, issues, and attachments. Always confirm with the user before deleting.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_id": {"type": "string", "description": "Risk ID to delete (e.g., 'R001')"}
+                },
+                "required": ["risk_id"]
+            }
+        },
+        {
+            "name": "delete_task",
+            "description": "Delete a task from the Kanban board.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "integer", "description": "Task ID to delete"}
+                },
+                "required": ["task_id"]
+            }
+        },
+        {
+            "name": "delete_issue",
+            "description": "Delete an issue from the issue log. WARNING: This also deletes all attachments for the issue.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID to delete (e.g., 'ISS-001')"}
+                },
+                "required": ["issue_id"]
+            }
+        },
+        {
+            "name": "delete_flowchart",
+            "description": "Delete a flowchart.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Flowchart name to delete"}
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "delete_attachment",
+            "description": "Delete a file attachment from an issue or risk.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "attachment_id": {"type": "integer", "description": "Attachment ID to delete"},
+                    "attachment_type": {"type": "string", "enum": ["issue", "risk"], "description": "Type of attachment"}
+                },
+                "required": ["attachment_id", "attachment_type"]
+            }
+        },
+        # Data Reading Tools
+        {
+            "name": "execute_sql",
+            "description": "Execute a read-only SQL query to analyze audit data. Use for complex queries.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "sql": {"type": "string", "description": "SELECT query to execute"}
+                },
+                "required": ["sql"]
+            }
+        },
+        {
+            "name": "get_audit_summary",
+            "description": "Get a summary of current audit status.",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        },
+        {
+            "name": "read_test_document",
+            "description": "Read the full content of a test document (working paper) for a specific risk. Use this to get DE or OE testing documentation before answering questions about testing.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_code": {"type": "string", "description": "Risk ID (e.g., 'R001')"},
+                    "doc_type": {"type": "string", "enum": ["de_testing", "oe_testing"], "description": "Type of testing document"}
+                },
+                "required": ["risk_code", "doc_type"]
+            }
+        },
+        {
+            "name": "read_flowchart",
+            "description": "Read the details of a flowchart including all nodes, steps, and descriptions. Use this to understand process flows before answering questions.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Flowchart name"}
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "read_issue_documentation",
+            "description": "Read the documentation/evidence for an issue. Use this to get detailed findings, evidence, and supporting documentation for audit issues.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"}
+                },
+                "required": ["issue_id"]
+            }
+        },
+        {
+            "name": "list_issue_attachments",
+            "description": "List all file attachments (evidence files like PDFs, Word docs, Excel, emails) for an issue.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"}
+                },
+                "required": ["issue_id"]
+            }
+        },
+        {
+            "name": "list_risk_attachments",
+            "description": "List all file attachments (evidence files like PDFs, Word docs, Excel, emails) for a risk in the RACM.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "risk_id": {"type": "string", "description": "Risk ID (e.g., 'R001')"}
+                },
+                "required": ["risk_id"]
+            }
+        },
+        {
+            "name": "read_attachment_content",
+            "description": "Read the extracted text content from an uploaded attachment file. Use this to analyze document contents like PDFs, Word documents, or Excel spreadsheets that have been uploaded as evidence.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "attachment_id": {"type": "integer", "description": "The attachment ID number"},
+                    "attachment_type": {"type": "string", "enum": ["issue", "risk"], "description": "Whether this is an issue attachment or risk attachment"}
+                },
+                "required": ["attachment_id", "attachment_type"]
+            }
+        },
+        # User Interaction Tool
+        {
+            "name": "ask_clarifying_question",
+            "description": "Ask the user a clarifying question when you need more information to complete their request accurately. Use this when the request is ambiguous, you need to confirm which item to act on, or before performing destructive actions like deletes.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "The question to ask the user"},
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of choices to present to the user"
+                    }
+                },
+                "required": ["question"]
+            }
+        }
+    ]
 
-    # Get full context from database
-    context = db.get_full_context()
 
-    # Build system prompt with schema info
-    system_prompt = f"""You are an AI audit assistant helping internal auditors. You can both analyze data AND take actions.
+def build_ai_system_prompt(context, include_capabilities=True):
+    """Build the system prompt for AI with full audit context."""
+    prompt = f"""You are Felix, an intelligent AI audit assistant with FULL ACCESS to the SmartPapers audit database.
 
 ## Database Schema
 {context['schema']}
@@ -870,213 +1168,52 @@ def chat():
 
 ## Risk Attachments (evidence files - use list_risk_attachments to get details):
 {json.dumps(context['risk_attachments'], indent=2)}
+"""
 
-## Your Capabilities:
-1. Answer questions about the audit data, issues, and testing status
-2. Use tools to ADD new rows to RACM, CREATE Kanban tasks, CREATE issues, or UPDATE data
-3. Execute SQL queries to analyze data
-4. READ working papers (test documents) and flowcharts when relevant to the question
-5. CREATE or UPDATE test documents (working papers) for DE/OE testing
-6. Track and report on issues raised against RACM risks
-7. READ and UPDATE issue documentation/evidence using read_issue_documentation and update_issue_documentation tools
-8. LIST file attachments (PDFs, Word docs, Excel, emails) for issues using list_issue_attachments tool
-9. LIST file attachments for risks using list_risk_attachments tool
-10. READ the actual content of uploaded documents (PDFs, Word docs, Excel files) using read_attachment_content tool
+    if include_capabilities:
+        prompt += """
+## Your Capabilities - USE TOOLS TO TAKE ACTION:
+You have FULL access to create, read, update, and delete audit data:
 
-## IMPORTANT - Seamless Document Access:
-When the user asks about testing, findings, or documentation for a specific risk:
-- FIRST check the test_documents metadata above to see if documents exist
-- If they exist, use read_test_document to fetch the full content BEFORE answering
-- Similarly, use read_flowchart to get process details when relevant
-- For issues, check if they have documentation and use read_issue_documentation to get evidence/findings
-- The user should get complete answers without having to ask you to fetch documents
+**CREATE:** Add risks, tasks, issues, flowcharts, test documents
+**READ:** Query data with SQL, read documents, flowcharts, attachments
+**UPDATE:** Change statuses, update documentation, move tasks
+**DELETE:** Remove risks, tasks, issues, flowcharts, attachments
 
-Be concise and professional."""
+## IMPORTANT GUIDELINES:
 
-    # Define tools
-    tools = [
-        {
-            "name": "add_racm_row",
-            "description": "Add a new row to the Risk and Control Matrix (RACM).",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "risk_id": {"type": "string", "description": "Risk ID (e.g., R004)"},
-                    "risk_description": {"type": "string", "description": "Description of the risk"},
-                    "control_description": {"type": "string", "description": "Description of the control"},
-                    "control_owner": {"type": "string", "description": "Who owns this control"},
-                    "frequency": {"type": "string", "description": "How often (Daily, Weekly, Monthly, Quarterly)"},
-                    "status": {"type": "string", "description": "Status (Effective, Needs Improvement, Ineffective, Not Tested)"}
-                },
-                "required": ["risk_id", "risk_description", "control_description"]
-            }
-        },
-        {
-            "name": "create_kanban_task",
-            "description": "Create a new task on the Kanban board.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Task title"},
-                    "description": {"type": "string", "description": "Task description"},
-                    "priority": {"type": "string", "enum": ["low", "medium", "high"]},
-                    "assignee": {"type": "string", "description": "Who is assigned"},
-                    "column": {"type": "string", "enum": ["planning", "fieldwork", "testing", "review", "complete"]},
-                    "risk_id": {"type": "string", "description": "Link to RACM Risk ID (e.g., 'R001')"}
-                },
-                "required": ["title"]
-            }
-        },
-        {
-            "name": "update_racm_status",
-            "description": "Update the status of an existing RACM row.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "risk_id": {"type": "string", "description": "Risk ID to update (e.g., R001)"},
-                    "new_status": {"type": "string", "enum": ["Effective", "Needs Improvement", "Ineffective", "Not Tested"]}
-                },
-                "required": ["risk_id", "new_status"]
-            }
-        },
-        {
-            "name": "execute_sql",
-            "description": "Execute a read-only SQL query to analyze audit data. Use for complex queries.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "sql": {"type": "string", "description": "SELECT query to execute"}
-                },
-                "required": ["sql"]
-            }
-        },
-        {
-            "name": "get_audit_summary",
-            "description": "Get a summary of current audit status.",
-            "input_schema": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        },
-        {
-            "name": "create_flowchart",
-            "description": "Create a new process flowchart.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Flowchart name"},
-                    "risk_id": {"type": "string", "description": "Link to RACM Risk ID"},
-                    "steps": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "type": {"type": "string", "enum": ["start", "process", "decision", "control", "end"]},
-                                "label": {"type": "string"},
-                                "description": {"type": "string"}
-                            },
-                            "required": ["type", "label"]
-                        }
-                    }
-                },
-                "required": ["name", "steps"]
-            }
-        },
-        {
-            "name": "read_test_document",
-            "description": "Read the full content of a test document (working paper) for a specific risk. Use this to get DE or OE testing documentation before answering questions about testing.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "risk_code": {"type": "string", "description": "Risk ID (e.g., 'R001')"},
-                    "doc_type": {"type": "string", "enum": ["de_testing", "oe_testing"], "description": "Type of testing document"}
-                },
-                "required": ["risk_code", "doc_type"]
-            }
-        },
-        {
-            "name": "create_test_document",
-            "description": "Create or update a test document (working paper) with testing procedures, findings, and evidence.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "risk_code": {"type": "string", "description": "Risk ID (e.g., 'R001')"},
-                    "doc_type": {"type": "string", "enum": ["de_testing", "oe_testing"], "description": "Type of testing document"},
-                    "content": {"type": "string", "description": "The document content (can include HTML formatting)"}
-                },
-                "required": ["risk_code", "doc_type", "content"]
-            }
-        },
-        {
-            "name": "read_flowchart",
-            "description": "Read the details of a flowchart including all nodes, steps, and descriptions. Use this to understand process flows before answering questions.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Flowchart name"}
-                },
-                "required": ["name"]
-            }
-        },
-        {
-            "name": "read_issue_documentation",
-            "description": "Read the documentation/evidence for an issue. Use this to get detailed findings, evidence, and supporting documentation for audit issues.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"}
-                },
-                "required": ["issue_id"]
-            }
-        },
-        {
-            "name": "update_issue_documentation",
-            "description": "Add or update documentation/evidence for an issue.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"},
-                    "documentation": {"type": "string", "description": "The documentation content (can include HTML formatting)"}
-                },
-                "required": ["issue_id", "documentation"]
-            }
-        },
-        {
-            "name": "list_issue_attachments",
-            "description": "List all file attachments (evidence files like PDFs, Word docs, Excel, emails) for an issue.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "issue_id": {"type": "string", "description": "Issue ID (e.g., 'ISS-001')"}
-                },
-                "required": ["issue_id"]
-            }
-        },
-        {
-            "name": "list_risk_attachments",
-            "description": "List all file attachments (evidence files like PDFs, Word docs, Excel, emails) for a risk in the RACM.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "risk_id": {"type": "string", "description": "Risk ID (e.g., 'R001')"}
-                },
-                "required": ["risk_id"]
-            }
-        },
-        {
-            "name": "read_attachment_content",
-            "description": "Read the extracted text content from an uploaded attachment file. Use this to analyze document contents like PDFs, Word documents, or Excel spreadsheets that have been uploaded as evidence.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "attachment_id": {"type": "integer", "description": "The attachment ID number"},
-                    "attachment_type": {"type": "string", "enum": ["issue", "risk"], "description": "Whether this is an issue attachment or risk attachment"}
-                },
-                "required": ["attachment_id", "attachment_type"]
-            }
-        }
-    ]
+1. **Take Action:** When the user asks you to do something, USE THE TOOLS to do it. Don't just describe what you would do.
+
+2. **Ask When Unclear:** If a request is ambiguous (e.g., "update the status" without specifying which risk), use ask_clarifying_question to get details.
+
+3. **Confirm Destructive Actions:** Before deleting anything, use ask_clarifying_question to confirm with the user.
+
+4. **Seamless Document Access:** When asked about testing or documentation:
+   - Check if documents exist in the metadata above
+   - Use read_test_document, read_flowchart, or read_issue_documentation to fetch content BEFORE answering
+   - The user should get complete answers without asking you to fetch documents
+
+5. **Be Proactive:** Offer to create missing documents, suggest next steps, and help streamline the audit process.
+
+Be concise and professional. Use markdown formatting for clarity."""
+
+    return prompt
+
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    # Thread-safe data version update
+    data = request.json
+    user_message = data.get('message', '')
+    api_key = ANTHROPIC_API_KEY
+
+    if not api_key:
+        return jsonify({'error': 'No API key provided. Set ANTHROPIC_API_KEY environment variable.'})
+
+    # Get full context and use shared functions
+    context = db.get_full_context()
+    system_prompt = build_ai_system_prompt(context)
+    tools = get_ai_tools()
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
@@ -1140,10 +1277,9 @@ def execute_tool(tool_name, tool_input):
     if tool_name == "add_racm_row":
         db.create_risk(
             risk_id=tool_input.get('risk_id', ''),
-            risk_description=tool_input.get('risk_description', ''),
-            control_description=tool_input.get('control_description', ''),
+            risk=tool_input.get('risk_description', ''),
+            control_id=tool_input.get('control_description', ''),
             control_owner=tool_input.get('control_owner', ''),
-            frequency=tool_input.get('frequency', ''),
             status=tool_input.get('status', 'Not Tested')
         )
         increment_data_version()
@@ -1398,6 +1534,150 @@ def execute_tool(tool_name, tool_input):
 
         return f"## Content of '{filename}'\n\n{extracted_text}"
 
+    # New tools for unified AI
+    elif tool_name == "create_issue":
+        risk_id = tool_input.get('risk_id', '').upper()
+        title = tool_input.get('title', '')
+        description = tool_input.get('description', '')
+        severity = tool_input.get('severity', 'Medium')
+        assigned_to = tool_input.get('assigned_to', '')
+        due_date = tool_input.get('due_date', '')
+
+        # Verify risk exists
+        risk = db.get_risk(risk_id)
+        if not risk:
+            return f"Risk {risk_id} not found. Cannot create issue."
+
+        # Generate issue ID
+        with db._connection() as conn:
+            cursor = conn.execute("SELECT COUNT(*) FROM issues")
+            count = cursor.fetchone()[0] + 1
+            issue_id = f"ISS-{count:03d}"
+
+            conn.execute('''
+                INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date)
+                VALUES (?, ?, ?, ?, ?, 'Open', ?, ?)
+            ''', (issue_id, risk_id, title, description, severity, assigned_to, due_date if due_date else None))
+            conn.commit()
+
+        increment_data_version()
+        return f"Successfully created issue {issue_id}: '{title}' linked to {risk_id}."
+
+    elif tool_name == "update_issue_status":
+        issue_id = tool_input.get('issue_id', '').upper()
+        new_status = tool_input.get('new_status', '')
+
+        with db._connection() as conn:
+            cursor = conn.execute("UPDATE issues SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?", (new_status, issue_id))
+            conn.commit()
+            if cursor.rowcount > 0:
+                increment_data_version()
+                return f"Successfully updated {issue_id} status to '{new_status}'."
+        return f"Issue {issue_id} not found."
+
+    elif tool_name == "update_task":
+        task_id = tool_input.get('task_id')
+        updates = {}
+        if 'title' in tool_input:
+            updates['title'] = tool_input['title']
+        if 'description' in tool_input:
+            updates['description'] = tool_input['description']
+        if 'priority' in tool_input:
+            updates['priority'] = tool_input['priority']
+        if 'column' in tool_input:
+            updates['column_id'] = tool_input['column']
+        if 'assignee' in tool_input:
+            updates['assignee'] = tool_input['assignee']
+
+        if not updates:
+            return "No updates provided for task."
+
+        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [task_id]
+
+        with db._connection() as conn:
+            cursor = conn.execute(f"UPDATE tasks SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", values)
+            conn.commit()
+            if cursor.rowcount > 0:
+                increment_data_version()
+                return f"Successfully updated task {task_id}."
+        return f"Task {task_id} not found."
+
+    elif tool_name == "delete_risk":
+        risk_id = tool_input.get('risk_id', '').upper()
+        with db._connection() as conn:
+            # Check if exists
+            cursor = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_id,))
+            if not cursor.fetchone():
+                return f"Risk {risk_id} not found."
+
+            # Delete associated data
+            conn.execute("DELETE FROM tasks WHERE risk_id = (SELECT id FROM risks WHERE risk_id = ?)", (risk_id,))
+            conn.execute("DELETE FROM issues WHERE risk_id = ?", (risk_id,))
+            conn.execute("DELETE FROM risk_attachments WHERE risk_id = ?", (risk_id,))
+            conn.execute("DELETE FROM test_documents WHERE risk_id = (SELECT id FROM risks WHERE risk_id = ?)", (risk_id,))
+            conn.execute("DELETE FROM flowcharts WHERE risk_id = (SELECT id FROM risks WHERE risk_id = ?)", (risk_id,))
+            conn.execute("DELETE FROM risks WHERE risk_id = ?", (risk_id,))
+            conn.commit()
+
+        increment_data_version()
+        return f"Successfully deleted risk {risk_id} and all associated data."
+
+    elif tool_name == "delete_task":
+        task_id = tool_input.get('task_id')
+        with db._connection() as conn:
+            cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            conn.commit()
+            if cursor.rowcount > 0:
+                increment_data_version()
+                return f"Successfully deleted task {task_id}."
+        return f"Task {task_id} not found."
+
+    elif tool_name == "delete_issue":
+        issue_id = tool_input.get('issue_id', '').upper()
+        with db._connection() as conn:
+            # Delete attachments first
+            conn.execute("DELETE FROM issue_attachments WHERE issue_id = ?", (issue_id,))
+            cursor = conn.execute("DELETE FROM issues WHERE issue_id = ?", (issue_id,))
+            conn.commit()
+            if cursor.rowcount > 0:
+                increment_data_version()
+                return f"Successfully deleted issue {issue_id} and its attachments."
+        return f"Issue {issue_id} not found."
+
+    elif tool_name == "delete_flowchart":
+        name = tool_input.get('name', '').lower().replace(' ', '-')
+        with db._connection() as conn:
+            cursor = conn.execute("DELETE FROM flowcharts WHERE name = ?", (name,))
+            conn.commit()
+            if cursor.rowcount > 0:
+                increment_data_version()
+                return f"Successfully deleted flowchart '{name}'."
+        return f"Flowchart '{name}' not found."
+
+    elif tool_name == "delete_attachment":
+        attachment_id = tool_input.get('attachment_id')
+        attachment_type = tool_input.get('attachment_type', 'issue')
+
+        table = 'issue_attachments' if attachment_type == 'issue' else 'risk_attachments'
+        with db._connection() as conn:
+            cursor = conn.execute(f"DELETE FROM {table} WHERE id = ?", (attachment_id,))
+            conn.commit()
+            if cursor.rowcount > 0:
+                increment_data_version()
+                return f"Successfully deleted {attachment_type} attachment {attachment_id}."
+        return f"Attachment {attachment_id} not found."
+
+    elif tool_name == "ask_clarifying_question":
+        # This tool returns a special marker that the frontend handles
+        question = tool_input.get('question', '')
+        options = tool_input.get('options', [])
+        return json.dumps({
+            "type": "clarifying_question",
+            "question": question,
+            "options": options
+        })
+
     return "Unknown tool"
 
 
@@ -1557,7 +1837,7 @@ def send_felix_message(conv_id):
                 (conv_id,)
             )
 
-    return jsonify({'role': 'assistant', 'content': response_text})
+    return jsonify({'role': 'assistant', 'content': response_text, 'data_version': get_data_version()})
 
 
 # ===== Felix Attachment Routes =====
@@ -1659,61 +1939,76 @@ def download_felix_attachment(attachment_id):
 
 
 def call_felix_ai(messages, attachments=None):
-    """Call Claude API for Felix chat."""
+    """Call Claude API for Felix chat with full tool support."""
     if not ANTHROPIC_API_KEY:
         raise Exception('ANTHROPIC_API_KEY not configured')
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # Get audit context
+    # Get full audit context and build system prompt
     context = db.get_full_context()
+    system_prompt = build_ai_system_prompt(context)
 
-    # Build attachments context if any
-    attachments_context = ""
+    # Add attachments context if any
     if attachments:
-        attachments_context = "\n\n## Uploaded Documents\nThe user has uploaded the following documents to this conversation:\n"
+        attachments_context = "\n\n## Uploaded Documents (this conversation)\nThe user has uploaded the following documents:\n"
         for att in attachments:
             text = att.get('extracted_text', '').strip()
             if text:
-                # Limit each attachment to ~10KB to avoid context overflow
                 if len(text) > 10000:
                     text = text[:10000] + "\n... [truncated]"
                 attachments_context += f"\n### {att['original_filename']}\n```\n{text}\n```\n"
             else:
-                attachments_context += f"\n### {att['original_filename']}\n[No text content extracted - this may be an image or unsupported format]\n"
+                attachments_context += f"\n### {att['original_filename']}\n[No text content extracted - may be an image]\n"
+        system_prompt += attachments_context
 
-    system_prompt = f"""You are Felix, an AI assistant for SmartPapers - an internal audit workpaper application.
+    # Get tools
+    tools = get_ai_tools()
 
-## Your Personality
-- Friendly, professional, and concise
-- Expert in internal audit, risk management, and controls
-- Proactive in offering helpful suggestions
-
-## Current Audit Context
-- Total Risks in RACM: {context['risk_summary']['total']}
-- Status Breakdown: {json.dumps(context['risk_summary']['by_status'])}
-- Total Issues: {context['issue_summary']['total']}
-- Issues by Status: {json.dumps(context['issue_summary']['by_status'])}
-- Tasks: {context['task_summary']['total']}
-{attachments_context}
-## You can help with:
-1. Answering questions about audit methodology and best practices
-2. Explaining the current audit status and findings
-3. Drafting test procedures, issue descriptions, and recommendations
-4. Summarizing risks, controls, and testing results
-5. Providing guidance on internal audit standards (IIA, SOX, etc.)
-6. Analyzing uploaded documents and extracting relevant information
-
-Be concise but thorough. Use markdown formatting for clarity."""
-
+    # Call Claude with tools
     response = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=2048,
         system=system_prompt,
+        tools=tools,
         messages=messages
     )
 
-    return response.content[0].text
+    # Process response and execute tools
+    final_response = ""
+    tool_results = []
+    current_messages = list(messages)
+
+    while response.stop_reason == "tool_use":
+        for content in response.content:
+            if content.type == "tool_use":
+                result = execute_tool(content.name, content.input)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": content.id,
+                    "content": result
+                })
+            elif content.type == "text":
+                final_response += content.text
+
+        current_messages.append({"role": "assistant", "content": response.content})
+        current_messages.append({"role": "user", "content": tool_results})
+
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=2048,
+            system=system_prompt,
+            tools=tools,
+            messages=current_messages
+        )
+        tool_results = []
+
+    # Extract final text response
+    for content in response.content:
+        if hasattr(content, 'text'):
+            final_response += content.text
+
+    return final_response
 
 
 if __name__ == '__main__':

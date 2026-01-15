@@ -31,6 +31,40 @@ def test_db():
         db_path = f.name
 
     db = RACMDatabase(db_path)
+
+    # Initialize Felix AI tables for testing
+    with db._connection() as conn:
+        conn.executescript('''
+            CREATE TABLE IF NOT EXISTS felix_conversations (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT 'default_user',
+                title TEXT DEFAULT 'New Chat',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS felix_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES felix_conversations(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS felix_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_size INTEGER,
+                mime_type TEXT,
+                extracted_text TEXT,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES felix_conversations(id) ON DELETE CASCADE
+            );
+        ''')
+
     yield db
 
     # Cleanup
@@ -847,6 +881,578 @@ class TestEdgeCases:
         response = client.post('/api/issues/from-risk/NONEXISTENT')
         # Should handle gracefully
         assert response.status_code in [200, 404]
+
+
+# ==================== AI TOOLS UNIT TESTS ====================
+
+class TestAIToolDefinitions:
+    """Unit tests for unified AI tool definitions."""
+
+    def test_get_ai_tools_returns_list(self):
+        """get_ai_tools should return a list of tools."""
+        tools = app_module.get_ai_tools()
+        assert isinstance(tools, list)
+        assert len(tools) > 0
+
+    def test_all_tools_have_required_fields(self):
+        """Each tool should have name, description, and input_schema."""
+        tools = app_module.get_ai_tools()
+        for tool in tools:
+            assert 'name' in tool, f"Tool missing 'name': {tool}"
+            assert 'description' in tool, f"Tool {tool.get('name')} missing 'description'"
+            assert 'input_schema' in tool, f"Tool {tool.get('name')} missing 'input_schema'"
+
+    def test_expected_creation_tools_exist(self):
+        """Verify all creation tools are defined."""
+        tools = app_module.get_ai_tools()
+        tool_names = [t['name'] for t in tools]
+        expected = ['add_racm_row', 'create_kanban_task', 'create_flowchart',
+                   'create_test_document', 'create_issue']
+        for name in expected:
+            assert name in tool_names, f"Missing creation tool: {name}"
+
+    def test_expected_update_tools_exist(self):
+        """Verify all update tools are defined."""
+        tools = app_module.get_ai_tools()
+        tool_names = [t['name'] for t in tools]
+        expected = ['update_racm_status', 'update_issue_documentation',
+                   'update_issue_status', 'update_task']
+        for name in expected:
+            assert name in tool_names, f"Missing update tool: {name}"
+
+    def test_expected_delete_tools_exist(self):
+        """Verify all delete tools are defined."""
+        tools = app_module.get_ai_tools()
+        tool_names = [t['name'] for t in tools]
+        expected = ['delete_risk', 'delete_task', 'delete_issue',
+                   'delete_flowchart', 'delete_attachment']
+        for name in expected:
+            assert name in tool_names, f"Missing delete tool: {name}"
+
+    def test_expected_read_tools_exist(self):
+        """Verify all read tools are defined."""
+        tools = app_module.get_ai_tools()
+        tool_names = [t['name'] for t in tools]
+        expected = ['execute_sql', 'get_audit_summary', 'read_test_document',
+                   'read_flowchart', 'read_issue_documentation',
+                   'list_issue_attachments', 'list_risk_attachments',
+                   'read_attachment_content']
+        for name in expected:
+            assert name in tool_names, f"Missing read tool: {name}"
+
+    def test_clarifying_question_tool_exists(self):
+        """Verify ask_clarifying_question tool is defined."""
+        tools = app_module.get_ai_tools()
+        tool_names = [t['name'] for t in tools]
+        assert 'ask_clarifying_question' in tool_names
+
+    def test_tool_count(self):
+        """Verify expected number of tools."""
+        tools = app_module.get_ai_tools()
+        # 5 create + 4 update + 5 delete + 8 read + 1 clarifying = 23
+        assert len(tools) >= 23, f"Expected at least 23 tools, got {len(tools)}"
+
+
+class TestAIToolExecution:
+    """Unit tests for AI tool execution."""
+
+    def test_execute_add_racm_row(self, test_db, client):
+        """Test executing add_racm_row tool."""
+        result = app_module.execute_tool('add_racm_row', {
+            'risk_id': 'R999',
+            'risk_description': 'AI Test Risk',
+            'control_description': 'AI Test Control',
+            'control_owner': 'AI Tester'
+        })
+        assert 'Successfully added' in result
+        assert 'R999' in result
+
+    def test_execute_create_kanban_task(self, test_db, client):
+        """Test executing create_kanban_task tool."""
+        result = app_module.execute_tool('create_kanban_task', {
+            'title': 'AI Created Task',
+            'description': 'Created by AI tool',
+            'priority': 'high',
+            'column': 'planning'
+        })
+        assert 'Successfully created task' in result
+        assert 'AI Created Task' in result
+
+    def test_execute_update_racm_status(self, test_db, sample_risk, client):
+        """Test executing update_racm_status tool."""
+        result = app_module.execute_tool('update_racm_status', {
+            'risk_id': 'R001',
+            'new_status': 'Effective'
+        })
+        assert 'Successfully updated' in result
+        assert 'Effective' in result
+
+    def test_execute_create_flowchart(self, test_db, client):
+        """Test executing create_flowchart tool."""
+        result = app_module.execute_tool('create_flowchart', {
+            'name': 'ai-test-flowchart',
+            'steps': [
+                {'type': 'start', 'label': 'Begin'},
+                {'type': 'process', 'label': 'Do Something'},
+                {'type': 'end', 'label': 'Finish'}
+            ]
+        })
+        assert 'Successfully created flowchart' in result
+        assert 'ai-test-flowchart' in result
+
+    def test_execute_sql_read_only(self, test_db, sample_risk, client):
+        """Test executing execute_sql tool."""
+        result = app_module.execute_tool('execute_sql', {
+            'sql': "SELECT risk_id, status FROM risks WHERE risk_id = 'R001'"
+        })
+        assert 'R001' in result
+
+    def test_execute_get_audit_summary(self, test_db, sample_risk, client):
+        """Test executing get_audit_summary tool."""
+        result = app_module.execute_tool('get_audit_summary', {})
+        assert 'risks' in result.lower() or 'tasks' in result.lower()
+
+    def test_execute_create_issue(self, test_db, sample_risk, client):
+        """Test executing create_issue tool."""
+        result = app_module.execute_tool('create_issue', {
+            'risk_id': 'R001',
+            'title': 'AI Created Issue',
+            'description': 'Issue created by AI',
+            'severity': 'High'
+        })
+        assert 'Successfully created issue' in result
+        assert 'ISS-' in result
+
+    def test_execute_delete_task(self, test_db, client):
+        """Test executing delete_task tool."""
+        # First create a task
+        task_id = test_db.create_task(title='To Delete', column_id='planning')
+
+        result = app_module.execute_tool('delete_task', {
+            'task_id': task_id
+        })
+        assert 'Successfully deleted' in result
+
+    def test_execute_ask_clarifying_question(self, test_db, client):
+        """Test executing ask_clarifying_question tool."""
+        result = app_module.execute_tool('ask_clarifying_question', {
+            'question': 'Which risk would you like to update?',
+            'options': ['R001', 'R002', 'R003']
+        })
+        # Should return JSON with question
+        result_data = json.loads(result)
+        assert result_data['type'] == 'clarifying_question'
+        assert 'Which risk' in result_data['question']
+
+    def test_execute_unknown_tool(self, test_db, client):
+        """Test executing unknown tool returns error."""
+        result = app_module.execute_tool('nonexistent_tool', {})
+        assert 'Unknown tool' in result
+
+    def test_execute_create_test_document(self, test_db, sample_risk, client):
+        """Test executing create_test_document tool."""
+        result = app_module.execute_tool('create_test_document', {
+            'risk_code': 'R001',
+            'doc_type': 'de_testing',
+            'content': '<p>AI generated DE testing documentation</p>'
+        })
+        assert 'Successfully' in result
+        assert 'de_testing' in result.lower() or 'Design Effectiveness' in result
+
+    def test_execute_read_test_document(self, test_db, sample_risk, client):
+        """Test executing read_test_document tool."""
+        # First save a document
+        test_db.save_test_document_by_risk_code('R001', 'de_testing', '<p>Test content</p>')
+
+        result = app_module.execute_tool('read_test_document', {
+            'risk_code': 'R001',
+            'doc_type': 'de_testing'
+        })
+        assert 'Test content' in result or 'R001' in result
+
+    def test_execute_update_task(self, test_db, client):
+        """Test executing update_task tool."""
+        task_id = test_db.create_task(title='Original', column_id='planning')
+
+        result = app_module.execute_tool('update_task', {
+            'task_id': task_id,
+            'title': 'Updated by AI',
+            'column': 'testing'
+        })
+        assert 'Successfully updated' in result
+
+
+class TestAISystemPrompt:
+    """Unit tests for AI system prompt builder."""
+
+    def test_build_ai_system_prompt_returns_string(self, test_db, client):
+        """build_ai_system_prompt should return a string."""
+        context = test_db.get_full_context()
+        prompt = app_module.build_ai_system_prompt(context)
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0
+
+    def test_system_prompt_contains_felix_identity(self, test_db, client):
+        """System prompt should identify as Felix."""
+        context = test_db.get_full_context()
+        prompt = app_module.build_ai_system_prompt(context)
+        assert 'Felix' in prompt
+
+    def test_system_prompt_contains_schema(self, test_db, client):
+        """System prompt should contain database schema."""
+        context = test_db.get_full_context()
+        prompt = app_module.build_ai_system_prompt(context)
+        assert 'Schema' in prompt or 'schema' in prompt
+
+    def test_system_prompt_contains_capabilities(self, test_db, client):
+        """System prompt should describe capabilities."""
+        context = test_db.get_full_context()
+        prompt = app_module.build_ai_system_prompt(context, include_capabilities=True)
+        assert 'CREATE' in prompt or 'create' in prompt
+        assert 'READ' in prompt or 'read' in prompt
+
+    def test_system_prompt_without_capabilities(self, test_db, client):
+        """System prompt should omit capabilities when disabled."""
+        context = test_db.get_full_context()
+        prompt = app_module.build_ai_system_prompt(context, include_capabilities=False)
+        # Should not have the capabilities section header
+        assert 'Your Capabilities' not in prompt
+
+
+# ==================== FELIX AI TESTS ====================
+
+class TestFelixAIPage:
+    """Integration tests for Felix AI page and routes."""
+
+    def test_felix_page_loads(self, client):
+        """Felix AI page should load with 200 status."""
+        response = client.get('/felix')
+        assert response.status_code == 200
+
+    def test_felix_page_has_chat_ui(self, client):
+        """Felix page should have chat UI elements."""
+        response = client.get('/felix')
+        html = response.data.decode()
+        assert 'chat' in html.lower() or 'message' in html.lower()
+
+    def test_felix_page_has_conversation_list(self, client):
+        """Felix page should have conversation sidebar."""
+        response = client.get('/felix')
+        html = response.data.decode()
+        assert 'conversation' in html.lower() or 'history' in html.lower()
+
+
+class TestFelixConversationsAPI:
+    """Integration tests for Felix conversation API endpoints."""
+
+    def test_create_conversation(self, client):
+        """Should create a new Felix conversation."""
+        response = client.post('/api/felix/conversations')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'id' in data
+        assert 'title' in data
+
+    def test_list_conversations(self, client):
+        """Should list Felix conversations."""
+        # Create a conversation first
+        client.post('/api/felix/conversations')
+
+        response = client.get('/api/felix/conversations')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data, list)
+
+    def test_get_conversation_messages(self, client):
+        """Should get messages for a conversation."""
+        # Create conversation
+        create_resp = client.post('/api/felix/conversations')
+        conv_id = create_resp.get_json()['id']
+
+        response = client.get(f'/api/felix/conversations/{conv_id}/messages')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data, list)
+
+    def test_delete_conversation(self, client):
+        """Should delete a Felix conversation."""
+        # Create conversation
+        create_resp = client.post('/api/felix/conversations')
+        conv_id = create_resp.get_json()['id']
+
+        response = client.delete(f'/api/felix/conversations/{conv_id}')
+        assert response.status_code == 200
+
+    def test_conversation_id_format(self, client):
+        """Conversation ID should be UUID format."""
+        response = client.post('/api/felix/conversations')
+        data = response.get_json()
+        conv_id = data['id']
+        # UUID format: 8-4-4-4-12 hex characters
+        assert len(conv_id) == 36
+        assert conv_id.count('-') == 4
+
+
+class TestFelixAttachmentsAPI:
+    """Integration tests for Felix attachment API endpoints."""
+
+    def test_list_conversation_attachments(self, client):
+        """Should list attachments for a conversation."""
+        # Create conversation
+        create_resp = client.post('/api/felix/conversations')
+        conv_id = create_resp.get_json()['id']
+
+        response = client.get(f'/api/felix/conversations/{conv_id}/attachments')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data, list)
+
+    def test_upload_conversation_attachment(self, client, tmp_path):
+        """Should upload attachment to conversation."""
+        import io
+        # Create conversation
+        create_resp = client.post('/api/felix/conversations')
+        conv_id = create_resp.get_json()['id']
+
+        test_file = (io.BytesIO(b'Test file content for Felix'), 'felix_test.txt')
+        response = client.post(
+            f'/api/felix/conversations/{conv_id}/attachments',
+            data={'file': test_file},
+            content_type='multipart/form-data'
+        )
+        assert response.status_code == 200
+
+
+# ==================== AI INTEGRATION TESTS ====================
+
+class TestUnifiedAICapabilities:
+    """Integration tests for unified AI capabilities across Felix and sidebar."""
+
+    def test_sidebar_chat_endpoint_accepts_message(self, client):
+        """Sidebar chat should accept messages."""
+        response = client.post('/api/chat', json={'message': 'Hello'})
+        # Accept various status codes based on API key config
+        assert response.status_code in [200, 400, 401, 500]
+
+    def test_sidebar_chat_returns_data_version(self, client):
+        """Sidebar chat should return data_version in response."""
+        response = client.post('/api/chat', json={'message': 'test'})
+        if response.status_code == 200:
+            data = response.get_json()
+            assert 'data_version' in data or 'response' in data
+
+    def test_chat_clear_endpoint(self, client):
+        """Chat clear endpoint should work."""
+        response = client.post('/api/chat/clear')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data.get('status') == 'cleared'
+
+    def test_check_key_endpoint(self, client):
+        """Chat status endpoint should indicate API key configuration status."""
+        response = client.get('/api/chat/status')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert 'configured' in data
+
+
+class TestAIDataVersionTracking:
+    """Tests for data version tracking in AI operations."""
+
+    def test_data_version_starts_at_zero_or_higher(self):
+        """Data version should be non-negative."""
+        version = app_module.get_data_version()
+        assert version >= 0
+
+    def test_increment_data_version(self):
+        """increment_data_version should increase version."""
+        initial = app_module.get_data_version()
+        new_version = app_module.increment_data_version()
+        assert new_version == initial + 1
+
+    def test_tool_execution_increments_version(self, test_db, client):
+        """Tool execution should increment data version."""
+        initial = app_module.get_data_version()
+
+        # Execute a tool that modifies data
+        app_module.execute_tool('create_kanban_task', {
+            'title': 'Version Test Task',
+            'column': 'planning'
+        })
+
+        new_version = app_module.get_data_version()
+        assert new_version > initial
+
+
+# ==================== AI UAT TESTS ====================
+
+class TestUATFelixWorkflow:
+    """UAT: Complete Felix AI workflow tests."""
+
+    def test_felix_conversation_lifecycle(self, client):
+        """Test complete Felix conversation lifecycle."""
+        # 1. Create conversation
+        create_resp = client.post('/api/felix/conversations')
+        assert create_resp.status_code == 200
+        conv_id = create_resp.get_json()['id']
+
+        # 2. List conversations shows new conversation
+        list_resp = client.get('/api/felix/conversations')
+        conversations = list_resp.get_json()
+        conv_ids = [c['id'] for c in conversations]
+        assert conv_id in conv_ids
+
+        # 3. Get messages (should be empty)
+        msgs_resp = client.get(f'/api/felix/conversations/{conv_id}/messages')
+        messages = msgs_resp.get_json()
+        assert isinstance(messages, list)
+
+        # 4. Delete conversation
+        delete_resp = client.delete(f'/api/felix/conversations/{conv_id}')
+        assert delete_resp.status_code == 200
+
+        # 5. Verify deleted
+        list_resp2 = client.get('/api/felix/conversations')
+        conversations2 = list_resp2.get_json()
+        conv_ids2 = [c['id'] for c in conversations2]
+        assert conv_id not in conv_ids2
+
+
+class TestUATAIToolWorkflow:
+    """UAT: AI tool execution workflow tests."""
+
+    def test_ai_risk_creation_workflow(self, test_db, client):
+        """Test AI creating and managing a risk."""
+        # 1. Create risk via AI tool
+        result = app_module.execute_tool('add_racm_row', {
+            'risk_id': 'R888',
+            'risk_description': 'UAT AI Risk',
+            'control_description': 'UAT AI Control',
+            'control_owner': 'AI Auditor',
+            'status': 'Not Tested'
+        })
+        assert 'Successfully' in result
+
+        # 2. Verify risk exists
+        risk = test_db.get_risk('R888')
+        assert risk is not None
+        assert risk['risk_id'] == 'R888'
+
+        # 3. Update risk status via AI tool
+        update_result = app_module.execute_tool('update_racm_status', {
+            'risk_id': 'R888',
+            'new_status': 'Effective'
+        })
+        assert 'Successfully' in update_result
+
+        # 4. Verify update
+        risk = test_db.get_risk('R888')
+        assert risk['status'] == 'Effective'
+
+    def test_ai_task_workflow(self, test_db, client):
+        """Test AI creating and managing tasks."""
+        # 1. Create task
+        result = app_module.execute_tool('create_kanban_task', {
+            'title': 'UAT AI Task',
+            'description': 'Created for UAT',
+            'priority': 'high',
+            'column': 'planning'
+        })
+        assert 'Successfully' in result
+
+        # Extract task ID from result
+        import re
+        match = re.search(r'ID: (\d+)', result)
+        assert match, "Could not find task ID in result"
+        task_id = int(match.group(1))
+
+        # 2. Update task
+        update_result = app_module.execute_tool('update_task', {
+            'task_id': task_id,
+            'column': 'testing',
+            'priority': 'medium'
+        })
+        assert 'Successfully' in update_result
+
+        # 3. Verify update
+        task = test_db.get_task(task_id)
+        assert task['column_id'] == 'testing'
+        assert task['priority'] == 'medium'
+
+        # 4. Delete task
+        delete_result = app_module.execute_tool('delete_task', {
+            'task_id': task_id
+        })
+        assert 'Successfully' in delete_result
+
+        # 5. Verify deleted
+        task = test_db.get_task(task_id)
+        assert task is None
+
+    def test_ai_flowchart_workflow(self, test_db, client):
+        """Test AI creating and reading flowcharts."""
+        # 1. Create flowchart
+        result = app_module.execute_tool('create_flowchart', {
+            'name': 'uat-ai-flowchart',
+            'steps': [
+                {'type': 'start', 'label': 'Start Process', 'description': 'Beginning of flow'},
+                {'type': 'process', 'label': 'Execute Task', 'description': 'Main work'},
+                {'type': 'decision', 'label': 'Check Result', 'description': 'Validation step'},
+                {'type': 'end', 'label': 'Complete', 'description': 'Flow ends'}
+            ]
+        })
+        assert 'Successfully created flowchart' in result
+
+        # 2. Read flowchart
+        read_result = app_module.execute_tool('read_flowchart', {
+            'name': 'uat-ai-flowchart'
+        })
+        assert 'Start Process' in read_result
+        assert 'Execute Task' in read_result
+
+        # 3. Delete flowchart
+        delete_result = app_module.execute_tool('delete_flowchart', {
+            'name': 'uat-ai-flowchart'
+        })
+        assert 'Successfully deleted' in delete_result
+
+    def test_ai_issue_workflow(self, test_db, sample_risk, client):
+        """Test AI creating and managing issues."""
+        # 1. Create issue
+        result = app_module.execute_tool('create_issue', {
+            'risk_id': 'R001',
+            'title': 'UAT AI Issue',
+            'description': 'Issue created via AI',
+            'severity': 'Critical'
+        })
+        assert 'Successfully created issue' in result
+        assert 'ISS-' in result
+
+        # Extract issue ID
+        import re
+        match = re.search(r'(ISS-\d+)', result)
+        assert match, "Could not find issue ID in result"
+        issue_id = match.group(1)
+
+        # 2. Update issue status
+        update_result = app_module.execute_tool('update_issue_status', {
+            'issue_id': issue_id,
+            'new_status': 'In Progress'
+        })
+        assert 'Successfully' in update_result
+
+        # 3. Add documentation
+        doc_result = app_module.execute_tool('update_issue_documentation', {
+            'issue_id': issue_id,
+            'documentation': '<p>Root cause analysis completed. Remediation in progress.</p>'
+        })
+        assert 'Successfully' in doc_result
+
+        # 4. Read documentation
+        read_result = app_module.execute_tool('read_issue_documentation', {
+            'issue_id': issue_id
+        })
+        assert 'Root cause' in read_result or issue_id in read_result
 
 
 if __name__ == '__main__':
