@@ -1124,9 +1124,28 @@ class RACMDatabase:
             return []
 
     def search_library_keyword(self, keyword: str, limit: int = 10) -> List[Dict]:
-        """Fallback keyword search when vector search isn't available."""
+        """Fallback keyword search when vector search isn't available.
+
+        Searches for any of the words in the query (OR logic) and ranks by match count.
+        """
         conn = self._get_conn()
-        rows = conn.execute("""
+
+        # Split query into words, filter out short/common words
+        words = [w.strip().lower() for w in keyword.split() if len(w.strip()) > 2]
+        if not words:
+            words = [keyword.lower()]
+
+        # Build query with OR conditions for each word
+        conditions = []
+        params = []
+        for word in words:
+            conditions.append("(LOWER(c.content) LIKE ? OR LOWER(c.section) LIKE ?)")
+            params.extend([f'%{word}%', f'%{word}%'])
+
+        where_clause = " OR ".join(conditions)
+        params.append(limit)
+
+        rows = conn.execute(f"""
             SELECT
                 c.id as chunk_id,
                 c.content,
@@ -1138,10 +1157,10 @@ class RACMDatabase:
                 d.doc_type
             FROM library_chunks c
             JOIN library_documents d ON c.document_id = d.id
-            WHERE c.content LIKE ? OR c.section LIKE ?
+            WHERE {where_clause}
             ORDER BY d.name, c.chunk_index
             LIMIT ?
-        """, (f'%{keyword}%', f'%{keyword}%', limit)).fetchall()
+        """, params).fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
