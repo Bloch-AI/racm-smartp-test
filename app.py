@@ -3057,15 +3057,15 @@ def admin_dashboard():
 @app.route('/admin/users')
 @require_admin
 def admin_users():
-    """User management page."""
-    return render_template('admin/users.html', active_page='admin')
+    """User management - redirects to main admin page."""
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/admin/audits')
 @require_admin
 def admin_audits():
-    """Audit membership management page."""
-    return render_template('admin/audits.html', active_page='admin')
+    """Audit membership management - redirects to main admin page."""
+    return redirect(url_for('admin_dashboard'))
 
 
 # ==================== ADMIN API: Users ====================

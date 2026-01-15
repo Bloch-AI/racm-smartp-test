@@ -1,118 +1,474 @@
 {% extends "base.html" %}
 
-{% block title %}SmartPapers - Admin{% endblock %}
+{% block title %}Admin - SmartPapers{% endblock %}
+
+{% block page_styles %}
+/* Tab styling */
+.admin-tab-btn {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s ease;
+}
+.admin-tab-btn:hover {
+    color: #334155;
+}
+.admin-tab-btn.active {
+    color: #008bd1;
+    border-bottom-color: #008bd1;
+}
+
+/* Table styling */
+.admin-table {
+    width: 100%;
+}
+.admin-table th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+.admin-table td {
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    color: #334155;
+    border-bottom: 1px solid #f1f5f9;
+}
+.admin-table tr:hover td {
+    background: #f8fafc;
+}
+
+/* Badge styling */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 9999px;
+}
+.badge-green { background: #dcfce7; color: #15803d; }
+.badge-red { background: #fee2e2; color: #b91c1c; }
+.badge-blue { background: #dbeafe; color: #1d4ed8; }
+.badge-slate { background: #f1f5f9; color: #475569; }
+{% endblock %}
 
 {% block content %}
-<main class="py-8">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+<main class="flex-1 py-6">
+    <div class="mx-auto px-4 sm:px-6 max-w-7xl">
         <!-- Header -->
-        <div class="md:flex md:items-center md:justify-between mb-8">
-            <div class="min-w-0 flex-1">
-                <h1 class="text-2xl font-bold leading-7 text-slate-900 sm:truncate sm:text-3xl sm:tracking-tight font-display">
-                    Admin Control Panel
-                </h1>
-                <p class="mt-1 text-sm text-slate-500">
-                    Manage users, roles, and audit access
-                </p>
+        <div class="mb-6">
+            <h1 class="text-xl font-semibold text-slate-900 font-display">Admin Console</h1>
+            <p class="text-sm text-slate-500">Manage users and audit access</p>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="flex items-center justify-between border-b border-slate-200 mb-6">
+            <div class="flex">
+                <button class="admin-tab-btn active" data-tab="users" onclick="switchAdminTab('users')">
+                    <span class="flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        Users
+                    </span>
+                </button>
+                <button class="admin-tab-btn" data-tab="audits" onclick="switchAdminTab('audits')">
+                    <span class="flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Audit Access
+                    </span>
+                </button>
+            </div>
+            <div class="pb-2">
+                <button id="addUserBtn" onclick="openCreateUserModal()" class="btn btn-primary text-sm">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add User
+                </button>
             </div>
         </div>
 
-        <!-- Admin Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- Users Card -->
-            <a href="/admin/users" class="block p-6 bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-primary-300 transition-all">
-                <div class="flex items-center gap-4">
-                    <div class="flex-shrink-0 p-3 bg-primary-50 rounded-lg">
-                        <svg class="h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h2 class="text-lg font-semibold text-slate-900">User Management</h2>
-                        <p class="text-sm text-slate-500">Create, edit, and manage user accounts</p>
-                    </div>
-                </div>
-            </a>
+        <!-- Users Tab -->
+        <div id="users-tab" class="tab-content">
+            <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Role</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table">
+                        <tr><td colspan="5" class="text-center text-slate-400 py-8">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-            <!-- Audits Card -->
-            <a href="/admin/audits" class="block p-6 bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-primary-300 transition-all">
-                <div class="flex items-center gap-4">
-                    <div class="flex-shrink-0 p-3 bg-emerald-50 rounded-lg">
-                        <svg class="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h2 class="text-lg font-semibold text-slate-900">Audit Access</h2>
-                        <p class="text-sm text-slate-500">Manage team members and permissions</p>
-                    </div>
-                </div>
-            </a>
-
-            <!-- Stats Card -->
-            <div class="p-6 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <div class="flex items-center gap-4 mb-4">
-                    <div class="flex-shrink-0 p-3 bg-amber-50 rounded-lg">
-                        <svg class="h-8 w-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h2 class="text-lg font-semibold text-slate-900">System Stats</h2>
-                        <p class="text-sm text-slate-500">Overview of system usage</p>
-                    </div>
-                </div>
-                <div id="stats-container" class="space-y-3 text-sm">
-                    <div class="animate-pulse">
-                        <div class="h-4 bg-slate-200 rounded w-3/4"></div>
-                    </div>
+        <!-- Audits Tab -->
+        <div id="audits-tab" class="tab-content hidden">
+            <div class="grid gap-4">
+                <div id="audits-list" class="space-y-3">
+                    <div class="text-center text-slate-400 py-8">Loading...</div>
                 </div>
             </div>
         </div>
     </div>
 </main>
+
+<!-- User Modal -->
+<div id="userModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+            <h3 id="userModalTitle" class="text-base font-semibold text-slate-900">Add User</h3>
+            <button onclick="closeUserModal()" class="text-slate-400 hover:text-slate-600">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <form id="userForm" onsubmit="saveUser(event)" class="p-6 space-y-4">
+            <input type="hidden" id="userId">
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
+                <input type="text" id="userName" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                <input type="email" id="userEmail" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                    Password <span id="passwordHint" class="text-slate-400 font-normal">(required)</span>
+                </label>
+                <input type="password" id="userPassword" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+            </div>
+            <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="userIsActive" checked class="w-4 h-4 text-primary-600 rounded border-slate-300">
+                    <span class="text-sm text-slate-700">Active</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="userIsAdmin" class="w-4 h-4 text-primary-600 rounded border-slate-300">
+                    <span class="text-sm text-slate-700">Administrator</span>
+                </label>
+            </div>
+        </form>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 rounded-b-xl">
+            <button onclick="closeUserModal()" class="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg">Cancel</button>
+            <button onclick="document.getElementById('userForm').requestSubmit()" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Membership Modal -->
+<div id="membershipModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+            <h3 id="membershipModalTitle" class="text-base font-semibold text-slate-900">Manage Access</h3>
+            <button onclick="closeMembershipModal()" class="text-slate-400 hover:text-slate-600">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="p-6">
+            <input type="hidden" id="membershipAuditId">
+
+            <!-- Current Members -->
+            <div class="mb-6">
+                <h4 class="text-sm font-medium text-slate-700 mb-3">Current Members</h4>
+                <div id="currentMembers" class="space-y-2 max-h-48 overflow-y-auto">
+                    <div class="text-sm text-slate-400">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Add Member -->
+            <div class="border-t border-slate-200 pt-4">
+                <h4 class="text-sm font-medium text-slate-700 mb-3">Add Member</h4>
+                <div class="flex gap-2">
+                    <select id="addMemberUser" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                        <option value="">Select user...</option>
+                    </select>
+                    <select id="addMemberRole" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                        <option value="4">Viewer</option>
+                        <option value="3">Reviewer</option>
+                        <option value="2" selected>Auditor</option>
+                        <option value="1">Admin</option>
+                    </select>
+                    <button onclick="addMember()" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg">Add</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    async function loadStats() {
-        try {
-            const [usersRes, auditsRes] = await Promise.all([
-                fetch('/api/admin/users'),
-                fetch('/api/audits')
-            ]);
+let users = [];
+let audits = [];
+let roles = [];
 
-            const users = await usersRes.json();
-            const audits = await auditsRes.json();
+// Tab switching
+function switchAdminTab(tab) {
+    document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    document.getElementById(tab + '-tab').classList.remove('hidden');
 
-            const activeUsers = users.filter(u => u.is_active).length;
-            const adminUsers = users.filter(u => u.is_admin).length;
+    // Show/hide add button
+    document.getElementById('addUserBtn').style.display = tab === 'users' ? '' : 'none';
+}
 
-            document.getElementById('stats-container').innerHTML = `
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Total Users</span>
-                    <span class="font-medium text-slate-900">${users.length}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Active Users</span>
-                    <span class="font-medium text-slate-900">${activeUsers}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Admins</span>
-                    <span class="font-medium text-slate-900">${adminUsers}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Total Audits</span>
-                    <span class="font-medium text-slate-900">${audits.length}</span>
-                </div>
-            `;
-        } catch (error) {
-            document.getElementById('stats-container').innerHTML = `
-                <p class="text-red-500">Error loading stats</p>
-            `;
-        }
+// Load data
+async function loadData() {
+    const [usersRes, auditsRes, rolesRes] = await Promise.all([
+        fetch('/api/admin/users'),
+        fetch('/api/audits'),
+        fetch('/api/admin/roles')
+    ]);
+    users = await usersRes.json();
+    audits = await auditsRes.json();
+    roles = await rolesRes.json();
+
+    renderUsers();
+    renderAudits();
+}
+
+function renderUsers() {
+    const tbody = document.getElementById('users-table');
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400 py-8">No users</td></tr>';
+        return;
     }
 
-    loadStats();
+    tbody.innerHTML = users.map(user => `
+        <tr>
+            <td>
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-600">
+                        ${user.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span class="font-medium text-slate-900">${escapeHtml(user.name)}</span>
+                </div>
+            </td>
+            <td class="text-slate-500">${escapeHtml(user.email)}</td>
+            <td><span class="badge ${user.is_active ? 'badge-green' : 'badge-red'}">${user.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td><span class="badge ${user.is_admin ? 'badge-blue' : 'badge-slate'}">${user.is_admin ? 'Admin' : 'User'}</span></td>
+            <td class="text-right">
+                <button onclick="openEditUserModal(${user.id})" class="text-sm text-primary-600 hover:text-primary-700 font-medium">Edit</button>
+                ${user.is_active
+                    ? `<button onclick="toggleUserStatus(${user.id}, false)" class="text-sm text-red-600 hover:text-red-700 font-medium ml-3">Deactivate</button>`
+                    : `<button onclick="toggleUserStatus(${user.id}, true)" class="text-sm text-emerald-600 hover:text-emerald-700 font-medium ml-3">Activate</button>`
+                }
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderAudits() {
+    const container = document.getElementById('audits-list');
+    if (audits.length === 0) {
+        container.innerHTML = '<div class="text-center text-slate-400 py-8">No audits</div>';
+        return;
+    }
+
+    container.innerHTML = audits.map(audit => `
+        <div class="bg-white rounded-lg border border-slate-200 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="font-medium text-slate-900">${escapeHtml(audit.title)}</h3>
+                    <p class="text-sm text-slate-500">${escapeHtml(audit.department || audit.audit_type || '')}</p>
+                </div>
+                <button onclick="openMembershipModal(${audit.id}, '${escapeHtml(audit.title)}')" class="px-3 py-1.5 text-sm font-medium text-primary-600 hover:bg-primary-50 rounded-lg">
+                    Manage Access
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// User Modal
+function openCreateUserModal() {
+    document.getElementById('userModalTitle').textContent = 'Add User';
+    document.getElementById('userId').value = '';
+    document.getElementById('userName').value = '';
+    document.getElementById('userEmail').value = '';
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userPassword').required = true;
+    document.getElementById('passwordHint').textContent = '(required)';
+    document.getElementById('userIsActive').checked = true;
+    document.getElementById('userIsAdmin').checked = false;
+    document.getElementById('userModal').classList.remove('hidden');
+    document.getElementById('userModal').classList.add('flex');
+}
+
+function openEditUserModal(userId) {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+
+    document.getElementById('userModalTitle').textContent = 'Edit User';
+    document.getElementById('userId').value = user.id;
+    document.getElementById('userName').value = user.name;
+    document.getElementById('userEmail').value = user.email;
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userPassword').required = false;
+    document.getElementById('passwordHint').textContent = '(leave blank to keep)';
+    document.getElementById('userIsActive').checked = user.is_active;
+    document.getElementById('userIsAdmin').checked = user.is_admin;
+    document.getElementById('userModal').classList.remove('hidden');
+    document.getElementById('userModal').classList.add('flex');
+}
+
+function closeUserModal() {
+    document.getElementById('userModal').classList.add('hidden');
+    document.getElementById('userModal').classList.remove('flex');
+}
+
+async function saveUser(event) {
+    event.preventDefault();
+    const userId = document.getElementById('userId').value;
+    const data = {
+        name: document.getElementById('userName').value,
+        email: document.getElementById('userEmail').value,
+        is_active: document.getElementById('userIsActive').checked ? 1 : 0,
+        is_admin: document.getElementById('userIsAdmin').checked ? 1 : 0
+    };
+    const password = document.getElementById('userPassword').value;
+    if (password) data.password = password;
+
+    const res = await fetch(userId ? `/api/admin/users/${userId}` : '/api/admin/users', {
+        method: userId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+
+    if (res.ok) {
+        showToast(userId ? 'User updated' : 'User created', 'success');
+        closeUserModal();
+        loadData();
+    } else {
+        const err = await res.json();
+        showToast(err.error || 'Error saving user', 'error');
+    }
+}
+
+async function toggleUserStatus(userId, activate) {
+    if (!activate && !confirm('Deactivate this user?')) return;
+
+    const res = await fetch(`/api/admin/users/${userId}`, {
+        method: activate ? 'PUT' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: activate ? JSON.stringify({ is_active: 1 }) : undefined
+    });
+
+    if (res.ok) {
+        showToast(activate ? 'User activated' : 'User deactivated', 'success');
+        loadData();
+    }
+}
+
+// Membership Modal
+async function openMembershipModal(auditId, auditTitle) {
+    document.getElementById('membershipModalTitle').textContent = auditTitle;
+    document.getElementById('membershipAuditId').value = auditId;
+    document.getElementById('membershipModal').classList.remove('hidden');
+    document.getElementById('membershipModal').classList.add('flex');
+
+    // Populate user dropdown
+    const select = document.getElementById('addMemberUser');
+    select.innerHTML = '<option value="">Select user...</option>' +
+        users.filter(u => u.is_active).map(u => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
+
+    // Load current members
+    await loadMembers(auditId);
+}
+
+function closeMembershipModal() {
+    document.getElementById('membershipModal').classList.add('hidden');
+    document.getElementById('membershipModal').classList.remove('flex');
+}
+
+async function loadMembers(auditId) {
+    const res = await fetch(`/api/admin/audits/${auditId}/memberships`);
+    const members = await res.json();
+
+    const container = document.getElementById('currentMembers');
+    if (members.length === 0) {
+        container.innerHTML = '<div class="text-sm text-slate-400">No members assigned</div>';
+        return;
+    }
+
+    container.innerHTML = members.map(m => `
+        <div class="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-slate-900">${escapeHtml(m.user_name)}</span>
+                <span class="badge badge-slate">${escapeHtml(m.role_name)}</span>
+            </div>
+            <button onclick="removeMember(${auditId}, ${m.user_id})" class="text-sm text-red-600 hover:text-red-700">Remove</button>
+        </div>
+    `).join('');
+}
+
+async function addMember() {
+    const auditId = document.getElementById('membershipAuditId').value;
+    const userId = document.getElementById('addMemberUser').value;
+    const roleId = document.getElementById('addMemberRole').value;
+
+    if (!userId) {
+        showToast('Select a user', 'error');
+        return;
+    }
+
+    const res = await fetch(`/api/admin/audits/${auditId}/memberships`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: parseInt(userId), role_id: parseInt(roleId) })
+    });
+
+    if (res.ok) {
+        showToast('Member added', 'success');
+        loadMembers(auditId);
+        document.getElementById('addMemberUser').value = '';
+    } else {
+        const err = await res.json();
+        showToast(err.error || 'Error adding member', 'error');
+    }
+}
+
+async function removeMember(auditId, userId) {
+    if (!confirm('Remove this member?')) return;
+
+    const res = await fetch(`/api/admin/audits/${auditId}/memberships/${userId}`, { method: 'DELETE' });
+
+    if (res.ok) {
+        showToast('Member removed', 'success');
+        loadMembers(auditId);
+    }
+}
+
+// Close modals on backdrop click
+document.getElementById('userModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeUserModal(); });
+document.getElementById('membershipModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeMembershipModal(); });
+
+loadData();
 </script>
 {% endblock %}
