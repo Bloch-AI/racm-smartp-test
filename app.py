@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, session
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import json
@@ -8,6 +8,7 @@ import uuid
 import threading
 import anthropic
 import mimetypes
+from datetime import datetime
 
 # Constants
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
@@ -129,6 +130,7 @@ def extract_text_from_file(filepath: str, mime_type: str = None) -> str:
         return f"[Error extracting text: {str(e)}]"
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'smartpapers-dev-key-change-in-production')
 
 # Claude API key - set via environment variable
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
@@ -197,7 +199,9 @@ def increment_data_version() -> int:
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # TODO: Load audit_name from database/config when audit management is implemented
+    audit_name = None  # Placeholder for audit name
+    return render_template('index.html', audit_name=audit_name)
 
 # ==================== RACM (Spreadsheet) API ====================
 
@@ -339,7 +343,9 @@ def test_document_exists(risk_code, doc_type):
 @app.route('/kanban')
 @app.route('/kanban/<board_id>')
 def kanban(board_id='default'):
-    return render_template('kanban.html', board_id=board_id)
+    # TODO: Load audit_name from database/config when audit management is implemented
+    audit_name = None  # Placeholder for audit name
+    return render_template('kanban.html', board_id=board_id, audit_name=audit_name)
 
 @app.route('/api/kanban/<board_id>', methods=['GET'])
 def get_kanban(board_id):
@@ -1400,6 +1406,180 @@ def clear_chat():
     global chat_history
     chat_history = []
     return jsonify({'status': 'cleared'})
+
+
+# ==================== Felix AI Chat ====================
+
+def init_felix_tables():
+    """Initialize Felix AI chat tables."""
+    with db._connection() as conn:
+        conn.executescript('''
+            CREATE TABLE IF NOT EXISTS felix_conversations (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT 'default_user',
+                title TEXT DEFAULT 'New Chat',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS felix_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES felix_conversations(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_felix_messages_conv ON felix_messages(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_felix_conversations_user ON felix_conversations(user_id);
+        ''')
+
+# Initialize Felix tables
+init_felix_tables()
+
+
+@app.route('/felix')
+def felix_chat():
+    """Felix AI full-screen chat page."""
+    user_id = session.get('user_id', 'default_user')
+    return render_template('felix.html', user_id=user_id)
+
+
+@app.route('/api/felix/conversations', methods=['GET'])
+def get_felix_conversations():
+    """Get all conversations for current user."""
+    user_id = session.get('user_id', 'default_user')
+    with db._connection() as conn:
+        cursor = conn.execute('''
+            SELECT id, title, updated_at FROM felix_conversations
+            WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50
+        ''', (user_id,))
+        return jsonify([dict(row) for row in cursor.fetchall()])
+
+
+@app.route('/api/felix/conversations', methods=['POST'])
+def create_felix_conversation():
+    """Create a new conversation."""
+    user_id = session.get('user_id', 'default_user')
+    conv_id = str(uuid.uuid4())
+    with db._connection() as conn:
+        conn.execute(
+            'INSERT INTO felix_conversations (id, user_id, title) VALUES (?, ?, ?)',
+            (conv_id, user_id, 'New Chat')
+        )
+    return jsonify({'id': conv_id, 'title': 'New Chat'})
+
+
+@app.route('/api/felix/conversations/<conv_id>', methods=['DELETE'])
+def delete_felix_conversation(conv_id):
+    """Delete a conversation and its messages."""
+    with db._connection() as conn:
+        conn.execute('DELETE FROM felix_messages WHERE conversation_id = ?', (conv_id,))
+        conn.execute('DELETE FROM felix_conversations WHERE id = ?', (conv_id,))
+    return jsonify({'success': True})
+
+
+@app.route('/api/felix/conversations/<conv_id>/messages', methods=['GET'])
+def get_felix_messages(conv_id):
+    """Get all messages for a conversation."""
+    with db._connection() as conn:
+        cursor = conn.execute('''
+            SELECT role, content, timestamp FROM felix_messages
+            WHERE conversation_id = ? ORDER BY timestamp ASC
+        ''', (conv_id,))
+        return jsonify([dict(row) for row in cursor.fetchall()])
+
+
+@app.route('/api/felix/conversations/<conv_id>/messages', methods=['POST'])
+def send_felix_message(conv_id):
+    """Send a message and get AI response."""
+    data = request.json
+    content = data.get('content', '').strip()
+    if not content:
+        return jsonify({'error': 'Empty message'}), 400
+
+    # Save user message and get history
+    with db._connection() as conn:
+        conn.execute(
+            'INSERT INTO felix_messages (conversation_id, role, content) VALUES (?, ?, ?)',
+            (conv_id, 'user', content)
+        )
+        cursor = conn.execute('''
+            SELECT role, content FROM felix_messages
+            WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 20
+        ''', (conv_id,))
+        history = [dict(row) for row in cursor.fetchall()]
+
+    # Call Claude API
+    try:
+        response_text = call_felix_ai(history)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    # Save assistant response and update conversation
+    with db._connection() as conn:
+        conn.execute(
+            'INSERT INTO felix_messages (conversation_id, role, content) VALUES (?, ?, ?)',
+            (conv_id, 'assistant', response_text)
+        )
+        # Update title if first message
+        if len(history) <= 1:
+            title = content[:40] + ('...' if len(content) > 40 else '')
+            conn.execute(
+                'UPDATE felix_conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (title, conv_id)
+            )
+        else:
+            conn.execute(
+                'UPDATE felix_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (conv_id,)
+            )
+
+    return jsonify({'role': 'assistant', 'content': response_text})
+
+
+def call_felix_ai(messages):
+    """Call Claude API for Felix chat."""
+    if not ANTHROPIC_API_KEY:
+        raise Exception('ANTHROPIC_API_KEY not configured')
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    # Get audit context
+    context = db.get_full_context()
+
+    system_prompt = f"""You are Felix, an AI assistant for SmartPapers - an internal audit workpaper application.
+
+## Your Personality
+- Friendly, professional, and concise
+- Expert in internal audit, risk management, and controls
+- Proactive in offering helpful suggestions
+
+## Current Audit Context
+- Total Risks in RACM: {context['risk_summary']['total']}
+- Status Breakdown: {json.dumps(context['risk_summary']['by_status'])}
+- Total Issues: {context['issue_summary']['total']}
+- Issues by Status: {json.dumps(context['issue_summary']['by_status'])}
+- Tasks: {context['task_summary']['total']}
+
+## You can help with:
+1. Answering questions about audit methodology and best practices
+2. Explaining the current audit status and findings
+3. Drafting test procedures, issue descriptions, and recommendations
+4. Summarizing risks, controls, and testing results
+5. Providing guidance on internal audit standards (IIA, SOX, etc.)
+
+Be concise but thorough. Use markdown formatting for clarity."""
+
+    response = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=2048,
+        system=system_prompt,
+        messages=messages
+    )
+
+    return response.content[0].text
 
 
 if __name__ == '__main__':

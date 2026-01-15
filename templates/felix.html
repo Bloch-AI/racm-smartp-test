@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Felix AI - SmartPapers</title>
+
+    <!-- Google Fonts - Bloch AI Design System -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+                        'mono': ['DM Mono', 'monospace'],
+                    },
+                    colors: {
+                        // Bloch AI brand blue
+                        primary: {
+                            50: '#e6f4fa',
+                            100: '#cce9f5',
+                            200: '#99d3eb',
+                            300: '#66bde1',
+                            400: '#33a7d7',
+                            500: '#008bd1',
+                            600: '#007ab8',
+                            700: '#00689e',
+                            800: '#005785',
+                            900: '#00456b',
+                        },
+                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
+                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
+                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' },
+                        info: { light: '#dbeafe', DEFAULT: '#3b82f6', dark: '#1d4ed8' }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* ========================================
+           DESIGN SYSTEM - Felix AI
+           Aligned with Bloch AI brand guidelines
+           ======================================== */
+
+        * {
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        h1, h2, h3, .font-display {
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+        }
+
+        code, pre, .font-mono {
+            font-family: 'DM Mono', monospace;
+        }
+
+        :root {
+            --primary: #008bd1;
+            --primary-light: #e6f4fa;
+            --primary-dark: #00689e;
+            --radius: 8px;
+        }
+
+        /* Button System */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 36px;
+            padding: 0 16px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: var(--radius);
+            transition: all 0.2s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn svg { width: 16px; height: 16px; }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .btn-secondary:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: #64748b;
+            border: none;
+            padding: 0 12px;
+        }
+        .btn-ghost:hover {
+            background: #f1f5f9;
+            color: #334155;
+        }
+
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Message content styling */
+        .message-content pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 12px 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 8px 0;
+            font-size: 13px;
+            font-family: 'DM Mono', monospace;
+        }
+        .message-content code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: 'DM Mono', monospace;
+        }
+        .message-content pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .message-content p { margin-bottom: 12px; }
+        .message-content p:last-child { margin-bottom: 0; }
+        .message-content ul, .message-content ol { margin: 8px 0; padding-left: 24px; }
+        .message-content li { margin: 4px 0; }
+        .message-content h1, .message-content h2, .message-content h3 {
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+            font-weight: 600;
+            margin-top: 16px;
+            margin-bottom: 8px;
+        }
+        .message-content h1 { font-size: 1.25rem; }
+        .message-content h2 { font-size: 1.125rem; }
+        .message-content h3 { font-size: 1rem; }
+
+        /* Typing animation */
+        .typing-dot {
+            animation: typing 1.4s infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+            30% { opacity: 1; transform: translateY(-4px); }
+        }
+
+        /* Conversation item hover */
+        .conv-item:hover .conv-delete { opacity: 1; }
+        .conv-delete { opacity: 0; transition: opacity 0.15s; }
+
+        /* Form input */
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 14px;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--radius);
+            background: white;
+            transition: all 0.15s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 139, 209, 0.1);
+        }
+    </style>
+</head>
+<body class="h-full">
+    <div class="h-full flex flex-col">
+
+        <!-- Navigation - matches index.html -->
+        <nav class="bg-white border-b border-slate-200 flex-shrink-0">
+            <div class="flex h-16 items-center justify-between px-4 sm:px-6">
+                <!-- Left: Logo + Nav Links -->
+                <div class="flex items-center">
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <img src="/static/logo.png" alt="SmartPapers Logo" class="h-8 w-auto">
+                        <div class="flex flex-col">
+                            <span class="text-xl font-bold text-slate-900 leading-tight font-display">SmartPapers</span>
+                            <span class="text-xs text-slate-400 -mt-0.5">Internal Audit</span>
+                        </div>
+                    </div>
+                    <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
+                        <a href="/felix" class="flex items-center gap-1.5 bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2L2 19h20L12 2zm0 4l6.5 11h-13L12 6z"/>
+                            </svg>
+                            Felix AI
+                        </a>
+                        <a href="/" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Workpapers
+                        </a>
+                        <a href="/flowchart" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Flowcharts
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex overflow-hidden">
+
+            <!-- Sidebar -->
+            <aside class="w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0">
+                <!-- New Chat Button -->
+                <div class="p-4 border-b border-slate-100">
+                    <button onclick="createNewConversation()" class="btn btn-primary w-full">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        New Chat
+                    </button>
+                </div>
+
+                <!-- Conversations List -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-3">
+                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wide px-2 mb-2">Recent Conversations</p>
+                    <div id="conversationsList" class="space-y-1">
+                        <!-- Conversations loaded here -->
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Chat Area -->
+            <main class="flex-1 flex flex-col bg-slate-50 min-w-0">
+
+                <!-- Empty State (shown when no conversation selected) -->
+                <div id="emptyState" class="flex-1 flex items-center justify-center p-4">
+                    <div class="text-center max-w-lg">
+                        <div class="w-16 h-16 rounded-2xl bg-primary-500 flex items-center justify-center mx-auto mb-5">
+                            <svg class="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2L2 19h20L12 2zm0 4l6.5 11h-13L12 6z"/>
+                            </svg>
+                        </div>
+                        <h2 class="font-display text-2xl font-bold text-slate-800 mb-2">How can I help you today?</h2>
+                        <p class="text-slate-500 mb-8">I'm Felix, your AI assistant for SmartPapers. Ask me anything about your audits, risks, controls, or testing.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                            <button onclick="quickPrompt('Summarize the current audit status')" class="p-4 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-all text-left">
+                                <p class="text-sm font-medium text-slate-700">Audit Summary</p>
+                                <p class="text-xs text-slate-400 mt-1">Get an overview of current status</p>
+                            </button>
+                            <button onclick="quickPrompt('What controls still need testing?')" class="p-4 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-all text-left">
+                                <p class="text-sm font-medium text-slate-700">Testing Status</p>
+                                <p class="text-xs text-slate-400 mt-1">Controls requiring testing</p>
+                            </button>
+                            <button onclick="quickPrompt('Help me write a DE test procedure for a reconciliation control')" class="p-4 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-all text-left">
+                                <p class="text-sm font-medium text-slate-700">Draft Test Procedure</p>
+                                <p class="text-xs text-slate-400 mt-1">Design effectiveness testing</p>
+                            </button>
+                            <button onclick="quickPrompt('Draft an issue for a control deficiency I found')" class="p-4 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-all text-left">
+                                <p class="text-sm font-medium text-slate-700">Draft an Issue</p>
+                                <p class="text-xs text-slate-400 mt-1">Document control deficiencies</p>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Container (hidden until conversation selected) -->
+                <div id="chatContainer" class="flex-1 flex flex-col hidden">
+
+                    <!-- Messages Area -->
+                    <div id="messagesArea" class="flex-1 overflow-y-auto custom-scrollbar">
+                        <div id="messagesList" class="max-w-3xl mx-auto py-6 px-4 space-y-6">
+                            <!-- Messages rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- Typing Indicator -->
+                    <div id="typingIndicator" class="hidden max-w-3xl mx-auto px-4 pb-4">
+                        <div class="flex items-start gap-4">
+                            <div class="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center flex-shrink-0">
+                                <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2L2 19h20L12 2zm0 4l6.5 11h-13L12 6z"/>
+                                </svg>
+                            </div>
+                            <div class="flex items-center gap-1 py-3">
+                                <span class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></span>
+                                <span class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></span>
+                                <span class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Input Area -->
+                    <div class="border-t border-slate-200 bg-white">
+                        <div class="max-w-3xl mx-auto p-4">
+                            <div class="flex gap-3">
+                                <div class="flex-1 relative">
+                                    <textarea id="messageInput"
+                                        rows="1"
+                                        class="form-input resize-none"
+                                        placeholder="Message Felix..."
+                                        onkeydown="handleInputKeydown(event)"
+                                        oninput="autoResizeTextarea(this)"></textarea>
+                                </div>
+                                <button onclick="sendMessage()" id="sendBtn" class="btn btn-primary">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <p class="text-xs text-slate-400 text-center mt-2">Felix can make mistakes. Verify important audit information.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <script>
+        // ============== State ==============
+        const userId = '{{ user_id }}';
+        let currentConversationId = null;
+        let conversations = [];
+        let isLoading = false;
+
+        // ============== Initialize ==============
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConversations();
+        });
+
+        // ============== API Functions ==============
+        async function loadConversations() {
+            try {
+                const res = await fetch('/api/felix/conversations');
+                conversations = await res.json();
+                renderConversationsList();
+            } catch (e) {
+                console.error('Failed to load conversations:', e);
+            }
+        }
+
+        async function createNewConversation() {
+            try {
+                const res = await fetch('/api/felix/conversations', { method: 'POST' });
+                const conv = await res.json();
+                currentConversationId = conv.id;
+                conversations.unshift(conv);
+                renderConversationsList();
+                showChatContainer();
+                document.getElementById('messagesList').innerHTML = '';
+                document.getElementById('messageInput').focus();
+            } catch (e) {
+                console.error('Failed to create conversation:', e);
+            }
+        }
+
+        async function selectConversation(convId) {
+            currentConversationId = convId;
+            renderConversationsList();
+            showChatContainer();
+
+            try {
+                const res = await fetch(`/api/felix/conversations/${convId}/messages`);
+                const messages = await res.json();
+                renderMessages(messages);
+            } catch (e) {
+                console.error('Failed to load messages:', e);
+            }
+        }
+
+        async function deleteConversation(convId, event) {
+            event.stopPropagation();
+            if (!confirm('Delete this conversation?')) return;
+
+            try {
+                await fetch(`/api/felix/conversations/${convId}`, { method: 'DELETE' });
+                conversations = conversations.filter(c => c.id !== convId);
+                renderConversationsList();
+
+                if (currentConversationId === convId) {
+                    currentConversationId = null;
+                    showEmptyState();
+                }
+            } catch (e) {
+                console.error('Failed to delete conversation:', e);
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+
+            if (!content || isLoading) return;
+
+            // Create conversation if needed
+            if (!currentConversationId) {
+                try {
+                    const res = await fetch('/api/felix/conversations', { method: 'POST' });
+                    const conv = await res.json();
+                    currentConversationId = conv.id;
+                    conversations.unshift(conv);
+                    renderConversationsList();
+                    showChatContainer();
+                } catch (e) {
+                    console.error('Failed to create conversation:', e);
+                    return;
+                }
+            }
+
+            input.value = '';
+            input.style.height = 'auto';
+
+            // Show user message immediately
+            appendMessage({ role: 'user', content });
+            scrollToBottom();
+
+            // Show typing indicator
+            isLoading = true;
+            document.getElementById('typingIndicator').classList.remove('hidden');
+            scrollToBottom();
+
+            try {
+                const res = await fetch(`/api/felix/conversations/${currentConversationId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+
+                const data = await res.json();
+
+                if (data.error) {
+                    appendMessage({ role: 'assistant', content: `Error: ${data.error}` });
+                } else {
+                    appendMessage(data);
+                }
+
+                // Refresh conversation list to update title
+                loadConversations();
+
+            } catch (e) {
+                appendMessage({ role: 'assistant', content: `Error: ${e.message}` });
+            } finally {
+                isLoading = false;
+                document.getElementById('typingIndicator').classList.add('hidden');
+                scrollToBottom();
+            }
+        }
+
+        function quickPrompt(text) {
+            document.getElementById('messageInput').value = text;
+            sendMessage();
+        }
+
+        // ============== UI Functions ==============
+        function renderConversationsList() {
+            const container = document.getElementById('conversationsList');
+
+            if (conversations.length === 0) {
+                container.innerHTML = '<p class="text-sm text-slate-400 px-2 py-4">No conversations yet</p>';
+                return;
+            }
+
+            container.innerHTML = conversations.map(conv => `
+                <div class="conv-item group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${conv.id === currentConversationId ? 'bg-primary-50 text-primary-700' : 'hover:bg-slate-50 text-slate-600'}"
+                     onclick="selectConversation('${conv.id}')">
+                    <svg class="w-4 h-4 flex-shrink-0 ${conv.id === currentConversationId ? 'text-primary-500' : 'text-slate-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    <span class="flex-1 text-sm truncate">${escapeHtml(conv.title)}</span>
+                    <button onclick="deleteConversation('${conv.id}', event)"
+                            class="conv-delete p-1 hover:bg-slate-200 rounded transition-colors">
+                        <svg class="w-4 h-4 text-slate-400 hover:text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function showChatContainer() {
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('chatContainer').classList.remove('hidden');
+        }
+
+        function showEmptyState() {
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('chatContainer').classList.add('hidden');
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('messagesList');
+            container.innerHTML = '';
+            messages.forEach(msg => appendMessage(msg));
+            scrollToBottom();
+        }
+
+        function appendMessage(msg) {
+            const container = document.getElementById('messagesList');
+            const isUser = msg.role === 'user';
+
+            const div = document.createElement('div');
+            div.className = 'flex items-start gap-4';
+
+            if (isUser) {
+                div.innerHTML = `
+                    <div class="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-slate-700 mb-1">You</p>
+                        <div class="text-slate-600 message-content">${escapeHtml(msg.content)}</div>
+                    </div>
+                `;
+            } else {
+                div.innerHTML = `
+                    <div class="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2L2 19h20L12 2zm0 4l6.5 11h-13L12 6z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-slate-700 mb-1">Felix</p>
+                        <div class="text-slate-600 message-content">${marked.parse(msg.content)}</div>
+                    </div>
+                `;
+            }
+
+            container.appendChild(div);
+        }
+
+        function handleInputKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function autoResizeTextarea(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+        }
+
+        function scrollToBottom() {
+            const area = document.getElementById('messagesArea');
+            if (area) {
+                area.scrollTop = area.scrollHeight;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
