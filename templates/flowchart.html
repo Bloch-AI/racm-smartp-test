@@ -5,24 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartPapers - Flowcharts</title>
 
+    <!-- Google Fonts - Bloch AI Design System -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+                        'mono': ['DM Mono', 'monospace'],
+                    },
                     colors: {
+                        // Bloch AI brand blue
                         primary: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            200: '#bae6fd',
-                            300: '#7dd3fc',
-                            400: '#38bdf8',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                            800: '#075985',
-                            900: '#0c4a6e',
+                            50: '#e6f4fa',
+                            100: '#cce9f5',
+                            200: '#99d3eb',
+                            300: '#66bde1',
+                            400: '#33a7d7',
+                            500: '#008bd1',
+                            600: '#007ab8',
+                            700: '#00689e',
+                            800: '#005785',
+                            900: '#00456b',
                         },
                         success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
                         warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
@@ -37,11 +48,19 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
 
     <style>
+        /* Bloch AI Design System */
+        * {
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        h1, h2, h3, .font-display {
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+        }
+
         :root {
-            --primary: #0284c7;
-            --primary-light: #e0f2fe;
-            --primary-dark: #075985;
-            --radius: 6px;
+            --primary: #008bd1;
+            --primary-light: #e6f4fa;
+            --primary-dark: #00689e;
+            --radius: 8px;
         }
 
         /* Button system */
@@ -51,11 +70,11 @@
             justify-content: center;
             gap: 6px;
             height: 36px;
-            padding: 0 14px;
+            padding: 0 16px;
             font-size: 13px;
             font-weight: 500;
             border-radius: var(--radius);
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
             cursor: pointer;
             white-space: nowrap;
         }
@@ -65,13 +84,13 @@
             color: white;
             border: none;
         }
-        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-primary:hover { background: var(--primary-dark); transform: scale(1.02); }
         .btn-secondary {
             background: white;
             color: #374151;
             border: 1px solid #d1d5db;
         }
-        .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; transform: scale(1.02); }
         .btn-ghost {
             background: transparent;
             color: #6b7280;
@@ -83,7 +102,7 @@
             color: white;
             border: none;
         }
-        .btn-success:hover { background: #16a34a; }
+        .btn-success:hover { background: #16a34a; transform: scale(1.02); }
 
         /* ========== MIRO-STYLE CANVAS ========== */
         #drawflow {

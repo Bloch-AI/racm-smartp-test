@@ -5,25 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartPapers - Internal Audit</title>
 
+    <!-- Google Fonts - Bloch AI Design System -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+                        'mono': ['DM Mono', 'monospace'],
+                    },
                     colors: {
-                        // Single primary color - professional blue
+                        // Bloch AI brand blue
                         primary: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            200: '#bae6fd',
-                            300: '#7dd3fc',
-                            400: '#38bdf8',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                            800: '#075985',
-                            900: '#0c4a6e',
+                            50: '#e6f4fa',
+                            100: '#cce9f5',
+                            200: '#99d3eb',
+                            300: '#66bde1',
+                            400: '#33a7d7',
+                            500: '#008bd1',
+                            600: '#007ab8',
+                            700: '#00689e',
+                            800: '#005785',
+                            900: '#00456b',
                         },
                         // Semantic colors only
                         success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
@@ -46,19 +56,33 @@
     <style>
         /* ========================================
            DESIGN SYSTEM - SmartPapers
+           Aligned with Bloch AI brand guidelines
            ======================================== */
 
+        * {
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        h1, h2, h3, .font-display {
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+        }
+
+        code, pre, .font-mono {
+            font-family: 'DM Mono', monospace;
+        }
+
         :root {
-            --primary: #0284c7;
-            --primary-light: #e0f2fe;
-            --primary-dark: #075985;
+            /* Bloch AI Brand Colors */
+            --primary: #008bd1;
+            --primary-light: #e6f4fa;
+            --primary-dark: #00689e;
             --success: #22c55e;
             --success-light: #dcfce7;
             --warning: #f59e0b;
             --warning-light: #fef3c7;
             --danger: #ef4444;
             --danger-light: #fee2e2;
-            --radius: 6px;
+            --radius: 8px;
             --radius-lg: 8px;
         }
 
@@ -72,11 +96,11 @@
             justify-content: center;
             gap: 6px;
             height: 36px;
-            padding: 0 14px;
+            padding: 0 16px;
             font-size: 13px;
             font-weight: 500;
             border-radius: var(--radius);
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
             cursor: pointer;
             white-space: nowrap;
         }
@@ -88,14 +112,21 @@
             border: none;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
-        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: scale(1.02);
+        }
 
         .btn-secondary {
             background: white;
             color: #374151;
             border: 1px solid #d1d5db;
         }
-        .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-secondary:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+            transform: scale(1.02);
+        }
 
         .btn-ghost {
             background: transparent;
@@ -187,7 +218,7 @@
         .jspreadsheet thead tr.jexcel_filter td input:focus {
             border-color: var(--primary) !important;
             outline: none !important;
-            box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15) !important;
+            box-shadow: 0 0 0 2px rgba(0, 139, 209, 0.15) !important;
             background: white !important;
         }
 
@@ -281,7 +312,7 @@
         .form-input:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+            box-shadow: 0 0 0 3px rgba(0, 139, 209, 0.15);
         }
         .form-hint {
             font-size: 12px;
@@ -387,7 +418,7 @@
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <img src="/static/logo.png" alt="SmartPapers Logo" class="h-8 w-auto">
                         <div class="flex flex-col">
-                            <span class="text-xl font-bold text-slate-900 leading-tight">SmartPapers</span>
+                            <span class="text-xl font-bold text-slate-900 leading-tight font-display">SmartPapers</span>
                             <span class="text-xs text-slate-400 -mt-0.5">Internal Audit</span>
                         </div>
                     </div>
