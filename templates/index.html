@@ -617,6 +617,29 @@
         .kanban-item[data-priority="low"] {
             border-left: 3px solid #22c55e;
         }
+
+        /* ========================================
+           TAB STYLES - Matching Audit Plan
+           ======================================== */
+
+        .tab-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #6b7280;
+            border-bottom: 2px solid transparent;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            background: transparent;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        .tab-btn:hover { color: #374151; }
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
     </style>
 </head>
 <body class="h-full">
@@ -634,26 +657,28 @@
                         </div>
                     </div>
                     <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
+                        <a href="/audit-plan" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Plan
+                        </a>
+                        <a href="/" class="bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
+                            Audit Workpapers
+                        </a>
+                    </div>
+                </div>
+                <!-- Right side -->
+                <div class="flex items-center gap-4">
+                    <div class="hidden sm:flex sm:items-center sm:space-x-1">
                         <a href="/felix" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
                             </svg>
                             Felix AI
                         </a>
-                        <a href="/" class="bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
-                            Audit Workpapers
-                        </a>
-                        <a href="/audit-plan" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            Audit Plan
-                        </a>
-                        <a href="/flowchart" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            Flowcharts
-                        </a>
                         <a href="/library" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                             </svg>
-                            Audit Library
+                            Library
                         </a>
                     </div>
                 </div>
@@ -663,30 +688,50 @@
         <!-- Main content -->
         <main class="py-6">
             <div class="mx-auto px-4 sm:px-6">
-                <!-- Header with integrated toolbar -->
-                <div class="flex items-center justify-between mb-5">
-                    <div>
-                        <h1 class="text-xl font-semibold text-slate-900 font-display">{{ audit_name or 'Untitled Audit' }}</h1>
-                        <p id="page-subtitle" class="text-sm text-slate-500">Risk and control matrix</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <!-- Table tools -->
-                        <button onclick="addRow()" class="btn btn-ghost" title="Add row">
-                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                            </svg>
-                            Add Row
+                <!-- Header -->
+                <div class="mb-6">
+                    <h1 class="text-xl font-semibold text-slate-900 font-display">{{ audit_name or 'Untitled Audit' }}</h1>
+                    <p id="page-subtitle" class="text-sm text-slate-500">Risk and control matrix</p>
+                </div>
+
+                <!-- Tab Bar -->
+                <div class="flex items-center justify-between border-b border-slate-200 mb-6">
+                    <div class="flex">
+                        <button id="tab-racm" class="tab-btn active" onclick="switchTab('racm')">
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Risk & Control Matrix
+                            </span>
                         </button>
-                        <div class="w-px h-6 bg-slate-200 mx-1"></div>
-                        <button onclick="toggleChat()" class="btn btn-secondary">
+                        <button id="tab-issues" class="tab-btn" onclick="switchTab('issues')">
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                Issue Log
+                            </span>
+                        </button>
+                        <button id="tab-plan" class="tab-btn" onclick="switchTab('plan')">
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                                </svg>
+                                Audit Plan
+                            </span>
+                        </button>
+                    </div>
+                    <!-- Right side: Ask Felix + Import/Export + Add Row + Save + Search -->
+                    <div class="flex items-center gap-2 pb-2">
+                        <button onclick="toggleChat()" class="btn btn-ghost">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
                             </svg>
                             Ask Felix
                         </button>
-                        <!-- Import/Export dropdown -->
                         <div class="relative" id="importExportDropdown">
-                            <button onclick="toggleImportExport()" class="btn btn-secondary">
+                            <button onclick="toggleImportExport()" class="btn btn-ghost">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                                 </svg>
@@ -711,47 +756,36 @@
                                 </label>
                             </div>
                         </div>
-                        <!-- Primary save button -->
-                        <button onclick="saveData()" class="btn btn-primary">
-                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        <div id="table-action-buttons" class="flex items-center gap-2">
+                            <button onclick="addRow()" class="btn btn-ghost">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Add Row
+                            </button>
+                            <button onclick="saveData()" class="btn btn-ghost">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                                </svg>
+                                Save
+                            </button>
+                        </div>
+                        <div id="table-search-container" class="relative">
+                            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
-                            Save Changes
-                        </button>
+                            <input type="text" id="table-search" placeholder="Search..." oninput="searchTable(this.value)" class="h-9 pl-9 pr-3 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 w-48">
+                        </div>
                     </div>
                 </div>
 
-                <!-- Content Tabs -->
-                <div id="spreadsheet" class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="border-b border-slate-200 bg-white">
-                        <nav class="flex" aria-label="Tabs">
-                            <button id="tab-racm" onclick="switchTab('racm')" class="tab-button px-5 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-700 bg-primary-50/50">
-                                Risk & Control Matrix
-                            </button>
-                            <button id="tab-issues" onclick="switchTab('issues')" class="tab-button px-5 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
-                                Issue Log
-                            </button>
-                            <button id="tab-plan" onclick="switchTab('plan')" class="tab-button px-5 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">
-                                Audit Plan
-                            </button>
-                        </nav>
-                    </div>
+                <!-- Spreadsheet Container -->
+                <div id="spreadsheet" class="bg-white rounded-lg shadow-sm border border-slate-200">
                     <div id="spreadsheet-racm"></div>
                     <div id="spreadsheet-issues" style="display: none;"></div>
-                    <div id="kanban-container" style="display: none;" class="p-4">
-                        <div class="flex items-center justify-between mb-4">
-                            <div></div>
-                            <div class="flex gap-2">
-                                <button onclick="addKanbanColumn()" class="btn btn-secondary">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    Add Column
-                                </button>
-                            </div>
-                        </div>
-                        <div id="kanban-board" class="overflow-x-auto pb-4"></div>
-                    </div>
+                </div>
+                <div id="kanban-container" style="display: none;" class="p-4">
+                    <div id="kanban-board" class="overflow-x-auto pb-4"></div>
                 </div>
 
                 <!-- Toast notifications -->
@@ -1166,11 +1200,24 @@
             document.getElementById('page-subtitle').textContent = subtitles[tab] || '';
 
             // Update tab button styles
-            const activeClass = 'tab-button px-5 py-3 text-sm font-medium border-b-2 border-primary-500 text-primary-700 bg-primary-50/50';
-            const inactiveClass = 'tab-button px-5 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700';
-            document.getElementById('tab-racm').className = tab === 'racm' ? activeClass : inactiveClass;
-            document.getElementById('tab-issues').className = tab === 'issues' ? activeClass : inactiveClass;
-            document.getElementById('tab-plan').className = tab === 'plan' ? activeClass : inactiveClass;
+            document.getElementById('tab-racm').className = tab === 'racm' ? 'tab-btn active' : 'tab-btn';
+            document.getElementById('tab-issues').className = tab === 'issues' ? 'tab-btn active' : 'tab-btn';
+            document.getElementById('tab-plan').className = tab === 'plan' ? 'tab-btn active' : 'tab-btn';
+
+            // Clear search when switching tabs
+            const searchInput = document.getElementById('table-search');
+            if (searchInput) {
+                searchInput.value = '';
+                if (table) table.search('');
+                if (issueTable) issueTable.search('');
+            }
+
+            // Show/hide import/export and action buttons on spreadsheet tabs only (search stays visible)
+            const importExportDropdown = document.getElementById('importExportDropdown');
+            const actionButtons = document.getElementById('table-action-buttons');
+            const showTableTools = (tab === 'racm' || tab === 'issues');
+            if (importExportDropdown) importExportDropdown.style.display = showTableTools ? 'block' : 'none';
+            if (actionButtons) actionButtons.style.display = showTableTools ? 'flex' : 'none';
 
             // Show/hide content areas
             document.getElementById('spreadsheet-racm').style.display = tab === 'racm' ? 'block' : 'none';
@@ -1220,20 +1267,31 @@
 
         async function initKanban() {
             const response = await fetch(`/api/kanban/${kanbanBoardId}`);
-            kanbanData = await response.json();
+            const savedData = await response.json();
 
-            if (!kanbanData) {
-                kanbanData = {
-                    name: 'Audit Plan',
-                    columns: [
-                        { id: 'planning', title: 'Planning', items: [] },
-                        { id: 'fieldwork', title: 'Fieldwork', items: [] },
-                        { id: 'testing', title: 'Testing', items: [] },
-                        { id: 'review', title: 'Review', items: [] },
-                        { id: 'complete', title: 'Complete', items: [] }
-                    ]
-                };
-            }
+            // Define the required columns
+            const requiredColumns = [
+                { id: 'not_started', title: 'Not Started' },
+                { id: 'design_effectiveness', title: 'Design Effectiveness' },
+                { id: 'operational_effectiveness', title: 'Operational Effectiveness' },
+                { id: 'complete', title: 'Complete' }
+            ];
+
+            // Always use the required columns, but preserve any existing items
+            kanbanData = {
+                name: 'Audit Plan',
+                columns: requiredColumns.map(reqCol => {
+                    // Try to find existing column with same id or migrate from old columns
+                    let existingItems = [];
+                    if (savedData && savedData.columns) {
+                        const existingCol = savedData.columns.find(c => c.id === reqCol.id);
+                        if (existingCol) {
+                            existingItems = existingCol.items || [];
+                        }
+                    }
+                    return { ...reqCol, items: existingItems };
+                })
+            };
 
             renderKanbanBoard();
             kanbanInitialized = true;
@@ -1506,7 +1564,7 @@
                 tableWidth: containerWidth + 'px',
                 tableHeight: 'auto',
                 filters: true,
-                search: true,
+                search: false,
                 updateTable: updateRACMTable,
                 onchange: onRACMChange,
                 contextMenu: function(obj, x, y, e) {
@@ -1561,7 +1619,7 @@
                 tableWidth: containerWidth + 'px',
                 tableHeight: 'auto',
                 filters: true,
-                search: true,
+                search: false,
                 updateTable: updateIssueTable,
                 contextMenu: function(obj, x, y, e) {
                     let items = [];
@@ -1824,6 +1882,32 @@
         function addRow() {
             const activeTable = getActiveTable();
             if (activeTable) activeTable.insertRow();
+        }
+
+        function searchTable(query) {
+            const activeTable = getActiveTable();
+            if (activeTable) {
+                activeTable.search(query);
+            }
+
+            // Also search kanban items if on plan tab
+            if (currentTab === 'plan') {
+                searchKanban(query);
+            }
+        }
+
+        function searchKanban(query) {
+            const kanbanItems = document.querySelectorAll('#kanban-board .kanban-item');
+            const lowerQuery = query.toLowerCase();
+
+            kanbanItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (!query || text.includes(lowerQuery)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
         }
 
         function mergeSelected() {

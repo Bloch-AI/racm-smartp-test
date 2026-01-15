@@ -417,30 +417,31 @@
                         </div>
                     </div>
                     <div class="hidden sm:flex sm:items-center sm:ml-8 sm:space-x-1">
+                        <a href="/audit-plan" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Plan
+                        </a>
+                        <a href="/" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
+                            Audit Workpapers
+                        </a>
+                    </div>
+                </div>
+                <!-- Right side -->
+                <div class="flex items-center gap-4">
+                    <div class="hidden sm:flex sm:items-center sm:space-x-1">
                         <a href="/felix" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
                             </svg>
                             Felix AI
                         </a>
-                        <a href="/" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            Audit Workpapers
-                        </a>
-                        <a href="/audit-plan" class="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
-                            Audit Plan
-                        </a>
-                        <a href="/flowchart" class="bg-primary-50 text-primary-700 rounded-md px-3 py-2 text-sm font-medium">
-                            Flowcharts
-                        </a>
                         <a href="/library" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                             </svg>
-                            Audit Library
+                            Library
                         </a>
                     </div>
-                </div>
-                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2">
                     <input type="text" id="flowchartName" placeholder="Flowchart name..." value="{{ flowchart_id or '' }}" class="h-9 rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm w-40">
                     <button onclick="loadFlowchart()" class="btn btn-ghost">Load</button>
                     <button onclick="exportData()" class="btn btn-secondary">
@@ -456,6 +457,7 @@
                         </svg>
                         Save
                     </button>
+                    </div>
                 </div>
             </div>
         </nav>
