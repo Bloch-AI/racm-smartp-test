@@ -2452,10 +2452,17 @@ def build_smart_context(query: str, context: dict) -> str:
 **UPDATE:** Change statuses, update documentation
 **DELETE:** Remove risks, tasks, issues (confirm first)
 
+## Control Writing Standards:
+When creating or updating controls, they MUST be concise and follow this format:
+- **WHO** does **WHAT**, **WHY**, **WHERE**, and **WHEN**
+- Maximum 5 sentences
+- No bullet points or detailed procedures in the control description
+- Example: "The IT Security Manager reviews user access quarterly using the IAM system to ensure appropriate access levels are maintained and terminated employees are removed within 24 hours of departure."
+
 ## Guidelines:
 1. **Take Action:** Use tools to do what the user asks, don't just describe
 2. **Use Library Guidance:** The audit library content above is from your reference documents - use it to inform your responses
-3. **Be Specific:** When creating controls, base them on the library guidance and existing RACM patterns
+3. **Keep Controls Concise:** Controls must be brief (5 sentences max) - save detail for test procedures
 4. **Avoid Duplicates:** Check relevant risks above before creating new ones
 5. **Ask if Unclear:** Use ask_clarifying_question when you need more details
 
