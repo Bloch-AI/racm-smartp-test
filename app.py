@@ -1466,44 +1466,37 @@ def get_ai_tools():
 
 
 def build_ai_system_prompt(context, include_capabilities=True):
-    """Build the system prompt for AI with full audit context."""
+    """Build the system prompt for AI with audit context summary.
+
+    Note: Only summaries are included to reduce token usage.
+    Felix should use tools (execute_sql, get_audit_summary) to fetch detailed data when needed.
+    """
+    # Build concise risk list (just IDs and brief info)
+    risk_list = []
+    for r in context['risks'][:20]:  # Limit to 20 risks
+        risk_list.append(f"- {r.get('risk_id', 'N/A')}: {r.get('risk', 'No description')[:60]}... [{r.get('status', 'Unknown')}]")
+    risk_summary_text = "\n".join(risk_list) if risk_list else "No risks in RACM"
+    if len(context['risks']) > 20:
+        risk_summary_text += f"\n... and {len(context['risks']) - 20} more risks (use execute_sql to see all)"
+
     prompt = f"""You are Felix, an intelligent AI audit assistant with FULL ACCESS to the SmartPapers audit database.
 
-## Database Schema
-{context['schema']}
+## Current Audit Summary:
+- **Risks:** {context['risk_summary']['total']} total - {json.dumps(context['risk_summary']['by_status'])}
+- **Tasks:** {context['task_summary']['total']} total - {json.dumps(context['task_summary']['by_column'])}
+- **Issues:** {context['issue_summary']['total']} total - {json.dumps(context['issue_summary']['by_status'])}
+- **Flowcharts:** {context['flowchart_count']}
+- **Test Documents:** {context['test_doc_count']}
+- **Attachments:** {context['issue_attachment_count']} issue files, {context['risk_attachment_count']} risk files
 
-## Current Audit Data Summary:
-- Total Risks: {context['risk_summary']['total']}
-- Status Breakdown: {json.dumps(context['risk_summary']['by_status'])}
-- Total Tasks: {context['task_summary']['total']}
-- Tasks by Stage: {json.dumps(context['task_summary']['by_column'])}
-- Total Issues: {context['issue_summary']['total']}
-- Issues by Status: {json.dumps(context['issue_summary']['by_status'])}
-- Flowcharts: {context['flowchart_count']}
-- Test Documents (Working Papers): {context['test_doc_count']}
-- Issue Attachments (Evidence Files): {context['issue_attachment_count']}
-- Risk Attachments (Evidence Files): {context['risk_attachment_count']}
+## RACM Overview (use execute_sql for full details):
+{risk_summary_text}
 
-## Current RACM Data:
-{json.dumps(context['risks'], indent=2)}
-
-## Current Tasks:
-{json.dumps(context['tasks'], indent=2)}
-
-## Current Issues (Issue Log):
-{json.dumps(context['issues'], indent=2)}
-
-## Flowcharts (metadata):
-{json.dumps(context['flowcharts'], indent=2)}
-
-## Test Documents (metadata - use read_test_document to get full content):
-{json.dumps(context['test_documents'], indent=2)}
-
-## Issue Attachments (evidence files - use list_issue_attachments to get details):
-{json.dumps(context['issue_attachments'], indent=2)}
-
-## Risk Attachments (evidence files - use list_risk_attachments to get details):
-{json.dumps(context['risk_attachments'], indent=2)}
+## Available Tools for Data Access:
+- **execute_sql**: Query the database for detailed risk, task, or issue data
+- **get_audit_summary**: Get current statistics
+- **read_test_document / read_flowchart**: Read specific documents
+- **search_audit_library**: Search reference documents (COBIT, COSO, IIA Standards)
 """
 
     if include_capabilities:

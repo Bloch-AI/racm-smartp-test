@@ -1098,11 +1098,11 @@ class TestAISystemPrompt:
         prompt = app_module.build_ai_system_prompt(context)
         assert 'Felix' in prompt
 
-    def test_system_prompt_contains_schema(self, test_db, client):
-        """System prompt should contain database schema."""
+    def test_system_prompt_contains_audit_summary(self, test_db, client):
+        """System prompt should contain audit summary (not full schema to reduce tokens)."""
         context = test_db.get_full_context()
         prompt = app_module.build_ai_system_prompt(context)
-        assert 'Schema' in prompt or 'schema' in prompt
+        assert 'Audit Summary' in prompt or 'RACM Overview' in prompt
 
     def test_system_prompt_contains_capabilities(self, test_db, client):
         """System prompt should describe capabilities."""
