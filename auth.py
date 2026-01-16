@@ -301,8 +301,8 @@ def can_view_audit(user, audit):
     audit_id = audit['id'] if isinstance(audit, dict) else audit
     user_role = get_user_role(user)
 
-    # Auditors and Reviewers can view ALL audits
-    if user_role in ('auditor', 'reviewer'):
+    # Auditors can view ALL audits (reviewer global role consolidated into auditor)
+    if user_role == 'auditor':
         return True
 
     # Viewers can ONLY view audits they're explicitly assigned to

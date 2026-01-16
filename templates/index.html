@@ -1361,11 +1361,12 @@
             if (!meta) return '';
             const status = meta.record_status || 'draft';
             const recordId = meta.id;
+            const permissions = meta.permissions || {};
             let buttons = [];
 
             // For admin_hold (locked) records, only admins can unlock
             if (status === 'admin_hold') {
-                if (isAdmin) {
+                if (permissions.canAdminUnlock) {
                     buttons.push(`<span class="unlock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Unlock</span>`);
                 } else {
                     buttons.push('<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Locked</span>');
@@ -1373,22 +1374,40 @@
                 return buttons.join(' ');
             }
 
-            // For signed_off records, only admins can unlock the sign-off
+            // For signed_off records, admins can unlock or lock
             if (status === 'signed_off') {
-                if (isAdmin) {
+                if (permissions.canAdminUnlockSignoff) {
+                    buttons.push(`<span class="unlock-signoff inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Reopen</span>`);
+                }
+                if (permissions.canAdminLock) {
                     buttons.push(`<span class="lock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
                 }
                 return buttons.join(' ');
             }
 
-            // For draft and in_review, show appropriate actions based on role
+            // For draft and in_review, show appropriate actions based on permissions
             if (currentUserRole === 'viewer') {
                 return '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">View Only</span>';
             }
 
+            // Draft: show Submit for Review button if user can submit
+            if (status === 'draft' && permissions.canSubmitForReview) {
+                buttons.push(`<span class="submit-for-review inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Submit</span>`);
+            }
+
+            // In Review: show Return to Auditor and Sign Off buttons for assigned reviewer
+            if (status === 'in_review') {
+                if (permissions.canReturnToAuditor) {
+                    buttons.push(`<span class="return-to-auditor inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Return</span>`);
+                }
+                if (permissions.canSignOff) {
+                    buttons.push(`<span class="sign-off inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Sign Off</span>`);
+                }
+            }
+
             // Admin can lock any non-locked record
-            if (isAdmin && status !== 'admin_hold') {
-                buttons.push(`<span class="lock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
+            if (permissions.canAdminLock) {
+                buttons.push(`<span class="lock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
             }
 
             return buttons.join(' ');
@@ -1437,6 +1456,146 @@
                 }
             } catch (error) {
                 showToast('Failed to unlock record', 'error');
+            }
+        }
+
+        // ==================== Workflow Action Functions ====================
+
+        // Open modal to select reviewer and submit for review
+        function openSubmitForReviewModal(recordType, recordId) {
+            // Get available reviewers from audit team
+            const reviewers = auditTeam.reviewers || [];
+            if (reviewers.length === 0) {
+                showToast('No reviewers assigned to this audit. Please ask an admin to assign reviewers.', 'error');
+                return;
+            }
+
+            // Build reviewer options
+            const options = reviewers.map(r =>
+                `<option value="${r.user_id}">${r.user_name} (${r.user_email})</option>`
+            ).join('');
+
+            // Create simple modal using prompt-like approach
+            const modal = document.createElement('div');
+            modal.id = 'submitForReviewModal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+                    <h3 class="text-lg font-semibold text-slate-900 mb-4">Submit for Review</h3>
+                    <p class="text-sm text-slate-600 mb-4">Select a reviewer to assign this record to:</p>
+                    <select id="reviewerSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-4">
+                        ${options}
+                    </select>
+                    <div class="flex justify-end gap-2">
+                        <button onclick="closeSubmitForReviewModal()" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
+                        <button onclick="submitForReview('${recordType}', ${recordId})" class="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Submit</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function closeSubmitForReviewModal() {
+            const modal = document.getElementById('submitForReviewModal');
+            if (modal) modal.remove();
+        }
+
+        async function submitForReview(recordType, recordId) {
+            const reviewerSelect = document.getElementById('reviewerSelect');
+            const reviewerId = reviewerSelect ? parseInt(reviewerSelect.value) : null;
+
+            if (!reviewerId) {
+                showToast('Please select a reviewer', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/records/${recordType}/${recordId}/submit-for-review`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reviewer_id: reviewerId })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('Record submitted for review', 'success');
+                    closeSubmitForReviewModal();
+                    loadData();
+                } else {
+                    showToast(data.error || 'Failed to submit for review', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to submit for review', 'error');
+            }
+        }
+
+        async function returnToAuditor(recordType, recordId) {
+            const notes = prompt('Enter notes for the auditor (optional):') || '';
+
+            try {
+                const response = await fetch(`/api/records/${recordType}/${recordId}/return-to-auditor`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: notes })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('Record returned to auditor', 'success');
+                    loadData();
+                } else {
+                    showToast(data.error || 'Failed to return record', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to return record', 'error');
+            }
+        }
+
+        async function signOffRecord(recordType, recordId) {
+            const confirmed = confirm('Are you sure you want to sign off this record? This action will permanently lock the record.');
+            if (!confirmed) return;
+
+            const confirmation = prompt('Type "SIGN OFF" to confirm:');
+            if (confirmation !== 'SIGN OFF') {
+                showToast('Sign off cancelled - confirmation text did not match', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/records/${recordType}/${recordId}/sign-off`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirmation: 'SIGN OFF' })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('Record signed off successfully', 'success');
+                    loadData();
+                } else {
+                    showToast(data.error || 'Failed to sign off record', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to sign off record', 'error');
+            }
+        }
+
+        async function unlockSignoff(recordType, recordId) {
+            const reason = prompt('Enter reason for reopening this signed-off record:');
+            if (!reason) return;
+
+            try {
+                const response = await fetch(`/api/admin/records/${recordType}/${recordId}/unlock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason, return_to: 'draft' })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('Record reopened', 'success');
+                    loadData();
+                } else {
+                    showToast(data.error || 'Failed to reopen record', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to reopen record', 'error');
             }
         }
 
@@ -2654,6 +2813,35 @@
                     unlockRecord(recordType, recordId);
                 }
             }
+            // Workflow action handlers
+            if (e.target.classList.contains('submit-for-review')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    openSubmitForReviewModal(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('return-to-auditor')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    returnToAuditor(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('sign-off')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    signOffRecord(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('unlock-signoff')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    unlockSignoff(recordType, recordId);
+                }
+            }
         });
 
         // Task Modal Functions
@@ -3166,6 +3354,35 @@
                 const recordId = e.target.getAttribute('data-id');
                 if (recordType && recordId) {
                     unlockRecord(recordType, recordId);
+                }
+            }
+            // Workflow action handlers
+            if (e.target.classList.contains('submit-for-review')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    openSubmitForReviewModal(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('return-to-auditor')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    returnToAuditor(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('sign-off')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    signOffRecord(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('unlock-signoff')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    unlockSignoff(recordType, recordId);
                 }
             }
         });

@@ -452,6 +452,11 @@ class RACMDatabase:
             conn.execute("UPDATE users SET role = 'auditor' WHERE is_admin = 0 AND role IS NULL")
             conn.commit()
 
+        # Migration: Consolidate global 'reviewer' role into 'auditor'
+        # (per-audit reviewer assignments remain in audit_team table)
+        conn.execute("UPDATE users SET role = 'auditor' WHERE role = 'reviewer'")
+        conn.commit()
+
         # Migration: Add auditor_id and reviewer_id to audits table
         for col in ['auditor_id', 'reviewer_id', 'created_by']:
             try:
@@ -1901,19 +1906,30 @@ class RACMDatabase:
 
     def create_user(self, email: str, name: str, password_hash: str,
                     is_active: int = 1, is_admin: int = 0) -> int:
-        """Create a new user. Returns the user ID."""
+        """Create a new user. Returns the user ID.
+
+        New users get role='admin' if is_admin=1, otherwise role='auditor'.
+        Note: Global 'reviewer' role has been consolidated into 'auditor'.
+        Per-audit reviewer assignments are handled via audit_team table.
+        """
+        role = 'admin' if is_admin else 'auditor'
         conn = self._get_conn()
         cursor = conn.execute("""
-            INSERT INTO users (email, name, password_hash, is_active, is_admin)
-            VALUES (?, ?, ?, ?, ?)
-        """, (email.lower(), name, password_hash, is_active, is_admin))
+            INSERT INTO users (email, name, password_hash, is_active, is_admin, role)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (email.lower(), name, password_hash, is_active, is_admin, role))
         conn.commit()
         user_id = cursor.lastrowid
         conn.close()
         return user_id
 
     def update_user(self, user_id: int, **kwargs) -> bool:
-        """Update a user. Allowed fields: name, email, password_hash, is_active, is_admin."""
+        """Update a user. Allowed fields: name, email, password_hash, is_active, is_admin.
+
+        Note: When is_admin changes, role is automatically updated:
+        - is_admin=1 -> role='admin'
+        - is_admin=0 -> role='auditor'
+        """
         allowed = {'name', 'email', 'password_hash', 'is_active', 'is_admin'}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
@@ -1922,6 +1938,10 @@ class RACMDatabase:
         # Lowercase email if provided
         if 'email' in updates:
             updates['email'] = updates['email'].lower()
+
+        # Sync role with is_admin status
+        if 'is_admin' in updates:
+            updates['role'] = 'admin' if updates['is_admin'] else 'auditor'
 
         updates['updated_at'] = datetime.now().isoformat()
         set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
@@ -3091,14 +3111,18 @@ RELATIONSHIPS:
         """Get audits based on user's global role.
 
         - Admins: see all audits
-        - Auditors/Reviewers: see ALL audits (full visibility)
+        - Auditors: see ALL audits (full visibility)
         - Viewers: see ONLY audits specifically assigned to them
+
+        Note: Global 'reviewer' role has been consolidated into 'auditor'.
+        Per-audit reviewer assignments remain in audit_team table.
         """
         if is_admin:
             return self.get_all_audits()
 
+        # Auditors can view ALL audits
+        # (includes 'reviewer' for backwards compatibility with any legacy data)
         if user_role in ('auditor', 'reviewer'):
-            # Auditors and reviewers can view ALL audits
             return self.get_all_audits()
 
         # Viewers can only see audits they're explicitly assigned to
