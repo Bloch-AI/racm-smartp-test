@@ -910,9 +910,8 @@ class RACMDatabase:
         conn.close()
         return deleted
 
-    def get_audits_as_spreadsheet(self) -> List[List]:
-        """Get audits in spreadsheet format (array of arrays)."""
-        audits = self.get_all_audits()
+    def audits_to_spreadsheet_format(self, audits: List[Dict]) -> List[List]:
+        """Convert audit dicts to spreadsheet format (array of arrays)."""
         return [
             [
                 str(a['id']),
@@ -930,6 +929,11 @@ class RACMDatabase:
             ]
             for a in audits
         ]
+
+    def get_audits_as_spreadsheet(self) -> List[List]:
+        """Get all audits in spreadsheet format (array of arrays)."""
+        audits = self.get_all_audits()
+        return self.audits_to_spreadsheet_format(audits)
 
     def save_audits_from_spreadsheet(self, data: List[List]) -> Dict:
         """Save audits from spreadsheet format. Returns stats."""
@@ -981,9 +985,8 @@ class RACMDatabase:
         conn.close()
         return {'created': created, 'updated': updated, 'deleted': deleted}
 
-    def get_audits_as_kanban(self) -> Dict:
-        """Get audits grouped by status for kanban view."""
-        audits = self.get_all_audits()
+    def audits_to_kanban_format(self, audits: List[Dict]) -> Dict:
+        """Convert audit dicts to kanban board format."""
         columns = ['planning', 'in_progress', 'fieldwork', 'review', 'complete']
         column_titles = {
             'planning': 'Planning',
@@ -1020,6 +1023,11 @@ class RACMDatabase:
             })
 
         return board
+
+    def get_audits_as_kanban(self) -> Dict:
+        """Get all audits grouped by status for kanban view."""
+        audits = self.get_all_audits()
+        return self.audits_to_kanban_format(audits)
 
     def get_audit_summary(self) -> Dict:
         """Get summary statistics for annual audit plan."""
@@ -2302,17 +2310,25 @@ class RACMDatabase:
         return counts
 
     def get_accessible_audits(self, user_id: int, is_admin: bool = False) -> List[Dict]:
-        """Get audits accessible to a user. Admins see all audits."""
+        """Get audits accessible to a user.
+
+        Admins see all audits.
+        Non-admins see audits where they are:
+        - A team member (audit_memberships table), OR
+        - Assigned as a viewer (audit_viewers table)
+        """
         if is_admin:
             return self.get_all_audits()
 
         conn = self._get_conn()
+        # Get audits from both memberships and viewer assignments
         rows = conn.execute("""
-            SELECT a.* FROM audits a
-            JOIN audit_memberships am ON a.id = am.audit_id
-            WHERE am.user_id = ?
+            SELECT DISTINCT a.* FROM audits a
+            LEFT JOIN audit_memberships am ON a.id = am.audit_id AND am.user_id = ?
+            LEFT JOIN audit_viewers av ON a.id = av.audit_id AND av.viewer_user_id = ?
+            WHERE am.user_id IS NOT NULL OR av.viewer_user_id IS NOT NULL
             ORDER BY a.title
-        """, (user_id,)).fetchall()
+        """, (user_id, user_id)).fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
