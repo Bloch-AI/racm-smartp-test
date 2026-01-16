@@ -442,7 +442,10 @@
                         </a>
                     </div>
                     <div class="flex items-center gap-2">
-                    <input type="text" id="flowchartName" placeholder="Flowchart name..." value="{{ flowchart_id or '' }}" class="h-9 rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm w-40">
+                    <select id="flowchartSelect" onchange="selectFlowchart()" class="h-9 rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                        <option value="">-- Select Flowchart --</option>
+                    </select>
+                    <input type="text" id="flowchartName" placeholder="Or enter name..." value="{{ flowchart_id or '' }}" class="h-9 rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm w-40">
                     <button onclick="loadFlowchart()" class="btn btn-ghost">Load</button>
                     <button onclick="exportData()" class="btn btn-secondary">
                         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -561,6 +564,38 @@
         editor.start();
 
         const initialFlowchartId = "{{ flowchart_id or '' }}";
+
+        // Load available flowcharts into dropdown
+        async function loadFlowchartList() {
+            try {
+                const response = await fetch('/api/flowcharts');
+                const flowcharts = await response.json();
+                const select = document.getElementById('flowchartSelect');
+                select.innerHTML = '<option value="">-- Select Flowchart --</option>';
+                flowcharts.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name.replace(/-/g, ' ').replace(/\d+$/, '').trim();
+                    if (name === initialFlowchartId) option.selected = true;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                console.error('Failed to load flowchart list:', e);
+            }
+        }
+
+        function selectFlowchart() {
+            const select = document.getElementById('flowchartSelect');
+            const name = select.value;
+            if (name) {
+                document.getElementById('flowchartName').value = name;
+                loadFlowchart();
+            }
+        }
+
+        // Load flowchart list on page load
+        loadFlowchartList();
+
         if (initialFlowchartId) {
             setTimeout(() => loadFlowchart(), 500);
         }
@@ -675,6 +710,16 @@
             const response = await fetch(`/api/flowchart/${encodeURIComponent(name)}`);
             const data = await response.json();
             if (data && data.drawflow) {
+                // Rebuild HTML from templates for each node before importing
+                const homeData = data.drawflow.Home?.data || {};
+                for (const nodeId in homeData) {
+                    const node = homeData[nodeId];
+                    const nodeType = node.name || 'process';
+                    if (nodeTemplates[nodeType]) {
+                        // Use the template HTML instead of stored html
+                        node.html = nodeTemplates[nodeType];
+                    }
+                }
                 editor.import(data);
                 showToast('Flowchart loaded!', 'success');
                 window.history.pushState({}, '', `/flowchart/${encodeURIComponent(name)}`);

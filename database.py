@@ -876,7 +876,7 @@ class RACMDatabase:
             return result
         return None
 
-    def save_flowchart(self, name: str, data: Dict, risk_id: Optional[str] = None) -> int:
+    def save_flowchart(self, name: str, data: Dict, risk_id: Optional[str] = None, audit_id: Optional[int] = None) -> int:
         """Save/update a flowchart. Returns the ID."""
         conn = self._get_conn()
 
@@ -889,13 +889,14 @@ class RACMDatabase:
 
         # Upsert
         cursor = conn.execute("""
-            INSERT INTO flowcharts (name, data, risk_id, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO flowcharts (name, data, risk_id, audit_id, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(name) DO UPDATE SET
                 data = excluded.data,
                 risk_id = excluded.risk_id,
+                audit_id = excluded.audit_id,
                 updated_at = CURRENT_TIMESTAMP
-        """, (name, json.dumps(data), fk_risk_id))
+        """, (name, json.dumps(data), fk_risk_id, audit_id))
         conn.commit()
 
         # Get the ID
@@ -944,13 +945,17 @@ class RACMDatabase:
     def save_test_document(self, risk_id: int, doc_type: str, content: str) -> int:
         """Save/update a test document. Returns the ID."""
         conn = self._get_conn()
+        # Get audit_id from the associated risk
+        risk_row = conn.execute("SELECT audit_id FROM risks WHERE id = ?", (risk_id,)).fetchone()
+        audit_id = risk_row['audit_id'] if risk_row else None
         cursor = conn.execute("""
-            INSERT INTO test_documents (risk_id, doc_type, content, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO test_documents (risk_id, doc_type, content, audit_id, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(risk_id, doc_type) DO UPDATE SET
                 content = excluded.content,
+                audit_id = excluded.audit_id,
                 updated_at = CURRENT_TIMESTAMP
-        """, (risk_id, doc_type, content))
+        """, (risk_id, doc_type, content, audit_id))
         conn.commit()
         row = conn.execute(
             "SELECT id FROM test_documents WHERE risk_id = ? AND doc_type = ?",

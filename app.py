@@ -575,19 +575,31 @@ def get_data():
         issues = db.get_issues_by_audit(audit_id)
 
         # Convert to spreadsheet format
+        # Columns: Risk ID, Risk, Control ID, Control Owner, DE Testing, DE Conclusion,
+        #          OE Testing, OE Conclusion, Status, Ready for Review?, Reviewer,
+        #          Raise Issue?, Closed, Flowchart, Task, Evidence
         racm_rows = []
         conn = db._get_conn()
         for r in risks:
             fc = conn.execute("SELECT name FROM flowcharts WHERE risk_id = ?", (r['id'],)).fetchone()
             task = conn.execute("SELECT title FROM tasks WHERE risk_id = ?", (r['id'],)).fetchone()
             racm_rows.append([
-                r['risk_id'],
-                r['risk'] or '',
-                r['control_id'] or '',
-                r['control_owner'] or '',
-                fc['name'] if fc else '',
-                task['title'] if task else '',
-                r['status'] or ''
+                r['risk_id'],                                          # 0: Risk ID
+                r['risk'] or '',                                       # 1: Risk
+                r['control_id'] or '',                                 # 2: Control ID
+                r['control_owner'] or '',                              # 3: Control Owner
+                r.get('design_effectiveness_testing') or '',           # 4: DE Testing
+                r.get('design_effectiveness_conclusion') or '',        # 5: DE Conclusion
+                r.get('operational_effectiveness_test') or '',         # 6: OE Testing
+                r.get('operational_effectiveness_conclusion') or '',   # 7: OE Conclusion
+                r['status'] or '',                                     # 8: Status
+                r.get('ready_for_review', False),                      # 9: Ready for Review?
+                r.get('reviewer') or '',                               # 10: Reviewer
+                r.get('raise_issue', False),                           # 11: Raise Issue?
+                r.get('closed', False),                                # 12: Closed
+                fc['name'] if fc else '',                              # 13: Flowchart
+                task['title'] if task else '',                         # 14: Task
+                ''                                                     # 15: Evidence (read-only)
             ])
         conn.close()
 
@@ -701,7 +713,11 @@ def delete_risk(risk_id):
 @app.route('/flowchart/<flowchart_id>')
 @require_login
 def flowchart(flowchart_id=None):
-    return render_template('flowchart.html', flowchart_id=flowchart_id, active_page='flowchart')
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    return render_template('flowchart.html', flowchart_id=flowchart_id, active_page='flowchart',
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
 
 @app.route('/api/flowchart/<flowchart_id>', methods=['GET'])
 def get_flowchart(flowchart_id):
@@ -719,8 +735,12 @@ def save_flowchart(flowchart_id):
 
 @app.route('/api/flowcharts', methods=['GET'])
 def list_flowcharts():
-    """List all flowchart names."""
-    flowcharts = db.get_all_flowcharts()
+    """List flowchart names for the active audit."""
+    audit_id = get_active_audit_id()
+    if audit_id:
+        flowcharts = db.get_flowcharts_by_audit(audit_id)
+    else:
+        flowcharts = db.get_all_flowcharts()
     return jsonify([f['name'] for f in flowcharts])
 
 # ==================== Test Documents API ====================
@@ -763,17 +783,22 @@ def test_document_exists(risk_code, doc_type):
 @app.route('/kanban/<board_id>')
 @require_login
 def kanban(board_id='default'):
-    # TODO: Load audit_name from database/config when audit management is implemented
-    audit_name = None  # Placeholder for audit name
-    return render_template('kanban.html', board_id=board_id, audit_name=audit_name, active_page='kanban')
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    return render_template('kanban.html', board_id=board_id, active_page='kanban',
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
 
 
 @app.route('/audit-plan')
 @require_login
 def audit_plan():
     """Annual Audit Plan page with spreadsheet and kanban views."""
-    audit_name = None
-    return render_template('audit_plan.html', audit_name=audit_name, active_page='audit-plan')
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    return render_template('audit_plan.html', active_page='audit-plan',
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
 
 
 # ==================== Annual Audit Plan API ====================
@@ -886,8 +911,11 @@ def get_audits_summary():
 @require_login
 def library():
     """Audit Library page for managing reference documents."""
-    audit_name = None
-    return render_template('library.html', audit_name=audit_name, active_page='library')
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    return render_template('library.html', active_page='library',
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
 
 
 # ==================== LIBRARY API ====================
@@ -2641,7 +2669,11 @@ def felix_chat():
     """Felix AI full-screen chat page."""
     user = get_current_user()
     user_id = user['id'] if user else 'default_user'
-    return render_template('felix.html', user_id=user_id, active_page='felix')
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    return render_template('felix.html', user_id=user_id, active_page='felix',
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
 
 
 @app.route('/api/felix/conversations', methods=['GET'])
@@ -3164,7 +3196,11 @@ def call_felix_ai(messages, attachments=None):
 @require_admin
 def admin_dashboard():
     """Admin dashboard page."""
-    return render_template('admin/dashboard.html', active_page='admin')
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    return render_template('admin/dashboard.html', active_page='admin',
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
 
 
 @app.route('/admin/users')
@@ -3338,4 +3374,4 @@ def api_admin_remove_audit_membership(audit_id, user_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8002)
+    app.run(debug=True, port=8001)
