@@ -86,11 +86,12 @@
             --danger: #ef4444;
             --danger-light: #fee2e2;
             --radius: 8px;
-            --radius-lg: 8px;
+            --radius-lg: 12px;
+            --radius-pill: 9999px;
         }
 
         /* ========================================
-           BUTTON SYSTEM
+           BUTTON SYSTEM - Pill Format
            ======================================== */
 
         .btn {
@@ -99,10 +100,10 @@
             justify-content: center;
             gap: 6px;
             height: 36px;
-            padding: 0 16px;
+            padding: 0 20px;
             font-size: 13px;
             font-weight: 500;
-            border-radius: var(--radius);
+            border-radius: var(--radius-pill);
             transition: all 0.2s ease;
             cursor: pointer;
             white-space: nowrap;
@@ -135,8 +136,38 @@
             background: transparent;
             color: #6b7280;
             border: none;
+            border-radius: var(--radius-pill);
         }
         .btn-ghost:hover { background: #f3f4f6; color: #374151; }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+            border: none;
+        }
+        .btn-danger:hover { background: #dc2626; }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+            border: none;
+        }
+        .btn-success:hover { background: #16a34a; }
+
+        /* Small button variant */
+        .btn-sm {
+            height: 32px;
+            padding: 0 14px;
+            font-size: 12px;
+        }
+
+        /* Extra small button variant */
+        .btn-xs {
+            height: 26px;
+            padding: 0 10px;
+            font-size: 11px;
+        }
+        .btn-xs svg { width: 14px; height: 14px; }
 
         /* ========================================
            STATUS CHIPS / BADGES

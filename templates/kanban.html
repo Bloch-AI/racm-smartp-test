@@ -179,7 +179,7 @@
             document.querySelectorAll('.kanban-board').forEach(board => {
                 const boardId = board.getAttribute('data-id');
                 const addBtn = document.createElement('button');
-                addBtn.className = 'w-full mt-2 px-3 py-2 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors flex items-center justify-center gap-2';
+                addBtn.className = 'w-full mt-2 px-4 py-2 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-full transition-colors flex items-center justify-center gap-2';
                 addBtn.innerHTML = '<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg> Add task';
                 addBtn.onclick = () => openAddModal(boardId);
                 board.querySelector('.kanban-drag').after(addBtn);

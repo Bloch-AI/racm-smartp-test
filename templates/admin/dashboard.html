@@ -257,8 +257,8 @@
             </div>
         </form>
         <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 rounded-b-xl">
-            <button onclick="closeUserModal()" class="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg">Cancel</button>
-            <button onclick="document.getElementById('userForm').requestSubmit()" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg">Save</button>
+            <button onclick="closeUserModal()" class="px-5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-full">Cancel</button>
+            <button onclick="document.getElementById('userForm').requestSubmit()" class="px-5 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-full">Save</button>
         </div>
     </div>
 </div>
@@ -322,7 +322,7 @@
                         <option value="reviewer">Reviewer</option>
                         <option value="auditor" selected>Auditor</option>
                     </select>
-                    <button onclick="addMember()" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg">Add</button>
+                    <button onclick="addMember()" class="px-5 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-full">Add</button>
                 </div>
             </div>
         </div>
@@ -415,7 +415,7 @@ function renderAudits() {
                     <h3 class="font-medium text-slate-900">${escapeHtml(audit.title)}</h3>
                     <p class="text-sm text-slate-500">${escapeHtml(audit.department || audit.audit_type || '')}</p>
                 </div>
-                <button onclick="openMembershipModal(${audit.id}, '${escapeHtml(audit.title)}')" class="px-3 py-1.5 text-sm font-medium text-primary-600 hover:bg-primary-50 rounded-lg">
+                <button onclick="openMembershipModal(${audit.id}, '${escapeHtml(audit.title)}')" class="px-4 py-1.5 text-sm font-medium text-primary-600 hover:bg-primary-50 rounded-full">
                     Manage Access
                 </button>
             </div>
