@@ -1353,15 +1353,17 @@ def save_test_document(risk_code, doc_type):
         return jsonify({'error': 'Risk not found'}), 404
 
     user = get_current_user()
-    audit_id = risk.get('audit_id') or get_active_audit_id()
-    audit = db.get_audit(audit_id) if audit_id else None
-    audit_context = {
-        'id': audit_id,
-        'auditor_id': audit.get('auditor_id') if audit else None,
-        'reviewer_id': audit.get('reviewer_id') if audit else None
-    }
-    if not can_edit_record(user, audit_context, risk):
-        return jsonify({'error': 'Cannot edit test document - record is not editable'}), 403
+    # Admins can always edit
+    if not user.get('is_admin'):
+        audit_id = risk.get('audit_id') or get_active_audit_id()
+        audit = db.get_audit(audit_id) if audit_id else None
+        audit_context = {
+            'id': audit_id,
+            'auditor_id': audit.get('auditor_id') if audit else None,
+            'reviewer_id': audit.get('reviewer_id') if audit else None
+        }
+        if not can_edit_record(user, audit_context, risk):
+            return jsonify({'error': 'Cannot edit test document - record is not editable'}), 403
 
     data = request.json
     content = data.get('content', '')
@@ -1942,15 +1944,17 @@ def save_issue_documentation(issue_id):
         return not_found_response('Issue')
 
     user = get_current_user()
-    audit_id = issue.get('audit_id') or get_active_audit_id()
-    audit = db.get_audit(audit_id) if audit_id else None
-    audit_context = {
-        'id': audit_id,
-        'auditor_id': audit.get('auditor_id') if audit else None,
-        'reviewer_id': audit.get('reviewer_id') if audit else None
-    }
-    if not can_edit_record(user, audit_context, issue):
-        return jsonify({'error': 'Cannot edit issue documentation - record is not editable'}), 403
+    # Admins can always edit
+    if not user.get('is_admin'):
+        audit_id = issue.get('audit_id') or get_active_audit_id()
+        audit = db.get_audit(audit_id) if audit_id else None
+        audit_context = {
+            'id': audit_id,
+            'auditor_id': audit.get('auditor_id') if audit else None,
+            'reviewer_id': audit.get('reviewer_id') if audit else None
+        }
+        if not can_edit_record(user, audit_context, issue):
+            return jsonify({'error': 'Cannot edit issue documentation - record is not editable'}), 403
 
     data = request.json
     documentation = data.get('documentation', '')
@@ -2042,15 +2046,17 @@ def upload_issue_attachment(issue_id):
         return not_found_response('Issue')
 
     user = get_current_user()
-    audit_id = issue.get('audit_id') or get_active_audit_id()
-    audit = db.get_audit(audit_id) if audit_id else None
-    audit_context = {
-        'id': audit_id,
-        'auditor_id': audit.get('auditor_id') if audit else None,
-        'reviewer_id': audit.get('reviewer_id') if audit else None
-    }
-    if not can_edit_record(user, audit_context, issue):
-        return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
+    # Admins can always upload attachments
+    if not user.get('is_admin'):
+        audit_id = issue.get('audit_id') or get_active_audit_id()
+        audit = db.get_audit(audit_id) if audit_id else None
+        audit_context = {
+            'id': audit_id,
+            'auditor_id': audit.get('auditor_id') if audit else None,
+            'reviewer_id': audit.get('reviewer_id') if audit else None
+        }
+        if not can_edit_record(user, audit_context, issue):
+            return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
 
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -2146,15 +2152,17 @@ def upload_risk_attachment(risk_id):
         return not_found_response('Risk')
 
     user = get_current_user()
-    audit_id = risk.get('audit_id') or get_active_audit_id()
-    audit = db.get_audit(audit_id) if audit_id else None
-    audit_context = {
-        'id': audit_id,
-        'auditor_id': audit.get('auditor_id') if audit else None,
-        'reviewer_id': audit.get('reviewer_id') if audit else None
-    }
-    if not can_edit_record(user, audit_context, risk):
-        return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
+    # Admins can always upload attachments
+    if not user.get('is_admin'):
+        audit_id = risk.get('audit_id') or get_active_audit_id()
+        audit = db.get_audit(audit_id) if audit_id else None
+        audit_context = {
+            'id': audit_id,
+            'auditor_id': audit.get('auditor_id') if audit else None,
+            'reviewer_id': audit.get('reviewer_id') if audit else None
+        }
+        if not can_edit_record(user, audit_context, risk):
+            return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
 
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
