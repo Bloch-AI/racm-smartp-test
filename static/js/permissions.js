@@ -115,9 +115,21 @@ function renderWorkflowActions(metadata, recordType) {
 // ==================== Modal Functions ====================
 
 /**
- * Show the submit for review modal
+ * Show the submit for review modal with reviewer selection
  */
 function showSubmitForReviewModal(recordType, recordId) {
+    // Get reviewers from audit team (set by index.html from API response)
+    const reviewers = (typeof auditTeam !== 'undefined' && auditTeam.reviewers) ? auditTeam.reviewers : [];
+
+    // Build reviewer options
+    let reviewerOptions = '';
+    if (reviewers.length === 0) {
+        reviewerOptions = '<option value="">No reviewers assigned</option>';
+    } else {
+        reviewerOptions = '<option value="">Select a reviewer...</option>' +
+            reviewers.map(r => `<option value="${r.user_id}">${escapeHtml(r.user_name)}</option>`).join('');
+    }
+
     const modalHtml = `
         <div id="workflow-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
@@ -125,6 +137,16 @@ function showSubmitForReviewModal(recordType, recordId) {
                 <p class="text-sm text-slate-600 mb-4">
                     Once submitted, you will no longer be able to edit this record until it is returned.
                 </p>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">
+                        Select Reviewer <span class="text-red-500">*</span>
+                    </label>
+                    <select id="modal-reviewer" required
+                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        ${reviewerOptions}
+                    </select>
+                    ${reviewers.length === 0 ? '<p class="text-xs text-red-500 mt-1">No reviewers are assigned to this audit. Please ask an admin to assign reviewers.</p>' : ''}
+                </div>
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
                     <textarea id="modal-notes" rows="3"
@@ -137,7 +159,8 @@ function showSubmitForReviewModal(recordType, recordId) {
                         Cancel
                     </button>
                     <button onclick="submitForReview('${recordType}', ${recordId})"
-                        class="px-4 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">
+                        class="px-4 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                        ${reviewers.length === 0 ? 'disabled' : ''}>
                         Submit for Review
                     </button>
                 </div>
@@ -366,13 +389,20 @@ function closeWorkflowModal() {
 
 async function submitForReview(recordType, recordId) {
     const notes = document.getElementById('modal-notes')?.value || '';
+    const reviewerId = document.getElementById('modal-reviewer')?.value;
+
+    // Validate reviewer selection
+    if (!reviewerId) {
+        showToast('Please select a reviewer', 'error');
+        return;
+    }
 
     try {
         const response = await fetch(`/api/records/${recordType}/${recordId}/submit-for-review`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ notes })
+            body: JSON.stringify({ notes, reviewer_id: parseInt(reviewerId) })
         });
 
         const data = await response.json();

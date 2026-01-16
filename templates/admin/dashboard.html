@@ -277,26 +277,50 @@
         <div class="p-6">
             <input type="hidden" id="membershipAuditId">
 
-            <!-- Current Members -->
-            <div class="mb-6">
-                <h4 class="text-sm font-medium text-slate-700 mb-3">Current Members</h4>
-                <div id="currentMembers" class="space-y-2 max-h-48 overflow-y-auto">
+            <!-- Auditors Section -->
+            <div class="mb-4">
+                <h4 class="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-blue-500 rounded-full"></span>
+                    Auditors
+                </h4>
+                <div id="currentAuditors" class="space-y-2 max-h-32 overflow-y-auto">
+                    <div class="text-sm text-slate-400">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Reviewers Section -->
+            <div class="mb-4">
+                <h4 class="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                    Reviewers
+                </h4>
+                <div id="currentReviewers" class="space-y-2 max-h-32 overflow-y-auto">
+                    <div class="text-sm text-slate-400">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Viewers Section -->
+            <div class="mb-4">
+                <h4 class="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
+                    Viewers
+                </h4>
+                <div id="currentViewers" class="space-y-2 max-h-32 overflow-y-auto">
                     <div class="text-sm text-slate-400">Loading...</div>
                 </div>
             </div>
 
             <!-- Add Member -->
             <div class="border-t border-slate-200 pt-4">
-                <h4 class="text-sm font-medium text-slate-700 mb-3">Add Member</h4>
+                <h4 class="text-sm font-medium text-slate-700 mb-3">Add Team Member</h4>
                 <div class="flex gap-2">
                     <select id="addMemberUser" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
                         <option value="">Select user...</option>
                     </select>
                     <select id="addMemberRole" class="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                        <option value="4">Viewer</option>
-                        <option value="3">Reviewer</option>
-                        <option value="2" selected>Auditor</option>
-                        <option value="1">Admin</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="reviewer">Reviewer</option>
+                        <option value="auditor" selected>Auditor</option>
                     </select>
                     <button onclick="addMember()" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg">Add</button>
                 </div>
@@ -501,40 +525,78 @@ function closeMembershipModal() {
 }
 
 async function loadMembers(auditId) {
-    const res = await fetch(`/api/admin/audits/${auditId}/memberships`);
-    const members = await res.json();
+    const res = await fetch(`/api/admin/audits/${auditId}/team`);
+    const data = await res.json();
 
-    const container = document.getElementById('currentMembers');
-    if (members.length === 0) {
-        container.innerHTML = '<div class="text-sm text-slate-400">No members assigned</div>';
-        return;
+    // Render Auditors
+    const auditorsContainer = document.getElementById('currentAuditors');
+    if (data.auditors && data.auditors.length > 0) {
+        auditorsContainer.innerHTML = data.auditors.map(m => `
+            <div class="flex items-center justify-between py-2 px-3 bg-blue-50 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-slate-900">${escapeHtml(m.user_name)}</span>
+                </div>
+                <button onclick="removeTeamMember(${auditId}, ${m.user_id}, 'auditor')" class="text-sm text-red-600 hover:text-red-700">Remove</button>
+            </div>
+        `).join('');
+    } else {
+        auditorsContainer.innerHTML = '<div class="text-sm text-slate-400 py-2 px-3">No auditors assigned</div>';
     }
 
-    container.innerHTML = members.map(m => `
-        <div class="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
-            <div class="flex items-center gap-2">
-                <span class="text-sm font-medium text-slate-900">${escapeHtml(m.user_name)}</span>
-                <span class="badge badge-slate">${escapeHtml(m.role_name)}</span>
+    // Render Reviewers
+    const reviewersContainer = document.getElementById('currentReviewers');
+    if (data.reviewers && data.reviewers.length > 0) {
+        reviewersContainer.innerHTML = data.reviewers.map(m => `
+            <div class="flex items-center justify-between py-2 px-3 bg-green-50 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-slate-900">${escapeHtml(m.user_name)}</span>
+                </div>
+                <button onclick="removeTeamMember(${auditId}, ${m.user_id}, 'reviewer')" class="text-sm text-red-600 hover:text-red-700">Remove</button>
             </div>
-            <button onclick="removeMember(${auditId}, ${m.user_id})" class="text-sm text-red-600 hover:text-red-700">Remove</button>
-        </div>
-    `).join('');
+        `).join('');
+    } else {
+        reviewersContainer.innerHTML = '<div class="text-sm text-slate-400 py-2 px-3">No reviewers assigned</div>';
+    }
+
+    // Render Viewers
+    const viewersContainer = document.getElementById('currentViewers');
+    if (data.viewers && data.viewers.length > 0) {
+        viewersContainer.innerHTML = data.viewers.map(m => `
+            <div class="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-slate-900">${escapeHtml(m.user_name)}</span>
+                </div>
+                <button onclick="removeViewer(${auditId}, ${m.user_id})" class="text-sm text-red-600 hover:text-red-700">Remove</button>
+            </div>
+        `).join('');
+    } else {
+        viewersContainer.innerHTML = '<div class="text-sm text-slate-400 py-2 px-3">No viewers assigned</div>';
+    }
 }
 
 async function addMember() {
     const auditId = document.getElementById('membershipAuditId').value;
     const userId = document.getElementById('addMemberUser').value;
-    const roleId = document.getElementById('addMemberRole').value;
+    const teamRole = document.getElementById('addMemberRole').value;
 
     if (!userId) {
         showToast('Select a user', 'error');
         return;
     }
 
-    const res = await fetch(`/api/admin/audits/${auditId}/memberships`, {
+    let endpoint, body;
+    if (teamRole === 'viewer') {
+        endpoint = `/api/admin/audits/${auditId}/viewers`;
+        body = { user_id: parseInt(userId) };
+    } else {
+        endpoint = `/api/admin/audits/${auditId}/team`;
+        body = { user_id: parseInt(userId), team_role: teamRole };
+    }
+
+    const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(userId), role_id: parseInt(roleId) })
+        body: JSON.stringify(body)
     });
 
     if (res.ok) {
@@ -547,6 +609,29 @@ async function addMember() {
     }
 }
 
+async function removeTeamMember(auditId, userId, teamRole) {
+    if (!confirm(`Remove this ${teamRole}?`)) return;
+
+    const res = await fetch(`/api/admin/audits/${auditId}/team/${userId}/${teamRole}`, { method: 'DELETE' });
+
+    if (res.ok) {
+        showToast('Member removed', 'success');
+        loadMembers(auditId);
+    }
+}
+
+async function removeViewer(auditId, userId) {
+    if (!confirm('Remove this viewer?')) return;
+
+    const res = await fetch(`/api/admin/audits/${auditId}/viewers/${userId}`, { method: 'DELETE' });
+
+    if (res.ok) {
+        showToast('Viewer removed', 'success');
+        loadMembers(auditId);
+    }
+}
+
+// Legacy function for backward compatibility
 async function removeMember(auditId, userId) {
     if (!confirm('Remove this member?')) return;
 

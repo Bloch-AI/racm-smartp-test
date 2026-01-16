@@ -546,6 +546,61 @@ class RACMDatabase:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_viewers_user ON audit_viewers(viewer_user_id)")
         conn.commit()
 
+        # ==================== AUDIT TEAM MIGRATIONS ====================
+
+        # Migration: Create audit_team junction table (replaces single auditor_id/reviewer_id)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_team (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                audit_id INTEGER NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                team_role TEXT NOT NULL CHECK (team_role IN ('auditor', 'reviewer')),
+                assigned_by INTEGER REFERENCES users(id),
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(audit_id, user_id, team_role)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_team_audit ON audit_team(audit_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_team_user ON audit_team(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_team_role ON audit_team(team_role)")
+        conn.commit()
+
+        # Migration: Migrate existing auditor_id/reviewer_id to audit_team
+        # Check if migration has already been done
+        existing_team = conn.execute("SELECT COUNT(*) FROM audit_team").fetchone()[0]
+        if existing_team == 0:
+            # Migrate existing auditor assignments
+            conn.execute("""
+                INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role)
+                SELECT id, auditor_id, 'auditor' FROM audits
+                WHERE auditor_id IS NOT NULL
+            """)
+            # Migrate existing reviewer assignments
+            conn.execute("""
+                INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role)
+                SELECT id, reviewer_id, 'reviewer' FROM audits
+                WHERE reviewer_id IS NOT NULL
+            """)
+            conn.commit()
+
+        # Migration: Add assigned_reviewer_id to risks table (for tracking which reviewer was selected)
+        try:
+            conn.execute("SELECT assigned_reviewer_id FROM risks LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE risks ADD COLUMN assigned_reviewer_id INTEGER")
+            conn.commit()
+
+        # Migration: Add assigned_reviewer_id to issues table
+        try:
+            conn.execute("SELECT assigned_reviewer_id FROM issues LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE issues ADD COLUMN assigned_reviewer_id INTEGER")
+            conn.commit()
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_risks_assigned_reviewer ON risks(assigned_reviewer_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_assigned_reviewer ON issues(assigned_reviewer_id)")
+        conn.commit()
+
         # ==================== SEED TEST ACCOUNTS ====================
         # Only seed if we have less than 3 users (just the default admin)
         user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
@@ -2799,11 +2854,53 @@ RELATIONSHIPS:
         conn.close()
         return row is not None
 
+    def get_audit_viewers_list(self, audit_id: int) -> List[Dict]:
+        """Get all viewers assigned to an audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT av.id, av.viewer_user_id as user_id, av.granted_at,
+                   u.name as user_name, u.email as user_email
+            FROM audit_viewers av
+            JOIN users u ON av.viewer_user_id = u.id
+            WHERE av.audit_id = ?
+            ORDER BY u.name
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def add_viewer_to_audit(self, audit_id: int, user_id: int, granted_by: int = None) -> int:
+        """Add a viewer to an audit. Returns new ID or -1 if already exists."""
+        conn = self._get_conn()
+        try:
+            cursor = conn.execute("""
+                INSERT INTO audit_viewers (audit_id, viewer_user_id, granted_by)
+                VALUES (?, ?, ?)
+            """, (audit_id, user_id, granted_by))
+            conn.commit()
+            new_id = cursor.lastrowid
+            conn.close()
+            return new_id
+        except sqlite3.IntegrityError:
+            conn.close()
+            return -1  # Already exists
+
+    def remove_viewer_from_audit(self, audit_id: int, user_id: int) -> bool:
+        """Remove a viewer from an audit."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            DELETE FROM audit_viewers
+            WHERE audit_id = ? AND viewer_user_id = ?
+        """, (audit_id, user_id))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
     # ==================== AUDIT ASSIGNMENTS ====================
 
     def update_audit_assignment(self, audit_id: int, auditor_id: int = None,
                                reviewer_id: int = None) -> bool:
-        """Update auditor and/or reviewer assignment for an audit."""
+        """Update auditor and/or reviewer assignment for an audit (legacy single assignment)."""
         updates = {}
         if auditor_id is not None:
             updates['auditor_id'] = auditor_id
@@ -2826,24 +2923,173 @@ RELATIONSHIPS:
         return updated
 
     def get_audits_by_auditor(self, auditor_id: int) -> List[Dict]:
-        """Get all audits assigned to a specific auditor."""
+        """Get all audits where user is assigned as auditor (via audit_team)."""
         conn = self._get_conn()
         rows = conn.execute("""
-            SELECT * FROM audits WHERE auditor_id = ?
-            ORDER BY title
+            SELECT DISTINCT a.* FROM audits a
+            JOIN audit_team at ON a.id = at.audit_id
+            WHERE at.user_id = ? AND at.team_role = 'auditor'
+            ORDER BY a.title
         """, (auditor_id,)).fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
     def get_audits_by_reviewer(self, reviewer_id: int) -> List[Dict]:
-        """Get all audits assigned to a specific reviewer."""
+        """Get all audits where user is assigned as reviewer (via audit_team)."""
         conn = self._get_conn()
         rows = conn.execute("""
-            SELECT * FROM audits WHERE reviewer_id = ?
-            ORDER BY title
+            SELECT DISTINCT a.* FROM audits a
+            JOIN audit_team at ON a.id = at.audit_id
+            WHERE at.user_id = ? AND at.team_role = 'reviewer'
+            ORDER BY a.title
         """, (reviewer_id,)).fetchall()
         conn.close()
         return [dict(row) for row in rows]
+
+    # ==================== AUDIT TEAM (MULTI-ASSIGNMENT) ====================
+
+    def get_audit_team(self, audit_id: int) -> List[Dict]:
+        """Get all team members (auditors and reviewers) for an audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT at.id, at.audit_id, at.user_id, at.team_role, at.assigned_at,
+                   u.name as user_name, u.email as user_email
+            FROM audit_team at
+            JOIN users u ON at.user_id = u.id
+            WHERE at.audit_id = ?
+            ORDER BY at.team_role, u.name
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_audit_auditors(self, audit_id: int) -> List[Dict]:
+        """Get all auditors assigned to an audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT at.id, at.user_id, u.name as user_name, u.email as user_email
+            FROM audit_team at
+            JOIN users u ON at.user_id = u.id
+            WHERE at.audit_id = ? AND at.team_role = 'auditor'
+            ORDER BY u.name
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_audit_reviewers(self, audit_id: int) -> List[Dict]:
+        """Get all reviewers assigned to an audit (for reviewer selection dropdown)."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT at.id, at.user_id, u.name as user_name, u.email as user_email
+            FROM audit_team at
+            JOIN users u ON at.user_id = u.id
+            WHERE at.audit_id = ? AND at.team_role = 'reviewer'
+            ORDER BY u.name
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def add_to_audit_team(self, audit_id: int, user_id: int, team_role: str,
+                         assigned_by: int = None) -> int:
+        """Add a user to an audit team. Returns new membership ID or -1 if exists."""
+        if team_role not in ('auditor', 'reviewer'):
+            raise ValueError("team_role must be 'auditor' or 'reviewer'")
+
+        conn = self._get_conn()
+        try:
+            cursor = conn.execute("""
+                INSERT INTO audit_team (audit_id, user_id, team_role, assigned_by)
+                VALUES (?, ?, ?, ?)
+            """, (audit_id, user_id, team_role, assigned_by))
+            conn.commit()
+            new_id = cursor.lastrowid
+            conn.close()
+            return new_id
+        except sqlite3.IntegrityError:
+            conn.close()
+            return -1  # Already exists
+
+    def remove_from_audit_team(self, audit_id: int, user_id: int, team_role: str = None) -> bool:
+        """Remove a user from an audit team. If team_role is None, removes all roles."""
+        conn = self._get_conn()
+        if team_role:
+            cursor = conn.execute("""
+                DELETE FROM audit_team
+                WHERE audit_id = ? AND user_id = ? AND team_role = ?
+            """, (audit_id, user_id, team_role))
+        else:
+            cursor = conn.execute("""
+                DELETE FROM audit_team
+                WHERE audit_id = ? AND user_id = ?
+            """, (audit_id, user_id))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def is_auditor_on_audit(self, user_id: int, audit_id: int) -> bool:
+        """Check if a user is assigned as auditor on an audit."""
+        conn = self._get_conn()
+        row = conn.execute("""
+            SELECT 1 FROM audit_team
+            WHERE audit_id = ? AND user_id = ? AND team_role = 'auditor'
+        """, (audit_id, user_id)).fetchone()
+        conn.close()
+        return row is not None
+
+    def is_reviewer_on_audit(self, user_id: int, audit_id: int) -> bool:
+        """Check if a user is assigned as reviewer on an audit."""
+        conn = self._get_conn()
+        row = conn.execute("""
+            SELECT 1 FROM audit_team
+            WHERE audit_id = ? AND user_id = ? AND team_role = 'reviewer'
+        """, (audit_id, user_id)).fetchone()
+        conn.close()
+        return row is not None
+
+    def is_team_member_on_audit(self, user_id: int, audit_id: int) -> bool:
+        """Check if a user is assigned as either auditor or reviewer on an audit."""
+        conn = self._get_conn()
+        row = conn.execute("""
+            SELECT 1 FROM audit_team
+            WHERE audit_id = ? AND user_id = ?
+        """, (audit_id, user_id)).fetchone()
+        conn.close()
+        return row is not None
+
+    def get_audits_for_user_role(self, user_id: int, user_role: str, is_admin: bool = False) -> List[Dict]:
+        """Get audits based on user's global role.
+
+        - Admins: see all audits
+        - Auditors/Reviewers: see ALL audits (full visibility)
+        - Viewers: see ONLY audits specifically assigned to them
+        """
+        if is_admin:
+            return self.get_all_audits()
+
+        if user_role in ('auditor', 'reviewer'):
+            # Auditors and reviewers can view ALL audits
+            return self.get_all_audits()
+
+        # Viewers can only see audits they're explicitly assigned to
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT DISTINCT a.* FROM audits a
+            JOIN audit_viewers av ON a.id = av.audit_id
+            WHERE av.viewer_user_id = ?
+            ORDER BY a.title
+        """, (user_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_user_team_roles_on_audit(self, user_id: int, audit_id: int) -> List[str]:
+        """Get all team roles a user has on an audit (can be both auditor and reviewer)."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT team_role FROM audit_team
+            WHERE audit_id = ? AND user_id = ?
+        """, (audit_id, user_id)).fetchall()
+        conn.close()
+        return [row['team_role'] for row in rows]
 
     # ==================== WORKFLOW QUERIES ====================
 

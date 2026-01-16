@@ -40,7 +40,7 @@ from auth import (
     login_user, logout_user, check_password, hash_password,
     get_user_accessible_audits, get_active_audit_id, set_active_audit,
     get_user_role, can_edit_record, can_transition_record, get_record_permissions,
-    require_record_edit, require_transition
+    require_record_edit, require_transition, require_non_viewer
 )
 
 
@@ -557,11 +557,16 @@ def index():
                 active_audit = audit
                 break
 
+    # Get user role for template (viewers don't see AI link)
+    user = get_current_user()
+    user_role = get_user_role(user) if user else None
+
     return render_template('index.html',
                            active_page='workpapers',
                            accessible_audits=accessible_audits,
                            active_audit_id=active_audit_id,
-                           active_audit=active_audit)
+                           active_audit=active_audit,
+                           user_role=user_role)
 
 # ==================== RACM (Spreadsheet) API ====================
 
@@ -652,6 +657,11 @@ def get_data():
                 'permissions': permissions
             })
 
+        # Get audit team for reviewer selection
+        audit_team = db.get_audit_team(audit_id) if audit_id else []
+        audit_auditors = [m for m in audit_team if m['team_role'] == 'auditor']
+        audit_reviewers = [m for m in audit_team if m['team_role'] == 'reviewer']
+
         return jsonify({
             'racm': racm_rows,
             'racm_metadata': racm_metadata,
@@ -662,6 +672,10 @@ def get_data():
                 'auditor_id': audit.get('auditor_id') if audit else None,
                 'reviewer_id': audit.get('reviewer_id') if audit else None,
                 'title': audit.get('title') if audit else None
+            },
+            'audit_team': {
+                'auditors': audit_auditors,
+                'reviewers': audit_reviewers
             },
             'user_role': get_user_role(user)
         })
@@ -755,23 +769,50 @@ def delete_risk(risk_id):
 
 @app.route('/api/records/<record_type>/<int:record_id>/submit-for-review', methods=['POST'])
 @require_login
-@require_transition('risk', 'submit_for_review')
 def submit_for_review(record_type, record_id):
-    """Submit a record for review (draft -> in_review)."""
+    """Submit a record for review (draft -> in_review).
+
+    Requires reviewer_id in request body - auditor must select which reviewer.
+    """
     if record_type not in ('risk', 'issue'):
         return jsonify({'error': 'Invalid record type'}), 400
 
     user = get_current_user()
-    record = g.record
     data = request.get_json() or {}
+
+    # Get the record with audit info
+    record = db.get_record_with_audit(record_type, record_id)
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+
+    audit = {
+        'id': record.get('audit_id'),
+        'auditor_id': record.get('auditor_id'),
+        'reviewer_id': record.get('reviewer_id')
+    }
+
+    # Check if user can submit for review
+    if not can_transition_record(user, audit, record, 'submit_for_review'):
+        return jsonify({'error': 'Cannot submit this record for review'}), 403
+
+    # Require reviewer_id selection
+    reviewer_id = data.get('reviewer_id')
+    if not reviewer_id:
+        return jsonify({'error': 'reviewer_id is required - you must select a reviewer'}), 400
+
+    # Validate that the selected reviewer is actually assigned to this audit
+    if not db.is_reviewer_on_audit(reviewer_id, audit['id']):
+        return jsonify({'error': 'Selected reviewer is not assigned to this audit'}), 400
+
     notes = data.get('notes', '')
 
-    # Perform the transition
+    # Perform the transition with assigned_reviewer_id
     db.update_record_status(
         record_type, record_id,
         new_status='in_review',
         new_owner_role='reviewer',
-        user_id=user['id']
+        user_id=user['id'],
+        assigned_reviewer_id=reviewer_id
     )
 
     # Log the state change
@@ -785,7 +826,7 @@ def submit_for_review(record_type, record_id):
     )
 
     increment_data_version()
-    return jsonify({'status': 'ok', 'record_status': 'in_review'})
+    return jsonify({'status': 'ok', 'record_status': 'in_review', 'assigned_reviewer_id': reviewer_id})
 
 
 @app.route('/api/records/<record_type>/<int:record_id>/return-to-auditor', methods=['POST'])
@@ -3172,6 +3213,8 @@ def felix_chat():
 
 
 @app.route('/api/felix/conversations', methods=['GET'])
+@require_login
+@require_non_viewer
 def get_felix_conversations():
     """Get all conversations for current user."""
     user_id = session.get('user_id', 'default_user')
@@ -3184,6 +3227,8 @@ def get_felix_conversations():
 
 
 @app.route('/api/felix/conversations', methods=['POST'])
+@require_login
+@require_non_viewer
 def create_felix_conversation():
     """Create a new conversation."""
     user_id = session.get('user_id', 'default_user')
@@ -3197,6 +3242,8 @@ def create_felix_conversation():
 
 
 @app.route('/api/felix/conversations/<conv_id>', methods=['DELETE'])
+@require_login
+@require_non_viewer
 def delete_felix_conversation(conv_id):
     """Delete a conversation and its messages."""
     with db._connection() as conn:
@@ -3206,6 +3253,8 @@ def delete_felix_conversation(conv_id):
 
 
 @app.route('/api/felix/conversations/<conv_id>/messages', methods=['GET'])
+@require_login
+@require_non_viewer
 def get_felix_messages(conv_id):
     """Get all messages for a conversation."""
     with db._connection() as conn:
@@ -3217,6 +3266,8 @@ def get_felix_messages(conv_id):
 
 
 @app.route('/api/felix/conversations/<conv_id>/messages', methods=['POST'])
+@require_login
+@require_non_viewer
 def send_felix_message(conv_id):
     """Send a message and get AI response."""
     data = request.json
@@ -3866,6 +3917,89 @@ def api_admin_remove_audit_membership(audit_id, user_id):
         return jsonify({'status': 'removed'})
     else:
         return jsonify({'error': 'Membership not found'}), 404
+
+
+# ==================== AUDIT TEAM API (Multi-assignment) ====================
+
+@app.route('/api/admin/audits/<int:audit_id>/team', methods=['GET'])
+@require_admin
+def api_admin_get_audit_team(audit_id):
+    """Get all team members (auditors and reviewers) for an audit."""
+    team = db.get_audit_team(audit_id)
+    auditors = [m for m in team if m['team_role'] == 'auditor']
+    reviewers = [m for m in team if m['team_role'] == 'reviewer']
+    viewers = db.get_audit_viewers_list(audit_id) if hasattr(db, 'get_audit_viewers_list') else []
+    return jsonify({
+        'auditors': auditors,
+        'reviewers': reviewers,
+        'viewers': viewers
+    })
+
+
+@app.route('/api/admin/audits/<int:audit_id>/team', methods=['POST'])
+@require_admin
+def api_admin_add_team_member(audit_id):
+    """Add a user to an audit team (as auditor or reviewer)."""
+    data = request.get_json()
+    user = get_current_user()
+
+    user_id = data.get('user_id')
+    team_role = data.get('team_role')  # 'auditor' or 'reviewer'
+
+    if not user_id:
+        return jsonify({'error': 'user_id is required'}), 400
+
+    if team_role not in ('auditor', 'reviewer'):
+        return jsonify({'error': 'team_role must be "auditor" or "reviewer"'}), 400
+
+    result = db.add_to_audit_team(audit_id, user_id, team_role, assigned_by=user['id'])
+
+    if result == -1:
+        return jsonify({'status': 'already_exists', 'message': 'User already has this role on this audit'})
+
+    return jsonify({'status': 'created', 'id': result})
+
+
+@app.route('/api/admin/audits/<int:audit_id>/team/<int:user_id>/<team_role>', methods=['DELETE'])
+@require_admin
+def api_admin_remove_team_member(audit_id, user_id, team_role):
+    """Remove a user from an audit team role."""
+    if team_role not in ('auditor', 'reviewer'):
+        return jsonify({'error': 'team_role must be "auditor" or "reviewer"'}), 400
+
+    if db.remove_from_audit_team(audit_id, user_id, team_role):
+        return jsonify({'status': 'removed'})
+    else:
+        return jsonify({'error': 'Team membership not found'}), 404
+
+
+@app.route('/api/admin/audits/<int:audit_id>/viewers', methods=['POST'])
+@require_admin
+def api_admin_add_viewer(audit_id):
+    """Add a viewer to an audit."""
+    data = request.get_json()
+    user = get_current_user()
+
+    user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'user_id is required'}), 400
+
+    result = db.add_viewer_to_audit(audit_id, user_id, granted_by=user['id'])
+
+    if result == -1:
+        return jsonify({'status': 'already_exists', 'message': 'User is already a viewer'})
+
+    return jsonify({'status': 'created', 'id': result})
+
+
+@app.route('/api/admin/audits/<int:audit_id>/viewers/<int:user_id>', methods=['DELETE'])
+@require_admin
+def api_admin_remove_viewer(audit_id, user_id):
+    """Remove a viewer from an audit."""
+    if db.remove_viewer_from_audit(audit_id, user_id):
+        return jsonify({'status': 'removed'})
+    else:
+        return jsonify({'error': 'Viewer not found'}), 404
 
 
 if __name__ == '__main__':

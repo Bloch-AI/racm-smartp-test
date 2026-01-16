@@ -724,12 +724,14 @@
                 <!-- Right side -->
                 <div class="flex items-center gap-4">
                     <div class="hidden sm:flex sm:items-center sm:space-x-1">
+                        {% if user_role != 'viewer' %}
                         <a href="/felix" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
                             </svg>
                             Felix AI
                         </a>
+                        {% endif %}
                         <a href="/library" class="flex items-center gap-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md px-3 py-2 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -822,12 +824,14 @@
                     </div>
                     <!-- Right side: Ask Felix + Import/Export + Add Row + Save + Search -->
                     <div class="flex items-center gap-2 pb-2">
+                        {% if user_role != 'viewer' %}
                         <button onclick="toggleChat()" class="btn btn-ghost">
                             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/>
                             </svg>
                             Ask Felix
                         </button>
+                        {% endif %}
                         <div class="relative" id="importExportDropdown">
                             <button onclick="toggleImportExport()" class="btn btn-ghost">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1075,7 +1079,8 @@
     <!-- Evidence Panel Backdrop -->
     <div id="evidenceBackdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden" onclick="closeEvidencePanel()"></div>
 
-    <!-- Chat Panel -->
+    <!-- Chat Panel (hidden for viewers) -->
+    {% if user_role != 'viewer' %}
     <div id="chatPanel" class="fixed inset-y-0 right-0 w-full sm:w-[420px] max-w-full bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
         <!-- Chat Header - uses unified drawer style -->
         <div class="drawer-header flex-shrink-0">
@@ -1159,6 +1164,7 @@
             <p class="text-xs text-slate-400 mt-2">Press Enter to send</p>
         </div>
     </div>
+    {% endif %}
 
     <!-- Kanban Edit Card Modal -->
     <div id="kanbanEditModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
@@ -1259,6 +1265,7 @@
         let issuesMetadata = [];
         let currentAudit = null;
         let currentUserRole = null;
+        let auditTeam = { auditors: [], reviewers: [] };  // For reviewer selection in submit-for-review
 
         // Switch active audit and reload page
         async function switchAudit(auditId) {
@@ -1695,6 +1702,7 @@
             issuesMetadata = allData.issues_metadata || [];
             currentAudit = allData.audit || null;
             currentUserRole = allData.user_role || 'viewer';
+            auditTeam = allData.audit_team || { auditors: [], reviewers: [] };
 
             // Skip header row if first row contains header text
             if (racmData.length > 0 && racmData[0][0] && typeof racmData[0][0] === 'string' &&
@@ -2075,6 +2083,7 @@
                 issuesMetadata = allData.issues_metadata || [];
                 currentAudit = allData.audit || null;
                 currentUserRole = allData.user_role || 'viewer';
+                auditTeam = allData.audit_team || { auditors: [], reviewers: [] };
 
                 // Update spreadsheet data
                 let racmData = allData.racm || [];

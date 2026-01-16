@@ -68,6 +68,29 @@ def require_login(f):
     return decorated_function
 
 
+def require_non_viewer(f):
+    """Decorator that blocks viewer role from accessing certain features (e.g., AI).
+
+    Viewers have limited access - no AI, only view assigned audits.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Authentication required'}), 401
+            return redirect(url_for('login', next=request.url))
+
+        user_role = get_user_role(user)
+        if user_role == 'viewer':
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'AI access is not available for viewers'}), 403
+            return "Access denied. AI features are not available for viewers.", 403
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 def require_admin(f):
     """Decorator that requires the user to be an admin.
 
@@ -262,12 +285,10 @@ def get_user_role(user):
 def can_view_audit(user, audit):
     """Check if user can view an audit.
 
-    Returns True if:
-    - User is admin
-    - User is assigned as auditor for the audit
-    - User is assigned as reviewer for the audit
-    - User has viewer access granted via audit_viewers table
-    - User has membership in the audit (legacy)
+    Permission model:
+    - Admins: can view all audits
+    - Auditors/Reviewers: can view ALL audits (full visibility)
+    - Viewers: can ONLY view audits specifically assigned to them
     """
     if not user or not audit:
         return False
@@ -278,21 +299,16 @@ def can_view_audit(user, audit):
 
     user_id = user['id']
     audit_id = audit['id'] if isinstance(audit, dict) else audit
+    user_role = get_user_role(user)
 
-    # Check direct assignment
-    if audit.get('auditor_id') == user_id:
-        return True
-    if audit.get('reviewer_id') == user_id:
-        return True
-
-    # Check viewer access
-    db = get_db()
-    if db.is_viewer_of_audit(user_id, audit_id):
+    # Auditors and Reviewers can view ALL audits
+    if user_role in ('auditor', 'reviewer'):
         return True
 
-    # Check legacy membership
-    if db.user_has_audit_access(user_id, audit_id, 'viewer'):
-        return True
+    # Viewers can ONLY view audits they're explicitly assigned to
+    if user_role == 'viewer':
+        db = get_db()
+        return db.is_viewer_of_audit(user_id, audit_id)
 
     return False
 
@@ -302,8 +318,8 @@ def can_edit_record(user, audit, record):
 
     Edit permission depends on:
     - Record status (draft, in_review, admin_hold, signed_off)
-    - User role and assignment
-    - Only ONE role can edit at a time based on current_owner_role
+    - User assignment to audit team (via audit_team junction table)
+    - For in_review: must be THE reviewer assigned to this specific record
 
     Returns True if user can edit the record.
     """
@@ -320,17 +336,21 @@ def can_edit_record(user, audit, record):
         return False
 
     user_id = user['id']
-    user_role = get_user_role(user)
+    audit_id = audit['id'] if isinstance(audit, dict) else audit
+    db = get_db()
 
-    # Draft records: only assigned auditor can edit
+    # Draft records: ANY assigned auditor can edit
     if record_status == 'draft':
-        return (user_role == 'auditor' and
-                audit.get('auditor_id') == user_id)
+        return db.is_auditor_on_audit(user_id, audit_id)
 
-    # In-review records: only assigned reviewer can edit
+    # In-review records: ONLY the assigned reviewer for this record can edit
     if record_status == 'in_review':
-        return (user_role == 'reviewer' and
-                audit.get('reviewer_id') == user_id)
+        # Must be the specific reviewer who was assigned this record
+        assigned_reviewer_id = record.get('assigned_reviewer_id')
+        if assigned_reviewer_id and assigned_reviewer_id == user_id:
+            # Verify they're still a reviewer on the audit
+            return db.is_reviewer_on_audit(user_id, audit_id)
+        return False
 
     return False
 
@@ -339,9 +359,9 @@ def can_transition_record(user, audit, record, action):
     """Check if user can perform a specific state transition.
 
     Actions:
-    - submit_for_review: auditor submits draft -> in_review
-    - return_to_auditor: reviewer returns in_review -> draft
-    - sign_off: reviewer signs off in_review -> signed_off
+    - submit_for_review: ANY assigned auditor submits draft -> in_review
+    - return_to_auditor: THE assigned reviewer returns in_review -> draft
+    - sign_off: THE assigned reviewer signs off in_review -> signed_off
     - admin_lock: admin locks any -> admin_hold
     - admin_unlock: admin unlocks admin_hold -> draft/in_review
     - admin_unlock_signoff: admin unlocks signed_off -> draft/in_review
@@ -354,22 +374,26 @@ def can_transition_record(user, audit, record, action):
     record_status = record.get('record_status') or 'draft'
     user_id = user['id']
     user_role = get_user_role(user)
+    audit_id = audit['id'] if isinstance(audit, dict) else audit
+    db = get_db()
+
+    # Get the assigned reviewer for this record (for in_review transitions)
+    assigned_reviewer_id = record.get('assigned_reviewer_id')
 
     transitions = {
         'submit_for_review': lambda: (
             record_status == 'draft' and
-            user_role == 'auditor' and
-            audit.get('auditor_id') == user_id
+            db.is_auditor_on_audit(user_id, audit_id)
         ),
         'return_to_auditor': lambda: (
             record_status == 'in_review' and
-            user_role == 'reviewer' and
-            audit.get('reviewer_id') == user_id
+            assigned_reviewer_id == user_id and
+            db.is_reviewer_on_audit(user_id, audit_id)
         ),
         'sign_off': lambda: (
             record_status == 'in_review' and
-            user_role == 'reviewer' and
-            audit.get('reviewer_id') == user_id
+            assigned_reviewer_id == user_id and
+            db.is_reviewer_on_audit(user_id, audit_id)
         ),
         'admin_lock': lambda: (
             user_role == 'admin' and
