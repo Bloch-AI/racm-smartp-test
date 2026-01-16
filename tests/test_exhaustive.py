@@ -46,20 +46,27 @@ def client(test_db, tmp_path):
 @pytest.fixture
 def auth_client(client, test_db):
     """Create authenticated test client with admin user."""
-    # Create admin user
+    # Use the default admin user created by the database
+    # or create a new one with a unique email
     from werkzeug.security import generate_password_hash
-    with test_db._connection() as conn:
-        conn.execute('''
-            INSERT INTO users (email, name, password_hash, is_active, is_admin)
-            VALUES (?, ?, ?, 1, 1)
-        ''', ('admin@test.com', 'Test Admin', generate_password_hash('testpass123', method='pbkdf2:sha256')))
 
-    # Login
+    # Check if default admin exists
+    user = test_db.get_user_by_email('admin@localhost')
+    if not user:
+        # Create admin user with unique email
+        with test_db._connection() as conn:
+            conn.execute('''
+                INSERT INTO users (email, name, password_hash, is_active, is_admin)
+                VALUES (?, ?, ?, 1, 1)
+            ''', ('admin@test.com', 'Test Admin', generate_password_hash('testpass123', method='pbkdf2:sha256')))
+        user = test_db.get_user_by_email('admin@test.com')
+
+    # Login with the found/created user
     with client.session_transaction() as sess:
-        sess['user_id'] = 1
-        sess['email'] = 'admin@test.com'
-        sess['name'] = 'Test Admin'
-        sess['is_admin'] = True
+        sess['user_id'] = user['id']
+        sess['email'] = user['email']
+        sess['name'] = user['name']
+        sess['is_admin'] = user['is_admin']
 
     return client
 
