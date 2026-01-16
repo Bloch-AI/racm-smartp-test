@@ -170,23 +170,78 @@
         .btn-xs svg { width: 14px; height: 14px; }
 
         /* ========================================
-           STATUS CHIPS / BADGES
+           STATUS CHIPS / BADGES - Bloch AI Style
+           Refined, professional, consistent sizing
            ======================================== */
 
         .chip {
             display: inline-flex;
             align-items: center;
-            padding: 2px 8px;
+            justify-content: center;
+            padding: 3px 10px;
             font-size: 11px;
-            font-weight: 500;
+            font-weight: 600;
             border-radius: 9999px;
             white-space: nowrap;
+            line-height: 1.3;
+            min-height: 22px;
+            letter-spacing: 0.01em;
+            border: 1px solid transparent;
         }
-        .chip-neutral { background: #f3f4f6; color: #4b5563; }
-        .chip-success { background: var(--success-light); color: #15803d; }
-        .chip-warning { background: var(--warning-light); color: #b45309; }
-        .chip-danger { background: var(--danger-light); color: #b91c1c; }
-        .chip-info { background: var(--primary-light); color: var(--primary-dark); }
+
+        /* Color variants - subtle backgrounds with refined borders */
+        .chip-neutral { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+        .chip-success { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+        .chip-warning { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+        .chip-danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+        .chip-info { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
+        .chip-primary { background: var(--primary-light); color: var(--primary-dark); border-color: #99d3eb; }
+
+        /* Interactive chips (clickable actions) */
+        .chip-action {
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+        .chip-action:hover {
+            filter: brightness(0.95);
+            transform: translateY(-1px);
+        }
+        .chip-action:active {
+            transform: translateY(0);
+            filter: brightness(0.9);
+        }
+
+        /* Specific action chip colors with borders and hover states */
+        .chip-action-submit { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+        .chip-action-submit:hover { background: #bfdbfe; }
+
+        .chip-action-return { background: #fef3c7; color: #b45309; border-color: #fcd34d; }
+        .chip-action-return:hover { background: #fde68a; }
+
+        .chip-action-signoff { background: #d1fae5; color: #047857; border-color: #6ee7b7; }
+        .chip-action-signoff:hover { background: #a7f3d0; }
+
+        .chip-action-lock { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+        .chip-action-lock:hover { background: #e2e8f0; }
+
+        .chip-action-unlock { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+        .chip-action-unlock:hover { background: #fecaca; }
+
+        .chip-action-reopen { background: #ecfdf5; color: #047857; border-color: #6ee7b7; }
+        .chip-action-reopen:hover { background: #d1fae5; }
+
+        /* Size variants */
+        .chip-sm {
+            padding: 2px 8px;
+            font-size: 10px;
+            min-height: 18px;
+        }
+        .chip-lg {
+            padding: 6px 14px;
+            font-size: 12px;
+            min-height: 28px;
+        }
 
         /* ========================================
            TABLE STYLES - Clean & Professional
@@ -256,21 +311,47 @@
             background: white !important;
         }
 
-        /* Ensure both tables use full width */
+        /* Spreadsheet container - responsive and clean */
+        #spreadsheet {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        #spreadsheet-racm,
+        #spreadsheet-issues {
+            width: 100%;
+            min-width: 0;
+        }
+
+        /* Ensure tables fill container and handle overflow gracefully */
         #spreadsheet-racm .jexcel_container,
         #spreadsheet-racm .jexcel,
         #spreadsheet-issues .jexcel_container,
         #spreadsheet-issues .jexcel {
             width: 100% !important;
+            max-width: 100%;
         }
 
-        /* Make spreadsheet container fill available space */
-        #spreadsheet {
-            width: 100%;
-        }
-        #spreadsheet-racm,
-        #spreadsheet-issues {
-            width: 100%;
+        /* Horizontal scroll indicator for small screens */
+        @media (max-width: 1024px) {
+            #spreadsheet {
+                position: relative;
+            }
+            #spreadsheet::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: 24px;
+                background: linear-gradient(to right, transparent, rgba(255,255,255,0.9));
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.2s;
+            }
+            #spreadsheet.scrollable::after {
+                opacity: 1;
+            }
         }
 
         /* ========================================
@@ -306,19 +387,24 @@
             color: #b91c1c !important;
         }
 
-        /* Workflow badge styling in cells */
-        .jexcel td .inline-flex {
-            display: inline-flex !important;
+        /* Chip styling in table cells */
+        .jexcel td .chip {
+            margin: 1px;
+            vertical-align: middle;
         }
 
-        /* Action buttons in cells */
-        .jexcel td .flex.gap-1 {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
+        /* Multiple chips in same cell - proper spacing */
+        .jexcel td .chip + .chip {
+            margin-left: 4px;
         }
-        .jexcel td .flex.gap-1 button {
-            white-space: nowrap;
+
+        /* Keep chips visible and properly colored in locked rows */
+        .jexcel tbody tr.row-locked td .chip {
+            opacity: 1;
+        }
+        .jexcel tbody tr.row-locked td .chip-action-unlock {
+            background: #fee2e2 !important;
+            color: #b91c1c !important;
         }
 
         /* ========================================
@@ -1335,13 +1421,13 @@
         let auditTeam = { auditors: [], reviewers: [] };  // For reviewer selection in submit-for-review
         const isAdmin = {{ 'true' if session.is_admin else 'false' }};
 
-        // Render a workflow status badge
+        // Render a workflow status badge using CSS chip classes
         function renderStatusBadge(status) {
             const badges = {
-                'draft': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Draft</span>',
-                'in_review': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">In Review</span>',
-                'signed_off': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Signed Off</span>',
-                'admin_hold': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Locked</span>'
+                'draft': '<span class="chip chip-neutral">Draft</span>',
+                'in_review': '<span class="chip chip-info">In Review</span>',
+                'signed_off': '<span class="chip chip-success">Signed Off</span>',
+                'admin_hold': '<span class="chip chip-danger">Locked</span>'
             };
             return badges[status] || badges['draft'];
         }
@@ -1357,6 +1443,7 @@
         }
 
         // Render workflow action buttons based on status and permissions
+        // Uses CSS chip classes for consistent styling
         function renderWorkflowActions(meta, recordType) {
             if (!meta) return '';
             const status = meta.record_status || 'draft';
@@ -1367,9 +1454,9 @@
             // For admin_hold (locked) records, only admins can unlock
             if (status === 'admin_hold') {
                 if (permissions.canAdminUnlock) {
-                    buttons.push(`<span class="unlock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Unlock</span>`);
+                    buttons.push(`<span class="unlock-record chip chip-action chip-action-unlock" data-type="${recordType}" data-id="${recordId}">Unlock</span>`);
                 } else {
-                    buttons.push('<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Locked</span>');
+                    buttons.push('<span class="chip chip-danger">Locked</span>');
                 }
                 return buttons.join(' ');
             }
@@ -1377,37 +1464,37 @@
             // For signed_off records, admins can unlock or lock
             if (status === 'signed_off') {
                 if (permissions.canAdminUnlockSignoff) {
-                    buttons.push(`<span class="unlock-signoff inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Reopen</span>`);
+                    buttons.push(`<span class="unlock-signoff chip chip-action chip-action-reopen" data-type="${recordType}" data-id="${recordId}">Reopen</span>`);
                 }
                 if (permissions.canAdminLock) {
-                    buttons.push(`<span class="lock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
+                    buttons.push(`<span class="lock-record chip chip-action chip-action-lock" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
                 }
                 return buttons.join(' ');
             }
 
             // For draft and in_review, show appropriate actions based on permissions
             if (currentUserRole === 'viewer') {
-                return '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">View Only</span>';
+                return '<span class="chip chip-neutral">View Only</span>';
             }
 
             // Draft: show Submit for Review button if user can submit
             if (status === 'draft' && permissions.canSubmitForReview) {
-                buttons.push(`<span class="submit-for-review inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Submit</span>`);
+                buttons.push(`<span class="submit-for-review chip chip-action chip-action-submit" data-type="${recordType}" data-id="${recordId}">Submit</span>`);
             }
 
             // In Review: show Return to Auditor and Sign Off buttons for assigned reviewer
             if (status === 'in_review') {
                 if (permissions.canReturnToAuditor) {
-                    buttons.push(`<span class="return-to-auditor inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Return</span>`);
+                    buttons.push(`<span class="return-to-auditor chip chip-action chip-action-return" data-type="${recordType}" data-id="${recordId}">Return</span>`);
                 }
                 if (permissions.canSignOff) {
-                    buttons.push(`<span class="sign-off inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Sign Off</span>`);
+                    buttons.push(`<span class="sign-off chip chip-action chip-action-signoff" data-type="${recordType}" data-id="${recordId}">Sign Off</span>`);
                 }
             }
 
             // Admin can lock any non-locked record
             if (permissions.canAdminLock) {
-                buttons.push(`<span class="lock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
+                buttons.push(`<span class="lock-record chip chip-action chip-action-lock" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
             }
 
             return buttons.join(' ');
@@ -2201,70 +2288,70 @@
                 console.warn('Could not get riskId in updateRACMTable:', e);
             }
 
-            // DE Testing column (E = index 4) - pill badges
+            // DE Testing column (E = index 4) - chip badges
             if (col == 4) {
                 if (riskId && riskId.trim()) {
                     const cacheKey = `${riskId}_de_testing`;
                     const hasDoc = testDocCache[cacheKey] === true;
                     if (hasDoc) {
-                        cell.innerHTML = '<span class="edit-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">Edit</span>';
+                        cell.innerHTML = '<span class="edit-test-doc chip chip-action chip-primary" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">Edit</span>';
                     } else {
-                        cell.innerHTML = '<span class="create-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">Add</span>';
+                        cell.innerHTML = '<span class="create-test-doc chip chip-action chip-neutral" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">Add</span>';
                     }
                 }
             }
-            // OE Testing column (G = index 6) - pill badges
+            // OE Testing column (G = index 6) - chip badges
             if (col == 6) {
                 if (riskId && riskId.trim()) {
                     const cacheKey = `${riskId}_oe_testing`;
                     const hasDoc = testDocCache[cacheKey] === true;
                     if (hasDoc) {
-                        cell.innerHTML = '<span class="edit-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">Edit</span>';
+                        cell.innerHTML = '<span class="edit-test-doc chip chip-action chip-primary" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">Edit</span>';
                     } else {
-                        cell.innerHTML = '<span class="create-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">Add</span>';
+                        cell.innerHTML = '<span class="create-test-doc chip chip-action chip-neutral" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">Add</span>';
                     }
                 }
             }
-            // Flowchart column (N = index 13) - pill badges
+            // Flowchart column (N = index 13) - chip badges
             if (col == 13) {
                 if (val && val.trim()) {
-                    cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 no-underline">View</a>';
+                    cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="chip chip-action chip-primary no-underline">View</a>';
                 } else {
                     if (riskId && riskId.trim()) {
-                        cell.innerHTML = '<span class="create-flowchart inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '">Add</span>';
+                        cell.innerHTML = '<span class="create-flowchart chip chip-action chip-neutral" data-row="' + row + '">Add</span>';
                     }
                 }
             }
             // Task column (O = index 14) - pill badges
             if (col == 14) {
                 if (val && val.trim()) {
-                    cell.innerHTML = '<span class="edit-task inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-task="' + val + '" data-row="' + row + '">Edit</span>';
+                    cell.innerHTML = '<span class="edit-task chip chip-action chip-primary" data-task="' + val + '" data-row="' + row + '">Edit</span>';
                 } else {
                     if (riskId && riskId.trim()) {
-                        cell.innerHTML = '<span class="create-task inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '">Add</span>';
+                        cell.innerHTML = '<span class="create-task chip chip-action chip-neutral" data-row="' + row + '">Add</span>';
                     }
                 }
             }
-            // Status column styling (I = index 8) - compact pill badges
+            // Status column styling (I = index 8) - compact chip badges
             if (col == 8) {
                 const status = val ? val : '';
                 if (status === 'Effective') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Effective</span>';
+                    cell.innerHTML = '<span class="chip chip-success">Effective</span>';
                 } else if (status === 'Not Effective') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Not Effective</span>';
+                    cell.innerHTML = '<span class="chip chip-danger">Not Effective</span>';
                 } else if (status === 'Not Complete') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Not Complete</span>';
+                    cell.innerHTML = '<span class="chip chip-warning">Not Complete</span>';
                 } else if (status) {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + status + '</span>';
+                    cell.innerHTML = '<span class="chip chip-neutral">' + status + '</span>';
                 }
             }
             // Evidence column (P = index 15) - pill badges for risks
             if (col == 15 && riskId && riskId.trim()) {
                 const attachCount = riskAttachmentCache[riskId.toUpperCase()] || 0;
                 if (attachCount > 0) {
-                    cell.innerHTML = '<span class="view-risk-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-risk="' + riskId + '">' + attachCount + '</span>';
+                    cell.innerHTML = '<span class="view-risk-attachments chip chip-action chip-primary" data-row="' + row + '" data-risk="' + riskId + '">' + attachCount + '</span>';
                 } else {
-                    cell.innerHTML = '<span class="view-risk-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-risk="' + riskId + '">Attach</span>';
+                    cell.innerHTML = '<span class="view-risk-attachments chip chip-action chip-neutral" data-row="' + row + '" data-risk="' + riskId + '">Attach</span>';
                 }
             }
             // Workflow Status column (Q = index 16) - shows workflow state badge
@@ -2305,41 +2392,41 @@
                 }
             } catch (e) {}
 
-            // Severity column styling (col 4) - compact pill badges
+            // Severity column styling (col 4) - compact chip badges
             if (col == 4) {
                 const severity = val ? val : '';
                 if (severity === 'Critical') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Critical</span>';
+                    cell.innerHTML = '<span class="chip chip-danger">Critical</span>';
                 } else if (severity === 'High') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">High</span>';
+                    cell.innerHTML = '<span class="chip chip-warning">High</span>';
                 } else if (severity === 'Medium') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Medium</span>';
+                    cell.innerHTML = '<span class="chip chip-warning">Medium</span>';
                 } else if (severity === 'Low') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Low</span>';
+                    cell.innerHTML = '<span class="chip chip-success">Low</span>';
                 } else if (severity) {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + severity + '</span>';
+                    cell.innerHTML = '<span class="chip chip-neutral">' + severity + '</span>';
                 }
             }
-            // Status column styling (col 5) - compact pill badges
+            // Status column styling (col 5) - compact chip badges
             if (col == 5) {
                 const status = val ? val : '';
                 if (status === 'Closed' || status === 'Resolved') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">' + status + '</span>';
+                    cell.innerHTML = '<span class="chip chip-success">' + status + '</span>';
                 } else if (status === 'In Progress') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">In Progress</span>';
+                    cell.innerHTML = '<span class="chip chip-info">In Progress</span>';
                 } else if (status === 'Open') {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Open</span>';
+                    cell.innerHTML = '<span class="chip chip-danger">Open</span>';
                 } else if (status) {
-                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + status + '</span>';
+                    cell.innerHTML = '<span class="chip chip-neutral">' + status + '</span>';
                 }
             }
-            // Evidence column (col 8) - pill badges
+            // Evidence column (col 8) - chip badges
             if (col == 8 && issueId && issueId.trim()) {
                 const attachCount = issueAttachmentCache[issueId] || 0;
                 if (attachCount > 0) {
-                    cell.innerHTML = '<span class="view-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-issue="' + issueId + '">' + attachCount + '</span>';
+                    cell.innerHTML = '<span class="view-attachments chip chip-action chip-primary" data-row="' + row + '" data-issue="' + issueId + '">' + attachCount + '</span>';
                 } else {
-                    cell.innerHTML = '<span class="view-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-issue="' + issueId + '">Attach</span>';
+                    cell.innerHTML = '<span class="view-attachments chip chip-action chip-neutral" data-row="' + row + '" data-issue="' + issueId + '">Attach</span>';
                 }
             }
             // Workflow Status column (col 9) - shows workflow state badge
@@ -2728,35 +2815,59 @@
             if (e.target === this) closeKanbanModal();
         });
 
-        // Handle window resize - recalculate column widths
+        // Handle window resize - recalculate column widths and table dimensions
         let resizeTimeout;
+        function handleTableResize() {
+            const wrapper = document.getElementById('spreadsheet');
+            if (!wrapper) return;
+            const containerWidth = wrapper.offsetWidth - 2;
+            if (containerWidth < 100) return; // Skip if container not visible
+
+            // Calculate height to fill remaining viewport
+            const wrapperTop = wrapper.getBoundingClientRect().top;
+            const viewportHeight = window.innerHeight;
+            const targetHeight = Math.max(400, viewportHeight - wrapperTop - 24); // 24px bottom margin
+
+            // Recalculate and resize RACM table columns
+            if (table) {
+                const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8, 0.6, 0.5, 0.8, 0.6, 0.7, 0.7, 1.0];
+                const racmTotalProp = racmProportions.reduce((a, b) => a + b, 0);
+                const racmBaseUnit = (containerWidth - 50) / racmTotalProp;
+                racmProportions.forEach((p, i) => {
+                    table.setWidth(i, Math.floor(racmBaseUnit * p));
+                });
+                // Update table container dimensions
+                const racmTableEl = document.querySelector('#spreadsheet-racm .jexcel_container');
+                if (racmTableEl) {
+                    racmTableEl.style.width = containerWidth + 'px';
+                    racmTableEl.style.maxHeight = targetHeight + 'px';
+                }
+            }
+
+            // Recalculate and resize Issues table columns
+            if (issueTable) {
+                const issueProportions = [0.6, 0.6, 1.5, 2.0, 0.7, 0.7, 0.8, 0.8, 0.7, 0.7, 1.0];
+                const issueTotalProp = issueProportions.reduce((a, b) => a + b, 0);
+                const issueBaseUnit = (containerWidth - 50) / issueTotalProp;
+                issueProportions.forEach((p, i) => {
+                    issueTable.setWidth(i, Math.floor(issueBaseUnit * p));
+                });
+                // Update table container dimensions
+                const issueTableEl = document.querySelector('#spreadsheet-issues .jexcel_container');
+                if (issueTableEl) {
+                    issueTableEl.style.width = containerWidth + 'px';
+                    issueTableEl.style.maxHeight = targetHeight + 'px';
+                }
+            }
+        }
+
         window.addEventListener('resize', function() {
             clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(function() {
-                const wrapper = document.getElementById('spreadsheet');
-                const containerWidth = wrapper.offsetWidth - 2;
-
-                // Recalculate and resize RACM table columns
-                if (table) {
-                    const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8, 0.6, 0.5, 0.8, 0.6, 0.7, 0.7, 1.0];
-                    const racmTotalProp = racmProportions.reduce((a, b) => a + b, 0);
-                    const racmBaseUnit = (containerWidth - 50) / racmTotalProp;
-                    racmProportions.forEach((p, i) => {
-                        table.setWidth(i, Math.floor(racmBaseUnit * p));
-                    });
-                }
-
-                // Recalculate and resize Issues table columns
-                if (issueTable) {
-                    const issueProportions = [0.6, 0.6, 1.5, 2.0, 0.7, 0.7, 0.8, 0.8, 0.7, 0.7, 1.0];
-                    const issueTotalProp = issueProportions.reduce((a, b) => a + b, 0);
-                    const issueBaseUnit = (containerWidth - 50) / issueTotalProp;
-                    issueProportions.forEach((p, i) => {
-                        issueTable.setWidth(i, Math.floor(issueBaseUnit * p));
-                    });
-                }
-            }, 150);
+            resizeTimeout = setTimeout(handleTableResize, 150);
         });
+
+        // Run initial resize after tables are fully loaded
+        setTimeout(handleTableResize, 600);
 
         // Handle click events for spreadsheet links
         document.getElementById('spreadsheet').addEventListener('click', function(e) {
