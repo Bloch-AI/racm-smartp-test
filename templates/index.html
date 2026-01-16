@@ -288,6 +288,24 @@
             background-color: #f0fdf4 !important;
         }
 
+        /* Locked row styling - greyed out appearance */
+        .jexcel tbody tr.row-locked td {
+            background-color: #f1f5f9 !important;
+            color: #64748b !important;
+            opacity: 0.75;
+        }
+        .jexcel tbody tr.row-locked td * {
+            color: #64748b !important;
+        }
+        .jexcel tbody tr.row-locked:hover td {
+            background-color: #e2e8f0 !important;
+        }
+        /* Keep action buttons visible in locked rows */
+        .jexcel tbody tr.row-locked td .unlock-record {
+            opacity: 1;
+            color: #b91c1c !important;
+        }
+
         /* Workflow badge styling in cells */
         .jexcel td .inline-flex {
             display: inline-flex !important;
@@ -1095,7 +1113,7 @@
         <!-- Content Area -->
         <div class="flex-1 overflow-y-auto p-4 bg-slate-50">
             <!-- Upload Section -->
-            <div class="mb-4">
+            <div id="evidenceUploadSection" class="mb-4">
                 <div class="border-2 border-dashed border-slate-300 rounded-lg p-5 text-center hover:border-primary-400 hover:bg-primary-50/30 transition-colors bg-white">
                     <input type="file" id="evidenceFileInput" multiple class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.msg,.eml,.txt,.csv,.png,.jpg,.jpeg,.gif,.zip">
                     <label for="evidenceFileInput" class="cursor-pointer">
@@ -1332,7 +1350,7 @@
         function getRowStatusClass(status) {
             const classes = {
                 'signed_off': 'bg-green-50',
-                'admin_hold': 'bg-red-50',
+                'admin_hold': 'row-locked',  // Greyed out locked appearance
                 'in_review': 'bg-blue-50'
             };
             return classes[status] || '';
@@ -1920,16 +1938,13 @@
                 filters: true,
                 search: false,
                 updateTable: updateRACMTable,
-                onbeforechange: function(instance, cell, x, y, value) {
-                    // Check if record is locked (admin_hold)
+                oneditionstart: function(el, cell, x, y) {
+                    // Use server-computed permissions from metadata
                     const meta = racmMetadata[y];
-                    if (meta && meta.record_status === 'admin_hold' && !isAdmin) {
-                        showToast('This record is locked and cannot be edited', 'error');
-                        return false;
-                    }
-                    // Check if user is viewer
-                    if (currentUserRole === 'viewer') {
-                        showToast('You have view-only access', 'error');
+                    if (!meta || !meta.permissions || !meta.permissions.canEdit) {
+                        // Show appropriate message based on status/role
+                        const msg = getEditBlockedMessage(meta, currentUserRole, isAdmin);
+                        showToast(msg, 'error');
                         return false;
                     }
                     return true;
@@ -1940,10 +1955,8 @@
                     items.push({ title: 'Merge cells', onclick: function() { mergeSelected(); } });
                     items.push({ title: 'Unmerge cells', onclick: function() { unmergeSelected(); } });
                     items.push({ type: 'line' });
-                    items.push({ title: 'Insert row above', onclick: function() { obj.insertRow(1, y, true); } });
-                    items.push({ title: 'Insert row below', onclick: function() { obj.insertRow(1, y); } });
-                    items.push({ title: 'Delete row', onclick: function() { obj.deleteRow(y); } });
-                    items.push({ type: 'line' });
+                    // Note: Row insert/delete disabled to prevent metadata desync with permissions
+                    // Use "Add Risk" button to add new rows which properly initializes permissions
                     items.push({ title: 'Bold', onclick: function() { applyStyle('font-weight: bold;'); } });
                     items.push({ type: 'line' });
                     items.push({ title: 'Align Left', onclick: function() { setAlignment('left'); } });
@@ -1991,26 +2004,21 @@
                 filters: true,
                 search: false,
                 updateTable: updateIssueTable,
-                onbeforechange: function(instance, cell, x, y, value) {
-                    // Check if record is locked (admin_hold)
+                oneditionstart: function(el, cell, x, y) {
+                    // Use server-computed permissions from metadata
                     const meta = issuesMetadata[y];
-                    if (meta && meta.record_status === 'admin_hold' && !isAdmin) {
-                        showToast('This record is locked and cannot be edited', 'error');
-                        return false;
-                    }
-                    // Check if user is viewer
-                    if (currentUserRole === 'viewer') {
-                        showToast('You have view-only access', 'error');
+                    if (!meta || !meta.permissions || !meta.permissions.canEdit) {
+                        // Show appropriate message based on status/role
+                        const msg = getEditBlockedMessage(meta, currentUserRole, isAdmin);
+                        showToast(msg, 'error');
                         return false;
                     }
                     return true;
                 },
                 contextMenu: function(obj, x, y, e) {
-                    let items = [];
-                    items.push({ title: 'Insert row above', onclick: function() { obj.insertRow(1, y, true); } });
-                    items.push({ title: 'Insert row below', onclick: function() { obj.insertRow(1, y); } });
-                    items.push({ title: 'Delete row', onclick: function() { obj.deleteRow(y); } });
-                    return items;
+                    // Note: Row insert/delete disabled to prevent metadata desync with permissions
+                    // Issues are created via the RACM "Raise Issue" checkbox which properly initializes permissions
+                    return [];
                 }
             });
 
@@ -2491,6 +2499,30 @@
             }
         }
 
+        // Get user-friendly message explaining why editing is blocked
+        function getEditBlockedMessage(meta, userRole, userIsAdmin) {
+            if (!meta) {
+                return 'Cannot edit this record';
+            }
+            if (userIsAdmin) {
+                return 'Admins have view-only access. Use lock/unlock actions to manage records.';
+            }
+            if (userRole === 'viewer') {
+                return 'You have view-only access to this audit';
+            }
+            const status = meta.record_status;
+            if (status === 'admin_hold') {
+                return 'This record is locked by an administrator';
+            }
+            if (status === 'signed_off') {
+                return 'This record has been signed off and cannot be edited';
+            }
+            if (status === 'in_review') {
+                return 'This record is in review. Only the assigned reviewer can edit it.';
+            }
+            return 'You do not have permission to edit this record';
+        }
+
         // Toast notifications
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
@@ -2570,6 +2602,11 @@
         // Handle click events for spreadsheet links
         document.getElementById('spreadsheet').addEventListener('click', function(e) {
             if (e.target.classList.contains('create-flowchart')) {
+                // Block flowchart creation for admins
+                if (isAdmin) {
+                    showToast('Admins have view-only access', 'error');
+                    return;
+                }
                 const row = parseInt(e.target.getAttribute('data-row'));
                 const riskId = table.getValueFromCoords(0, row);
                 if (riskId) {
@@ -2776,8 +2813,14 @@
             const riskDesc = table.getValueFromCoords(1, row);
             const typeLabel = docType === 'de_testing' ? 'Design Effectiveness Testing' : 'Operational Effectiveness Testing';
 
+            // Use server-computed permissions to determine edit access
+            const meta = racmMetadata[row];
+            const canEdit = meta && meta.permissions && meta.permissions.canEdit;
+            const isReadOnly = !canEdit;
+            const readOnlyReason = isReadOnly ? `(${getEditBlockedMessage(meta, currentUserRole, isAdmin)})` : '';
+
             document.getElementById('testDocModalTitle').textContent = typeLabel;
-            document.getElementById('testDocModalSubtitle').textContent = `Risk: ${riskCode} - ${riskDesc || 'No description'}`;
+            document.getElementById('testDocModalSubtitle').textContent = `Risk: ${riskCode} - ${riskDesc || 'No description'}${readOnlyReason ? ' ' + readOnlyReason : ''}`;
             document.getElementById('testDocRiskCode').value = riskCode;
             document.getElementById('testDocType').value = docType;
 
@@ -2812,6 +2855,19 @@
                 }
             } catch (e) {
                 quillEditor.root.innerHTML = '';
+            }
+
+            // Handle locked state - make editor read-only and hide save button
+            const saveBtn = document.querySelector('#testDocModal button[onclick="saveTestDocument()"]');
+            const toolbar = document.querySelector('#testDocModal .ql-toolbar');
+            if (isReadOnly) {
+                quillEditor.enable(false); // Make read-only
+                if (saveBtn) saveBtn.style.display = 'none';
+                if (toolbar) toolbar.style.display = 'none';
+            } else {
+                quillEditor.enable(true); // Make editable
+                if (saveBtn) saveBtn.style.display = '';
+                if (toolbar) toolbar.style.display = '';
             }
 
             document.getElementById('testDocModal').classList.remove('hidden');
@@ -2958,18 +3014,26 @@
         async function openIssueDocModal(issueId) {
             currentIssueDoc = issueId;
 
-            // Get issue details
+            // Get issue details and check if locked
             const issueData = issueTable.getData();
             let issueTitle = '';
-            for (let row of issueData) {
-                if (row[0] && row[0].toUpperCase() === issueId.toUpperCase()) {
-                    issueTitle = row[2] || 'No title';
+            let issueRow = -1;
+            for (let i = 0; i < issueData.length; i++) {
+                if (issueData[i][0] && issueData[i][0].toUpperCase() === issueId.toUpperCase()) {
+                    issueTitle = issueData[i][2] || 'No title';
+                    issueRow = i;
                     break;
                 }
             }
 
+            // Use server-computed permissions to determine edit access
+            const meta = issuesMetadata[issueRow];
+            const canEdit = meta && meta.permissions && meta.permissions.canEdit;
+            const isReadOnly = !canEdit;
+            const readOnlyReason = isReadOnly ? `(${getEditBlockedMessage(meta, currentUserRole, isAdmin)})` : '';
+
             document.getElementById('testDocModalTitle').textContent = 'Issue Documentation & Evidence';
-            document.getElementById('testDocModalSubtitle').textContent = `Issue: ${issueId} - ${issueTitle}`;
+            document.getElementById('testDocModalSubtitle').textContent = `Issue: ${issueId} - ${issueTitle}${readOnlyReason ? ' ' + readOnlyReason : ''}`;
             document.getElementById('testDocRiskCode').value = '';
             document.getElementById('testDocType').value = '';
 
@@ -3004,6 +3068,19 @@
                 }
             } catch (e) {
                 quillEditor.root.innerHTML = '';
+            }
+
+            // Handle locked state - make editor read-only and hide save button
+            const saveBtn = document.querySelector('#testDocModal button[onclick="saveTestDocument()"]');
+            const toolbar = document.querySelector('#testDocModal .ql-toolbar');
+            if (isReadOnly) {
+                quillEditor.enable(false); // Make read-only
+                if (saveBtn) saveBtn.style.display = 'none';
+                if (toolbar) toolbar.style.display = 'none';
+            } else {
+                quillEditor.enable(true); // Make editable
+                if (saveBtn) saveBtn.style.display = '';
+                if (toolbar) toolbar.style.display = '';
             }
 
             document.getElementById('testDocModal').classList.remove('hidden');
@@ -3099,6 +3176,7 @@
         let currentEvidenceItemId = null;
         let currentEvidenceItemType = 'risk'; // 'risk' or 'issue'
         let currentEvidenceCategory = 'planning'; // 'planning', 'de', 'oe', 'issue'
+        let currentEvidenceItemLocked = false; // Track if current item is locked
 
         async function loadAttachmentCounts() {
             // Load attachment counts for all issues
@@ -3129,19 +3207,29 @@
 
             const panel = document.getElementById('evidencePanel');
             const backdrop = document.getElementById('evidenceBackdrop');
+            const uploadSection = document.getElementById('evidenceUploadSection');
+            let isLocked = false;
 
             if (type === 'issue') {
-                // Get issue title
+                // Get issue title and check if locked
                 const data = issueTable.getData();
                 let issueTitle = '';
-                for (let row of data) {
-                    if (row[0] && row[0].toUpperCase() === itemId.toUpperCase()) {
-                        issueTitle = row[2] || 'No title';
+                let issueRow = -1;
+                for (let i = 0; i < data.length; i++) {
+                    if (data[i][0] && data[i][0].toUpperCase() === itemId.toUpperCase()) {
+                        issueTitle = data[i][2] || 'No title';
+                        issueRow = i;
                         break;
                     }
                 }
+                // Use server-computed permissions to determine edit access
+                const meta = issuesMetadata[issueRow];
+                const canEdit = meta && meta.permissions && meta.permissions.canEdit;
+                isLocked = !canEdit;
+                const readOnlyReason = isLocked ? `(${getEditBlockedMessage(meta, currentUserRole, isAdmin)})` : '';
+
                 document.getElementById('evidencePanelTitle').textContent = 'Issue Evidence';
-                document.getElementById('evidencePanelSubtitle').textContent = `${itemId} - ${issueTitle}`;
+                document.getElementById('evidencePanelSubtitle').textContent = `${itemId} - ${issueTitle}${readOnlyReason ? ' ' + readOnlyReason : ''}`;
                 // Show only Issue tab for issues
                 document.getElementById('tab-planning').classList.add('hidden');
                 document.getElementById('tab-de').classList.add('hidden');
@@ -3150,17 +3238,25 @@
                 currentEvidenceCategory = 'issue';
                 switchEvidenceTab('issue');
             } else {
-                // Get risk description
+                // Get risk description and check if locked
                 const data = table.getData();
                 let riskDesc = '';
-                for (let row of data) {
-                    if (row[0] && row[0].toUpperCase() === itemId.toUpperCase()) {
-                        riskDesc = row[1] || 'No description';
+                let riskRow = -1;
+                for (let i = 0; i < data.length; i++) {
+                    if (data[i][0] && data[i][0].toUpperCase() === itemId.toUpperCase()) {
+                        riskDesc = data[i][1] || 'No description';
+                        riskRow = i;
                         break;
                     }
                 }
+                // Use server-computed permissions to determine edit access
+                const meta = racmMetadata[riskRow];
+                const canEdit = meta && meta.permissions && meta.permissions.canEdit;
+                isLocked = !canEdit;
+                const readOnlyReason = isLocked ? `(${getEditBlockedMessage(meta, currentUserRole, isAdmin)})` : '';
+
                 document.getElementById('evidencePanelTitle').textContent = 'Risk Evidence & Working Papers';
-                document.getElementById('evidencePanelSubtitle').textContent = `${itemId} - ${riskDesc}`;
+                document.getElementById('evidencePanelSubtitle').textContent = `${itemId} - ${riskDesc}${readOnlyReason ? ' ' + readOnlyReason : ''}`;
                 // Show Planning, DE, OE tabs for risks
                 document.getElementById('tab-planning').classList.remove('hidden');
                 document.getElementById('tab-de').classList.remove('hidden');
@@ -3168,6 +3264,14 @@
                 document.getElementById('tab-issue').classList.add('hidden');
                 currentEvidenceCategory = 'planning';
                 switchEvidenceTab('planning');
+            }
+
+            // Store locked status for use in refresh functions
+            currentEvidenceItemLocked = isLocked;
+
+            // Hide upload section for locked records
+            if (uploadSection) {
+                uploadSection.style.display = isLocked ? 'none' : '';
             }
 
             // Show panel
@@ -3252,6 +3356,13 @@
                     const sizeKB = Math.round(att.file_size / 1024);
                     const sizeStr = sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)} MB` : `${sizeKB} KB`;
                     const icon = getFileIcon(att.mime_type);
+                    // Hide delete button for locked records
+                    const deleteButton = currentEvidenceItemLocked ? '' : `
+                            <button onclick="deleteEvidenceFile(${att.id})" class="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>`;
                     return `
                         <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
                             <div class="flex items-center gap-3">
@@ -3261,11 +3372,7 @@
                                     <p class="text-xs text-slate-500">${sizeStr} • ${new Date(att.uploaded_at).toLocaleDateString()}</p>
                                 </div>
                             </div>
-                            <button onclick="deleteEvidenceFile(${att.id})" class="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
-                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                            </button>
+                            ${deleteButton}
                         </div>
                     `;
                 }).join('');

@@ -1252,19 +1252,68 @@ def flowchart(flowchart_id=None):
     accessible_audits = get_user_accessible_audits()
     active_audit_id = get_active_audit_id()
     active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    is_admin = session.get('is_admin', False)
     return render_template('flowchart.html', flowchart_id=flowchart_id, active_page='flowchart',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit,
+                           is_admin=is_admin)
 
 @app.route('/api/flowchart/<flowchart_id>', methods=['GET'])
+@require_login
 def get_flowchart(flowchart_id):
-    """Get a flowchart by name."""
+    """Get a flowchart by name, including permissions for the linked risk."""
     fc = db.get_flowchart(flowchart_id)
-    return jsonify(fc['data'] if fc else None)
+    if not fc:
+        return jsonify(None)
+
+    # Get permissions for the linked risk
+    permissions = {'canEdit': False}
+    if fc.get('risk_id'):
+        # Get the risk record and audit context
+        conn = db._get_conn()
+        risk_row = conn.execute("SELECT * FROM risks WHERE id = ?", (fc['risk_id'],)).fetchone()
+        conn.close()
+
+        if risk_row:
+            risk = dict(risk_row)
+            user = get_current_user()
+            audit_id = risk.get('audit_id') or get_active_audit_id()
+            audit = db.get_audit(audit_id) if audit_id else None
+            audit_context = {
+                'id': audit_id,
+                'auditor_id': audit.get('auditor_id') if audit else None,
+                'reviewer_id': audit.get('reviewer_id') if audit else None
+            }
+            permissions = get_record_permissions(user, audit_context, risk)
+
+    return jsonify({
+        'data': fc['data'],
+        'permissions': permissions
+    })
 
 @app.route('/api/flowchart/<flowchart_id>', methods=['POST'])
+@require_login
 def save_flowchart(flowchart_id):
-    """Save a flowchart."""
-    # Thread-safe data version update
+    """Save a flowchart. Enforces edit permissions for the linked risk."""
+    # Check permissions for the linked risk
+    fc = db.get_flowchart(flowchart_id)
+    if fc and fc.get('risk_id'):
+        conn = db._get_conn()
+        risk_row = conn.execute("SELECT * FROM risks WHERE id = ?", (fc['risk_id'],)).fetchone()
+        conn.close()
+
+        if risk_row:
+            risk = dict(risk_row)
+            user = get_current_user()
+            audit_id = risk.get('audit_id') or get_active_audit_id()
+            audit = db.get_audit(audit_id) if audit_id else None
+            audit_context = {
+                'id': audit_id,
+                'auditor_id': audit.get('auditor_id') if audit else None,
+                'reviewer_id': audit.get('reviewer_id') if audit else None
+            }
+            if not can_edit_record(user, audit_context, risk):
+                return jsonify({'error': 'Cannot edit flowchart - record is not editable'}), 403
+
     db.save_flowchart(flowchart_id, request.json)
     increment_data_version()
     return jsonify({'status': 'saved'})
@@ -1292,16 +1341,31 @@ def get_test_document(risk_code, doc_type):
     return jsonify({'content': '', 'id': None})
 
 @app.route('/api/test-document/<risk_code>/<doc_type>', methods=['POST'])
+@require_login
 def save_test_document(risk_code, doc_type):
-    """Save a test document."""
-    # Thread-safe data version update
+    """Save a test document. Enforces edit permissions for the risk."""
     if doc_type not in ('de_testing', 'oe_testing'):
         return jsonify({'error': 'Invalid document type'}), 400
+
+    # Get the risk and check permissions
+    risk = db.get_risk(risk_code)
+    if not risk:
+        return jsonify({'error': 'Risk not found'}), 404
+
+    user = get_current_user()
+    audit_id = risk.get('audit_id') or get_active_audit_id()
+    audit = db.get_audit(audit_id) if audit_id else None
+    audit_context = {
+        'id': audit_id,
+        'auditor_id': audit.get('auditor_id') if audit else None,
+        'reviewer_id': audit.get('reviewer_id') if audit else None
+    }
+    if not can_edit_record(user, audit_context, risk):
+        return jsonify({'error': 'Cannot edit test document - record is not editable'}), 403
+
     data = request.json
     content = data.get('content', '')
     doc_id = db.save_test_document_by_risk_code(risk_code, doc_type, content)
-    if doc_id is None:
-        return jsonify({'error': 'Risk not found'}), 404
     increment_data_version()
     return jsonify({'status': 'saved', 'id': doc_id})
 
@@ -1853,8 +1917,25 @@ def get_issue_documentation(issue_id):
     return jsonify({'documentation': doc or '', 'has_documentation': has_doc})
 
 @app.route('/api/issues/<issue_id>/documentation', methods=['POST'])
+@require_login
 def save_issue_documentation(issue_id):
-    """Save documentation for an issue."""
+    """Save documentation for an issue. Enforces edit permissions."""
+    # Get the issue and check permissions
+    issue = db.get_issue(issue_id)
+    if not issue:
+        return not_found_response('Issue')
+
+    user = get_current_user()
+    audit_id = issue.get('audit_id') or get_active_audit_id()
+    audit = db.get_audit(audit_id) if audit_id else None
+    audit_context = {
+        'id': audit_id,
+        'auditor_id': audit.get('auditor_id') if audit else None,
+        'reviewer_id': audit.get('reviewer_id') if audit else None
+    }
+    if not can_edit_record(user, audit_context, issue):
+        return jsonify({'error': 'Cannot edit issue documentation - record is not editable'}), 403
+
     data = request.json
     documentation = data.get('documentation', '')
     if db.save_issue_documentation(issue_id, documentation):
@@ -1936,8 +2017,25 @@ def get_issue_attachments(issue_id):
     return jsonify(attachments)
 
 @app.route('/api/issues/<issue_id>/attachments', methods=['POST'])
+@require_login
 def upload_issue_attachment(issue_id):
-    """Upload a file attachment for an issue."""
+    """Upload a file attachment for an issue. Enforces edit permissions."""
+    # Get the issue and check permissions
+    issue = db.get_issue(issue_id)
+    if not issue:
+        return not_found_response('Issue')
+
+    user = get_current_user()
+    audit_id = issue.get('audit_id') or get_active_audit_id()
+    audit = db.get_audit(audit_id) if audit_id else None
+    audit_context = {
+        'id': audit_id,
+        'auditor_id': audit.get('auditor_id') if audit else None,
+        'reviewer_id': audit.get('reviewer_id') if audit else None
+    }
+    if not can_edit_record(user, audit_context, issue):
+        return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
+
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
@@ -1983,11 +2081,26 @@ def download_attachment(attachment_id):
     )
 
 @app.route('/api/attachments/<int:attachment_id>', methods=['DELETE'])
+@require_login
 def delete_attachment(attachment_id):
-    """Delete an attachment."""
+    """Delete an issue attachment. Enforces edit permissions on the parent issue."""
     attachment = db.get_attachment(attachment_id)
     if not attachment:
         return not_found_response('Attachment')
+
+    # Get the parent issue and check permissions
+    issue = db.get_issue(attachment.get('issue_id'))
+    if issue:
+        user = get_current_user()
+        audit_id = issue.get('audit_id') or get_active_audit_id()
+        audit = db.get_audit(audit_id) if audit_id else None
+        audit_context = {
+            'id': audit_id,
+            'auditor_id': audit.get('auditor_id') if audit else None,
+            'reviewer_id': audit.get('reviewer_id') if audit else None
+        }
+        if not can_edit_record(user, audit_context, issue):
+            return jsonify({'error': 'Cannot delete attachment - record is not editable'}), 403
 
     # Delete file from disk
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], attachment['filename'])
@@ -2008,8 +2121,25 @@ def get_risk_attachments(risk_id):
     return jsonify(attachments)
 
 @app.route('/api/risks/<risk_id>/attachments', methods=['POST'])
+@require_login
 def upload_risk_attachment(risk_id):
-    """Upload a file attachment for a risk."""
+    """Upload a file attachment for a risk. Enforces edit permissions."""
+    # Get the risk and check permissions
+    risk = db.get_risk(risk_id)
+    if not risk:
+        return not_found_response('Risk')
+
+    user = get_current_user()
+    audit_id = risk.get('audit_id') or get_active_audit_id()
+    audit = db.get_audit(audit_id) if audit_id else None
+    audit_context = {
+        'id': audit_id,
+        'auditor_id': audit.get('auditor_id') if audit else None,
+        'reviewer_id': audit.get('reviewer_id') if audit else None
+    }
+    if not can_edit_record(user, audit_context, risk):
+        return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
+
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
@@ -2060,11 +2190,26 @@ def download_risk_attachment(attachment_id):
     )
 
 @app.route('/api/risk-attachments/<int:attachment_id>', methods=['DELETE'])
+@require_login
 def delete_risk_attachment(attachment_id):
-    """Delete a risk attachment."""
+    """Delete a risk attachment. Enforces edit permissions on the parent risk."""
     attachment = db.get_risk_attachment(attachment_id)
     if not attachment:
         return not_found_response('Attachment')
+
+    # Get the parent risk and check permissions
+    risk = db.get_risk(attachment.get('risk_id'))
+    if risk:
+        user = get_current_user()
+        audit_id = risk.get('audit_id') or get_active_audit_id()
+        audit = db.get_audit(audit_id) if audit_id else None
+        audit_context = {
+            'id': audit_id,
+            'auditor_id': audit.get('auditor_id') if audit else None,
+            'reviewer_id': audit.get('reviewer_id') if audit else None
+        }
+        if not can_edit_record(user, audit_context, risk):
+            return jsonify({'error': 'Cannot delete attachment - record is not editable'}), 403
 
     # Delete file from disk
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], attachment['filename'])

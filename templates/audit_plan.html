@@ -665,11 +665,8 @@
         }
 
         function addAudit() {
-            if (currentTab === 'spreadsheet') {
-                spreadsheet.insertRow(1);
-            } else {
-                openEditModal(null);
-            }
+            // Always open the edit modal panel for adding new audits
+            openEditModal(null);
         }
 
         function openEditModal(auditId) {
