@@ -261,8 +261,12 @@ class TestNavigation:
         """Clicking Admin should navigate to admin page."""
         page = logged_in_page
 
-        # Admin link may be in dropdown - force click
-        page.locator('a[href="/admin"]').click(force=True)
+        # Admin link is in user dropdown - first open the dropdown
+        page.locator('#user-dropdown-container button').click()
+        page.wait_for_timeout(300)  # Wait for dropdown animation
+
+        # Now click the admin link
+        page.locator('a[href="/admin"]').click()
         page.wait_for_load_state('networkidle')
 
         expect(page).to_have_url(f"{base_url}/admin")
