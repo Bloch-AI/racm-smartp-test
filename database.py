@@ -1875,7 +1875,7 @@ class RACMDatabase:
         """Get a user by ID."""
         conn = self._get_conn()
         row = conn.execute("""
-            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at
+            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at, role
             FROM users WHERE id = ?
         """, (user_id,)).fetchone()
         conn.close()
@@ -1885,7 +1885,7 @@ class RACMDatabase:
         """Get a user by email (for login)."""
         conn = self._get_conn()
         row = conn.execute("""
-            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at
+            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at, role
             FROM users WHERE email = ?
         """, (email.lower(),)).fetchone()
         conn.close()

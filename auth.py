@@ -69,9 +69,9 @@ def require_login(f):
 
 
 def require_non_viewer(f):
-    """Decorator that blocks viewer role from accessing certain features (e.g., AI).
+    """Decorator that blocks viewer role from write/modify operations.
 
-    Viewers have limited access - no AI, only view assigned audits.
+    Viewers have read-only access - they cannot modify data or use AI features.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -84,8 +84,8 @@ def require_non_viewer(f):
         user_role = get_user_role(user)
         if user_role == 'viewer':
             if request.path.startswith('/api/'):
-                return jsonify({'error': 'AI access is not available for viewers'}), 403
-            return "Access denied. AI features are not available for viewers.", 403
+                return jsonify({'error': 'View only - viewers cannot modify data'}), 403
+            return "Access denied. Viewers have read-only access.", 403
 
         return f(*args, **kwargs)
     return decorated_function

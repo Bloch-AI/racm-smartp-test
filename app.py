@@ -1397,8 +1397,12 @@ def audit_plan():
     accessible_audits = get_user_accessible_audits()
     active_audit_id = get_active_audit_id()
     active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    user = get_current_user()
+    user_role = get_user_role(user) if user else None
+    is_admin = session.get('is_admin', False)
     return render_template('audit_plan.html', active_page='audit-plan',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
+                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit,
+                           user_role=user_role, is_admin=is_admin)
 
 
 # ==================== Annual Audit Plan API ====================
@@ -1411,6 +1415,8 @@ def get_audits():
 
 
 @app.route('/api/audits', methods=['POST'])
+@require_login
+@require_non_viewer
 def create_audit():
     """Create a new audit in the annual plan."""
     data = request.json
@@ -1446,6 +1452,8 @@ def get_audit(audit_id):
 
 
 @app.route('/api/audits/<int:audit_id>', methods=['PUT'])
+@require_login
+@require_non_viewer
 def update_audit(audit_id):
     """Update an audit. Only updates fields present in the request."""
     audit = db.get_audit(audit_id)
@@ -1466,6 +1474,8 @@ def update_audit(audit_id):
 
 
 @app.route('/api/audits/<int:audit_id>', methods=['DELETE'])
+@require_login
+@require_non_viewer
 def delete_audit(audit_id):
     """Delete an audit from the annual plan."""
     deleted = db.delete_audit(audit_id)
@@ -1483,6 +1493,8 @@ def get_audits_spreadsheet():
 
 
 @app.route('/api/audits/spreadsheet', methods=['POST'])
+@require_login
+@require_non_viewer
 def save_audits_spreadsheet():
     """Save audits from spreadsheet format."""
     data = request.json
@@ -2230,6 +2242,8 @@ def get_audit_attachments(audit_id):
     return jsonify(attachments)
 
 @app.route('/api/audits/<int:audit_id>/attachments', methods=['POST'])
+@require_login
+@require_non_viewer
 def upload_audit_attachment(audit_id):
     """Upload a file attachment for an audit."""
     if 'file' not in request.files:
@@ -2275,6 +2289,8 @@ def download_audit_attachment(attachment_id):
     )
 
 @app.route('/api/audit-attachments/<int:attachment_id>', methods=['DELETE'])
+@require_login
+@require_non_viewer
 def delete_audit_attachment(attachment_id):
     """Delete an audit attachment."""
     attachment = db.get_audit_attachment(attachment_id)
