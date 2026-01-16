@@ -137,8 +137,18 @@ def extract_text_from_file(filepath: str, mime_type: str = None) -> str:
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'smartpapers-dev-key-change-in-production')
 
+# Session security configuration
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 # Claude API key - set via environment variable
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
+# Rate limiting for login attempts (in-memory, simple implementation)
+LOGIN_ATTEMPTS = {}  # {ip: {'count': int, 'last_attempt': datetime}}
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 15
 
 # File upload configuration
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
@@ -150,6 +160,60 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
 # Ensure upload folder exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+# ==================== Security Middleware ====================
+
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses."""
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # Prevent clickjacking
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    # Enable XSS filter
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # Referrer policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # Permissions policy (disable sensitive features)
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    return response
+
+
+def check_rate_limit(ip_address: str) -> tuple:
+    """Check if IP is rate limited for login attempts.
+    Returns (is_allowed, remaining_attempts, lockout_seconds)
+    """
+    from datetime import timedelta
+    now = datetime.now()
+
+    if ip_address in LOGIN_ATTEMPTS:
+        attempt_data = LOGIN_ATTEMPTS[ip_address]
+        lockout_end = attempt_data['last_attempt'] + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+
+        if attempt_data['count'] >= MAX_LOGIN_ATTEMPTS:
+            if now < lockout_end:
+                remaining_seconds = (lockout_end - now).total_seconds()
+                return False, 0, int(remaining_seconds)
+            else:
+                # Lockout expired, reset
+                LOGIN_ATTEMPTS[ip_address] = {'count': 0, 'last_attempt': now}
+
+    return True, MAX_LOGIN_ATTEMPTS - LOGIN_ATTEMPTS.get(ip_address, {}).get('count', 0), 0
+
+
+def record_login_attempt(ip_address: str, success: bool):
+    """Record a login attempt for rate limiting."""
+    now = datetime.now()
+
+    if success:
+        # Clear attempts on successful login
+        LOGIN_ATTEMPTS.pop(ip_address, None)
+    else:
+        if ip_address not in LOGIN_ATTEMPTS:
+            LOGIN_ATTEMPTS[ip_address] = {'count': 0, 'last_attempt': now}
+        LOGIN_ATTEMPTS[ip_address]['count'] += 1
+        LOGIN_ATTEMPTS[ip_address]['last_attempt'] = now
 
 
 @app.context_processor
@@ -372,6 +436,15 @@ def login():
     error = request.args.get('error')
 
     if request.method == 'POST':
+        # Rate limiting check
+        client_ip = request.remote_addr or '127.0.0.1'
+        is_allowed, remaining, lockout_seconds = check_rate_limit(client_ip)
+
+        if not is_allowed:
+            minutes = lockout_seconds // 60
+            return render_template('login.html',
+                error=f'Too many failed attempts. Please try again in {minutes} minutes.')
+
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
 
@@ -381,15 +454,18 @@ def login():
         user = db.get_user_by_email(email)
 
         if not user:
+            record_login_attempt(client_ip, success=False)
             return render_template('login.html', error='Invalid email or password')
 
         if not check_password(password, user['password_hash']):
+            record_login_attempt(client_ip, success=False)
             return render_template('login.html', error='Invalid email or password')
 
         if not user['is_active']:
             return render_template('login.html', error='Your account has been deactivated')
 
-        # Login successful
+        # Login successful - clear rate limit
+        record_login_attempt(client_ip, success=True)
         login_user(user['id'], user['email'], user['name'], user['is_admin'])
 
         # Set default active audit if user has access to any
@@ -397,8 +473,11 @@ def login():
         if accessible_audits and not get_active_audit_id():
             set_active_audit(accessible_audits[0]['id'])
 
-        # Redirect to original destination or home
-        next_url = request.args.get('next') or url_for('index')
+        # Redirect to original destination or home (prevent open redirect)
+        next_url = request.args.get('next', '')
+        if next_url and not next_url.startswith('/'):
+            next_url = url_for('index')  # Reject absolute URLs
+        next_url = next_url or url_for('index')
         return redirect(next_url)
 
     return render_template('login.html', error=error)
@@ -582,10 +661,16 @@ def get_risk(risk_id):
 @app.route('/api/risks', methods=['POST'])
 def create_risk():
     """Create a new risk."""
+    data = request.json or {}
+
+    # Validate required field
+    risk_id = data.get('risk_id', '').strip() if data.get('risk_id') else ''
+    if not risk_id:
+        return jsonify({'error': 'risk_id is required'}), 400
+
     # Thread-safe data version update
-    data = request.json
     new_id = db.create_risk(
-        risk_id=data.get('risk_id'),
+        risk_id=risk_id,
         risk=data.get('risk', data.get('risk_description', '')),
         control_id=data.get('control_id', data.get('control_description', '')),
         control_owner=data.get('control_owner', ''),
@@ -1045,15 +1130,26 @@ def get_kanban_task(board_id, task_id):
 def update_kanban_task(board_id, task_id):
     """Update a specific task."""
     # Thread-safe data version update
-    data = request.json
-    db.update_task(int(task_id), **{
-        'title': data.get('title'),
-        'description': data.get('description'),
-        'priority': data.get('priority'),
-        'assignee': data.get('assignee'),
-        'column_id': data.get('column')
-    })
-    increment_data_version()
+    data = request.json or {}
+
+    # Only include fields that were actually provided
+    updates = {}
+    if 'title' in data:
+        updates['title'] = data['title']
+    if 'description' in data:
+        updates['description'] = data['description']
+    if 'priority' in data:
+        updates['priority'] = data['priority']
+    if 'assignee' in data:
+        updates['assignee'] = data['assignee']
+    if 'column' in data:
+        updates['column_id'] = data['column']
+    if 'column_id' in data:
+        updates['column_id'] = data['column_id']
+
+    if updates:
+        db.update_task(int(task_id), **updates)
+        increment_data_version()
     return jsonify({'status': 'updated'})
 
 # ==================== Tasks API (direct access) ====================
@@ -1110,8 +1206,13 @@ def query_database():
     try:
         results = db.execute_query(sql)
         return jsonify({'results': results})
-    except Exception as e:
+    except ValueError as e:
+        # Validation errors (forbidden keywords) - safe to return
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        # Log the full error but return generic message
+        app.logger.error(f"SQL query error: {e}")
+        return jsonify({'error': 'Query execution failed'}), 400
 
 @app.route('/api/schema', methods=['GET'])
 @require_login
@@ -2011,11 +2112,15 @@ def chat():
         return jsonify({'response': final_response, 'data_version': get_data_version()})
 
     except anthropic.AuthenticationError:
-        return jsonify({'error': 'Invalid API key'})
+        return jsonify({'error': 'AI service authentication failed. Please check API key configuration.'}), 401
+    except anthropic.RateLimitError:
+        return jsonify({'error': 'AI service rate limit exceeded. Please try again in a moment.'}), 429
+    except anthropic.APIError as e:
+        app.logger.error(f"Anthropic API error: {e}")
+        return jsonify({'error': 'AI service temporarily unavailable.'}), 503
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)})
+        app.logger.error(f"Chat error: {e}")
+        return jsonify({'error': 'An error occurred processing your request.'}), 500
 
 
 def execute_tool(tool_name, tool_input):
@@ -2614,8 +2719,16 @@ def send_felix_message(conv_id):
     # Call Claude API with attachments context
     try:
         response_text = call_felix_ai(history, attachments)
+    except anthropic.AuthenticationError:
+        return jsonify({'error': 'AI service authentication failed.'}), 401
+    except anthropic.RateLimitError:
+        return jsonify({'error': 'AI service rate limit exceeded. Please try again.'}), 429
+    except anthropic.APIError as e:
+        app.logger.error(f"Felix API error: {e}")
+        return jsonify({'error': 'AI service temporarily unavailable.'}), 503
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f"Felix chat error: {e}")
+        return jsonify({'error': 'An error occurred processing your message.'}), 500
 
     # Save assistant response and update conversation
     with db._connection() as conn:

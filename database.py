@@ -261,6 +261,42 @@ class RACMDatabase:
             );
             CREATE INDEX IF NOT EXISTS idx_memberships_audit ON audit_memberships(audit_id);
             CREATE INDEX IF NOT EXISTS idx_memberships_user ON audit_memberships(user_id);
+
+            -- Felix AI Conversations
+            CREATE TABLE IF NOT EXISTS felix_conversations (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT 'default_user',
+                title TEXT DEFAULT 'New Chat',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_felix_conversations_user ON felix_conversations(user_id);
+
+            -- Felix AI Messages
+            CREATE TABLE IF NOT EXISTS felix_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES felix_conversations(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_felix_messages_conv ON felix_messages(conversation_id);
+
+            -- Felix AI Attachments
+            CREATE TABLE IF NOT EXISTS felix_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_type TEXT,
+                file_size INTEGER,
+                mime_type TEXT,
+                extracted_text TEXT,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES felix_conversations(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_felix_attachments_conv ON felix_attachments(conversation_id);
         """)
         conn.commit()
 
@@ -2099,11 +2135,20 @@ class RACMDatabase:
         if not sql_upper.startswith('SELECT'):
             raise ValueError("Only SELECT queries allowed")
 
-        # Block dangerous keywords that could modify data
+        # Strip SQL comments that could hide malicious keywords
+        sql_no_comments = re.sub(r'/\*.*?\*/', '', sql_clean, flags=re.DOTALL)
+        sql_no_comments = re.sub(r'--.*$', '', sql_no_comments, flags=re.MULTILINE)
+        sql_upper = sql_no_comments.upper()
+
+        # Block dangerous keywords that could modify data or exfiltrate info
         dangerous_keywords = [
             'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
             'TRUNCATE', 'EXEC', 'EXECUTE', 'GRANT', 'REVOKE', 'ATTACH',
-            'DETACH', 'PRAGMA', 'VACUUM', 'REINDEX'
+            'DETACH', 'PRAGMA', 'VACUUM', 'REINDEX',
+            'UNION',  # Prevent data exfiltration via UNION queries
+            'INTO',   # Prevent SELECT INTO
+            'LOAD',   # Prevent LOAD DATA
+            'OUTFILE' # Prevent file writes
         ]
         for keyword in dangerous_keywords:
             # Check for keyword as whole word (not part of column name)
