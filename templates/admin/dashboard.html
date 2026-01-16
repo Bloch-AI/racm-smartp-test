@@ -58,6 +58,7 @@
 .badge-red { background: #fee2e2; color: #b91c1c; }
 .badge-blue { background: #dbeafe; color: #1d4ed8; }
 .badge-slate { background: #f1f5f9; color: #475569; }
+.badge-amber { background: #fef3c7; color: #92400e; }
 {% endblock %}
 
 {% block content %}
@@ -86,6 +87,14 @@
                             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         Audit Access
+                    </span>
+                </button>
+                <button class="admin-tab-btn" data-tab="records" onclick="switchAdminTab('records')">
+                    <span class="flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        Record Overrides
                     </span>
                 </button>
             </div>
@@ -124,6 +133,85 @@
             <div class="grid gap-4">
                 <div id="audits-list" class="space-y-3">
                     <div class="text-center text-slate-400 py-8">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Records Tab -->
+        <div id="records-tab" class="tab-content hidden">
+            <!-- Records on Hold Section -->
+            <div class="mb-8">
+                <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+                    Records on Admin Hold
+                </h2>
+                <div id="records-on-hold" class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>ID</th>
+                                <th>Audit</th>
+                                <th>Locked By</th>
+                                <th>Locked At</th>
+                                <th>Reason</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hold-records-table">
+                            <tr><td colspan="7" class="text-center text-slate-400 py-8">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Signed Off Records Section -->
+            <div class="mb-8">
+                <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                    Signed Off Records
+                </h2>
+                <div id="signed-off-records" class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>ID</th>
+                                <th>Audit</th>
+                                <th>Signed Off By</th>
+                                <th>Signed Off At</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="signedoff-records-table">
+                            <tr><td colspan="6" class="text-center text-slate-400 py-8">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent Audit Log Section -->
+            <div>
+                <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-blue-500 rounded-full"></span>
+                    Recent Workflow Changes
+                </h2>
+                <div id="audit-log" class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Type</th>
+                                <th>Record ID</th>
+                                <th>Action</th>
+                                <th>User</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-log-table">
+                            <tr><td colspan="6" class="text-center text-slate-400 py-8">Loading...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -236,6 +324,11 @@ function switchAdminTab(tab) {
 
     // Show/hide add button
     document.getElementById('addUserBtn').style.display = tab === 'users' ? '' : 'none';
+
+    // Load records data when switching to records tab
+    if (tab === 'records') {
+        loadRecordsData();
+    }
 }
 
 // Load data
@@ -462,6 +555,181 @@ async function removeMember(auditId, userId) {
     if (res.ok) {
         showToast('Member removed', 'success');
         loadMembers(auditId);
+    }
+}
+
+// ==================== Records Tab Functions ====================
+
+let recordsOnHold = [];
+let signedOffRecords = [];
+let auditLog = [];
+
+async function loadRecordsData() {
+    try {
+        const [holdRes, logRes] = await Promise.all([
+            fetch('/api/admin/records-in-hold'),
+            fetch('/api/admin/audit-log')
+        ]);
+        recordsOnHold = await holdRes.json();
+        auditLog = await logRes.json();
+
+        // Extract signed-off records from audit log (latest entries with signed_off status)
+        // We'll use the workflow summary from each audit for signed-off records
+        signedOffRecords = recordsOnHold.filter(r => r.record_status === 'signed_off');
+        recordsOnHold = recordsOnHold.filter(r => r.record_status === 'admin_hold');
+
+        renderRecordsOnHold();
+        renderSignedOffRecords();
+        renderAuditLog();
+    } catch (err) {
+        console.error('Error loading records data:', err);
+    }
+}
+
+function renderRecordsOnHold() {
+    const tbody = document.getElementById('hold-records-table');
+    if (recordsOnHold.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-400 py-8">No records on hold</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = recordsOnHold.map(record => `
+        <tr>
+            <td><span class="badge badge-blue">${escapeHtml(record.record_type || 'risk')}</span></td>
+            <td class="font-mono text-sm">${escapeHtml(record.risk_id || record.issue_id || record.id)}</td>
+            <td>${escapeHtml(record.audit_title || '-')}</td>
+            <td>${escapeHtml(record.locked_by_name || '-')}</td>
+            <td class="text-slate-500">${record.admin_locked_at ? new Date(record.admin_locked_at).toLocaleString() : '-'}</td>
+            <td class="text-sm max-w-xs truncate">${escapeHtml(record.admin_lock_reason || '-')}</td>
+            <td class="text-right">
+                <button onclick="unlockRecord('${record.record_type || 'risk'}', ${record.id})"
+                        class="text-sm text-primary-600 hover:text-primary-700 font-medium">
+                    Unlock
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderSignedOffRecords() {
+    const tbody = document.getElementById('signedoff-records-table');
+    if (signedOffRecords.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-8">No signed-off records</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = signedOffRecords.map(record => `
+        <tr>
+            <td><span class="badge badge-green">${escapeHtml(record.record_type || 'risk')}</span></td>
+            <td class="font-mono text-sm">${escapeHtml(record.risk_id || record.issue_id || record.id)}</td>
+            <td>${escapeHtml(record.audit_title || '-')}</td>
+            <td>${escapeHtml(record.signed_off_by_name || '-')}</td>
+            <td class="text-slate-500">${record.signed_off_at ? new Date(record.signed_off_at).toLocaleString() : '-'}</td>
+            <td class="text-right">
+                <button onclick="unlockSignoff('${record.record_type || 'risk'}', ${record.id})"
+                        class="text-sm text-red-600 hover:text-red-700 font-medium">
+                    Unlock Sign-off
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderAuditLog() {
+    const tbody = document.getElementById('audit-log-table');
+    if (auditLog.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-8">No recent changes</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = auditLog.map(entry => {
+        const actionBadgeClass = {
+            'submit_for_review': 'badge-blue',
+            'return_to_auditor': 'badge-slate',
+            'sign_off': 'badge-green',
+            'admin_lock': 'badge-red',
+            'admin_unlock': 'badge-slate',
+            'admin_unlock_signoff': 'badge-red'
+        }[entry.action] || 'badge-slate';
+
+        return `
+            <tr>
+                <td class="text-slate-500 text-sm">${entry.created_at ? new Date(entry.created_at).toLocaleString() : '-'}</td>
+                <td><span class="badge badge-blue">${escapeHtml(entry.record_type || 'risk')}</span></td>
+                <td class="font-mono text-sm">${entry.record_id}</td>
+                <td><span class="badge ${actionBadgeClass}">${formatAction(entry.action)}</span></td>
+                <td>${escapeHtml(entry.user_name || '-')}</td>
+                <td class="text-sm max-w-xs truncate">${escapeHtml(entry.notes || '-')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function formatAction(action) {
+    const labels = {
+        'submit_for_review': 'Submit for Review',
+        'return_to_auditor': 'Return to Auditor',
+        'sign_off': 'Sign Off',
+        'admin_lock': 'Admin Lock',
+        'admin_unlock': 'Admin Unlock',
+        'admin_unlock_signoff': 'Unlock Sign-off'
+    };
+    return labels[action] || action;
+}
+
+async function unlockRecord(recordType, recordId) {
+    const reason = prompt('Enter reason for unlocking:');
+    if (!reason) return;
+
+    const returnTo = confirm('Return to In Review? (Cancel for Draft)') ? 'in_review' : 'draft';
+
+    try {
+        const res = await fetch(`/api/admin/records/${recordType}/${recordId}/unlock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason, return_to: returnTo })
+        });
+
+        if (res.ok) {
+            showToast('Record unlocked', 'success');
+            loadRecordsData();
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Error unlocking record', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
+    }
+}
+
+async function unlockSignoff(recordType, recordId) {
+    const reason = prompt('Enter reason for unlocking signed-off record:');
+    if (!reason) return;
+
+    const confirmation = prompt('Type "UNLOCK SIGNED OFF" to confirm:');
+    if (confirmation !== 'UNLOCK SIGNED OFF') {
+        showToast('Confirmation required', 'error');
+        return;
+    }
+
+    const returnTo = confirm('Return to In Review? (Cancel for Draft)') ? 'in_review' : 'draft';
+
+    try {
+        const res = await fetch(`/api/admin/records/${recordType}/${recordId}/unlock-signoff`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason, return_to: returnTo, confirmation })
+        });
+
+        if (res.ok) {
+            showToast('Signed-off record unlocked', 'success');
+            loadRecordsData();
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Error unlocking record', 'error');
+        }
+    } catch (err) {
+        showToast('Network error', 'error');
     }
 }
 

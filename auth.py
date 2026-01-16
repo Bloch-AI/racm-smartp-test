@@ -234,3 +234,284 @@ def hash_password(password):
     """Hash a password for storage."""
     from werkzeug.security import generate_password_hash
     return generate_password_hash(password, method='pbkdf2:sha256')
+
+
+# ==================== WORKFLOW PERMISSION FUNCTIONS ====================
+
+def get_user_role(user):
+    """Get the user's role from the database (not from session).
+
+    Returns: 'admin', 'auditor', 'reviewer', 'viewer'
+    """
+    if not user:
+        return None
+
+    # Admin takes precedence (for backward compatibility with is_admin flag)
+    if user.get('is_admin'):
+        return 'admin'
+
+    # Get role from user record if present
+    db = get_db()
+    full_user = db.get_user_by_id(user['id'])
+    if full_user:
+        return full_user.get('role') or 'viewer'
+
+    return 'viewer'
+
+
+def can_view_audit(user, audit):
+    """Check if user can view an audit.
+
+    Returns True if:
+    - User is admin
+    - User is assigned as auditor for the audit
+    - User is assigned as reviewer for the audit
+    - User has viewer access granted via audit_viewers table
+    - User has membership in the audit (legacy)
+    """
+    if not user or not audit:
+        return False
+
+    # Admin can view all
+    if user.get('is_admin'):
+        return True
+
+    user_id = user['id']
+    audit_id = audit['id'] if isinstance(audit, dict) else audit
+
+    # Check direct assignment
+    if audit.get('auditor_id') == user_id:
+        return True
+    if audit.get('reviewer_id') == user_id:
+        return True
+
+    # Check viewer access
+    db = get_db()
+    if db.is_viewer_of_audit(user_id, audit_id):
+        return True
+
+    # Check legacy membership
+    if db.user_has_audit_access(user_id, audit_id, 'viewer'):
+        return True
+
+    return False
+
+
+def can_edit_record(user, audit, record):
+    """Check if user can edit a specific record based on its workflow status.
+
+    Edit permission depends on:
+    - Record status (draft, in_review, admin_hold, signed_off)
+    - User role and assignment
+    - Only ONE role can edit at a time based on current_owner_role
+
+    Returns True if user can edit the record.
+    """
+    if not user or not audit or not record:
+        return False
+
+    # Admin cannot directly edit - must unlock first if needed
+    # (Admin uses separate override endpoints)
+
+    record_status = record.get('record_status') or 'draft'
+
+    # Signed-off and admin_hold records cannot be edited
+    if record_status in ('signed_off', 'admin_hold'):
+        return False
+
+    user_id = user['id']
+    user_role = get_user_role(user)
+
+    # Draft records: only assigned auditor can edit
+    if record_status == 'draft':
+        return (user_role == 'auditor' and
+                audit.get('auditor_id') == user_id)
+
+    # In-review records: only assigned reviewer can edit
+    if record_status == 'in_review':
+        return (user_role == 'reviewer' and
+                audit.get('reviewer_id') == user_id)
+
+    return False
+
+
+def can_transition_record(user, audit, record, action):
+    """Check if user can perform a specific state transition.
+
+    Actions:
+    - submit_for_review: auditor submits draft -> in_review
+    - return_to_auditor: reviewer returns in_review -> draft
+    - sign_off: reviewer signs off in_review -> signed_off
+    - admin_lock: admin locks any -> admin_hold
+    - admin_unlock: admin unlocks admin_hold -> draft/in_review
+    - admin_unlock_signoff: admin unlocks signed_off -> draft/in_review
+
+    Returns True if the transition is allowed.
+    """
+    if not user or not audit or not record:
+        return False
+
+    record_status = record.get('record_status') or 'draft'
+    user_id = user['id']
+    user_role = get_user_role(user)
+
+    transitions = {
+        'submit_for_review': lambda: (
+            record_status == 'draft' and
+            user_role == 'auditor' and
+            audit.get('auditor_id') == user_id
+        ),
+        'return_to_auditor': lambda: (
+            record_status == 'in_review' and
+            user_role == 'reviewer' and
+            audit.get('reviewer_id') == user_id
+        ),
+        'sign_off': lambda: (
+            record_status == 'in_review' and
+            user_role == 'reviewer' and
+            audit.get('reviewer_id') == user_id
+        ),
+        'admin_lock': lambda: (
+            user_role == 'admin' and
+            record_status not in ('admin_hold',)
+        ),
+        'admin_unlock': lambda: (
+            user_role == 'admin' and
+            record_status == 'admin_hold'
+        ),
+        'admin_unlock_signoff': lambda: (
+            user_role == 'admin' and
+            record_status == 'signed_off'
+        ),
+    }
+
+    check = transitions.get(action)
+    return check() if check else False
+
+
+def get_record_permissions(user, audit, record):
+    """Get all permissions for a record in one call.
+
+    Returns a dict with boolean flags for each permission.
+    Useful for client-side rendering of action buttons.
+    """
+    if not user or not audit or not record:
+        return {
+            'canView': False,
+            'canEdit': False,
+            'canSubmitForReview': False,
+            'canReturnToAuditor': False,
+            'canSignOff': False,
+            'canAdminLock': False,
+            'canAdminUnlock': False,
+            'canAdminUnlockSignoff': False
+        }
+
+    return {
+        'canView': can_view_audit(user, audit),
+        'canEdit': can_edit_record(user, audit, record),
+        'canSubmitForReview': can_transition_record(user, audit, record, 'submit_for_review'),
+        'canReturnToAuditor': can_transition_record(user, audit, record, 'return_to_auditor'),
+        'canSignOff': can_transition_record(user, audit, record, 'sign_off'),
+        'canAdminLock': can_transition_record(user, audit, record, 'admin_lock'),
+        'canAdminUnlock': can_transition_record(user, audit, record, 'admin_unlock'),
+        'canAdminUnlockSignoff': can_transition_record(user, audit, record, 'admin_unlock_signoff')
+    }
+
+
+# ==================== RECORD PERMISSION DECORATOR ====================
+
+def require_record_edit(record_type):
+    """Decorator that checks if user can edit the specified record.
+
+    Usage:
+        @app.route('/api/risks/<int:record_id>', methods=['PUT'])
+        @require_login
+        @require_record_edit('risk')
+        def update_risk(record_id):
+            ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = get_current_user()
+            if not user:
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Authentication required'}), 401
+                return redirect(url_for('login', next=request.url))
+
+            # Get record_id from kwargs
+            record_id = kwargs.get('record_id') or kwargs.get('risk_id') or kwargs.get('issue_id')
+            if not record_id:
+                return jsonify({'error': 'Record ID required'}), 400
+
+            db = get_db()
+            record = db.get_record_with_audit(record_type, record_id)
+            if not record:
+                return jsonify({'error': 'Record not found'}), 404
+
+            # Build audit dict from record data
+            audit = {
+                'id': record.get('audit_id'),
+                'auditor_id': record.get('auditor_id'),
+                'reviewer_id': record.get('reviewer_id')
+            }
+
+            if not can_edit_record(user, audit, record):
+                return jsonify({'error': 'Cannot edit record in current state'}), 403
+
+            # Store record and audit in g for the handler to use
+            g.record = record
+            g.audit = audit
+
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def require_transition(record_type, action):
+    """Decorator that checks if user can perform a state transition.
+
+    Usage:
+        @app.route('/api/records/risk/<int:record_id>/submit-for-review', methods=['POST'])
+        @require_login
+        @require_transition('risk', 'submit_for_review')
+        def submit_risk_for_review(record_id):
+            ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = get_current_user()
+            if not user:
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Authentication required'}), 401
+                return redirect(url_for('login', next=request.url))
+
+            # Get record_id from kwargs
+            record_id = kwargs.get('record_id') or kwargs.get('risk_id') or kwargs.get('issue_id')
+            if not record_id:
+                return jsonify({'error': 'Record ID required'}), 400
+
+            db = get_db()
+            record = db.get_record_with_audit(record_type, record_id)
+            if not record:
+                return jsonify({'error': 'Record not found'}), 404
+
+            # Build audit dict from record data
+            audit = {
+                'id': record.get('audit_id'),
+                'auditor_id': record.get('auditor_id'),
+                'reviewer_id': record.get('reviewer_id')
+            }
+
+            if not can_transition_record(user, audit, record, action):
+                return jsonify({'error': f'Cannot perform {action} on this record'}), 403
+
+            # Store record and audit in g for the handler to use
+            g.record = record
+            g.audit = audit
+
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator

@@ -440,6 +440,140 @@ class RACMDatabase:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_risk_row ON issues(risk_row_id)")
         conn.commit()
 
+        # ==================== WORKFLOW STATE MIGRATIONS ====================
+
+        # Migration: Add role column to users table
+        try:
+            conn.execute("SELECT role FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'viewer'")
+            # Migrate existing data: is_admin=1 becomes role='admin', others become 'auditor'
+            conn.execute("UPDATE users SET role = 'admin' WHERE is_admin = 1")
+            conn.execute("UPDATE users SET role = 'auditor' WHERE is_admin = 0 AND role IS NULL")
+            conn.commit()
+
+        # Migration: Add auditor_id and reviewer_id to audits table
+        for col in ['auditor_id', 'reviewer_id', 'created_by']:
+            try:
+                conn.execute(f"SELECT {col} FROM audits LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute(f"ALTER TABLE audits ADD COLUMN {col} INTEGER")
+                conn.commit()
+
+        # Create indexes for audit assignments
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audits_auditor ON audits(auditor_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audits_reviewer ON audits(reviewer_id)")
+        conn.commit()
+
+        # Migration: Add workflow columns to risks table
+        risk_workflow_columns = [
+            ("record_status", "TEXT DEFAULT 'draft'"),
+            ("current_owner_role", "TEXT DEFAULT 'auditor'"),
+            ("admin_lock_reason", "TEXT"),
+            ("admin_locked_by", "INTEGER"),
+            ("admin_locked_at", "TIMESTAMP"),
+            ("signed_off_by", "INTEGER"),
+            ("signed_off_at", "TIMESTAMP"),
+            ("created_by", "INTEGER"),
+            ("updated_by", "INTEGER"),
+        ]
+        for col_name, col_type in risk_workflow_columns:
+            try:
+                conn.execute(f"SELECT {col_name} FROM risks LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute(f"ALTER TABLE risks ADD COLUMN {col_name} {col_type}")
+                conn.commit()
+
+        # Migration: Add workflow columns to issues table
+        issue_workflow_columns = [
+            ("record_status", "TEXT DEFAULT 'draft'"),
+            ("current_owner_role", "TEXT DEFAULT 'auditor'"),
+            ("admin_lock_reason", "TEXT"),
+            ("admin_locked_by", "INTEGER"),
+            ("admin_locked_at", "TIMESTAMP"),
+            ("signed_off_by", "INTEGER"),
+            ("signed_off_at", "TIMESTAMP"),
+            ("created_by", "INTEGER"),
+            ("updated_by", "INTEGER"),
+        ]
+        for col_name, col_type in issue_workflow_columns:
+            try:
+                conn.execute(f"SELECT {col_name} FROM issues LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute(f"ALTER TABLE issues ADD COLUMN {col_name} {col_type}")
+                conn.commit()
+
+        # Create indexes for record status
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_risks_record_status ON risks(record_status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_risks_owner_role ON risks(current_owner_role)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_record_status ON issues(record_status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_owner_role ON issues(current_owner_role)")
+        conn.commit()
+
+        # Migration: Create record_state_history table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS record_state_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_type TEXT NOT NULL,
+                record_id INTEGER NOT NULL,
+                from_status TEXT,
+                to_status TEXT NOT NULL,
+                action TEXT NOT NULL,
+                performed_by INTEGER REFERENCES users(id),
+                performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                reason TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_state_history_record ON record_state_history(record_type, record_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_state_history_action ON record_state_history(action)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_state_history_user ON record_state_history(performed_by)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_state_history_date ON record_state_history(performed_at)")
+        conn.commit()
+
+        # Migration: Create audit_viewers table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_viewers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                audit_id INTEGER NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
+                viewer_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                granted_by INTEGER REFERENCES users(id),
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(audit_id, viewer_user_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_viewers_audit ON audit_viewers(audit_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_viewers_user ON audit_viewers(viewer_user_id)")
+        conn.commit()
+
+        # ==================== SEED TEST ACCOUNTS ====================
+        # Only seed if we have less than 3 users (just the default admin)
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if user_count < 3:
+            from werkzeug.security import generate_password_hash
+            test_password = generate_password_hash('Test123!', method='pbkdf2:sha256')
+
+            test_accounts = [
+                ('auditor1@test.com', 'Alice Auditor', 'auditor'),
+                ('auditor2@test.com', 'Bob Auditor', 'auditor'),
+                ('reviewer1@test.com', 'Rachel Reviewer', 'reviewer'),
+                ('reviewer2@test.com', 'Richard Reviewer', 'reviewer'),
+                ('admin@test.com', 'Adam Admin', 'admin'),
+                ('viewer1@test.com', 'Victor Viewer', 'viewer'),
+            ]
+
+            for email, name, role in test_accounts:
+                # Check if user already exists
+                existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+                if not existing:
+                    is_admin = 1 if role == 'admin' else 0
+                    conn.execute("""
+                        INSERT INTO users (email, name, password_hash, is_active, is_admin, role)
+                        VALUES (?, ?, ?, 1, ?, ?)
+                    """, (email, name, test_password, is_admin, role))
+
+            conn.commit()
+
         conn.close()
 
     # ==================== RISKS (RACM) ====================
@@ -2508,6 +2642,332 @@ RELATIONSHIPS:
             })
 
         return {'boards': {'default': board}}
+
+    # ==================== WORKFLOW STATE TRANSITIONS ====================
+
+    def get_record_with_audit(self, record_type: str, record_id: int) -> Optional[Dict]:
+        """Get a record with its associated audit data."""
+        table = 'risks' if record_type == 'risk' else 'issues'
+        conn = self._get_conn()
+        row = conn.execute(f"""
+            SELECT r.*, a.auditor_id, a.reviewer_id, a.title as audit_title
+            FROM {table} r
+            LEFT JOIN audits a ON r.audit_id = a.id
+            WHERE r.id = ?
+        """, (record_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def update_record_status(self, record_type: str, record_id: int,
+                            new_status: str, new_owner_role: str,
+                            user_id: int, **extra_fields) -> bool:
+        """Update a record's workflow status atomically."""
+        table = 'risks' if record_type == 'risk' else 'issues'
+
+        # Build update fields
+        fields = {
+            'record_status': new_status,
+            'current_owner_role': new_owner_role,
+            'updated_by': user_id,
+            'updated_at': datetime.now().isoformat()
+        }
+        fields.update(extra_fields)
+
+        set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
+
+        with self._connection() as conn:
+            cursor = conn.execute(
+                f"UPDATE {table} SET {set_clause} WHERE id = ?",
+                (*fields.values(), record_id)
+            )
+            return cursor.rowcount > 0
+
+    def create_state_history(self, record_type: str, record_id: int,
+                            from_status: Optional[str], to_status: str,
+                            action: str, performed_by: int,
+                            notes: str = None, reason: str = None) -> int:
+        """Create a state history entry."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT INTO record_state_history
+                (record_type, record_id, from_status, to_status, action,
+                 performed_by, notes, reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (record_type, record_id, from_status, to_status, action,
+              performed_by, notes, reason))
+        conn.commit()
+        history_id = cursor.lastrowid
+        conn.close()
+        return history_id
+
+    def get_record_history(self, record_type: str, record_id: int) -> List[Dict]:
+        """Get the state transition history for a record."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT h.*, u.name as performed_by_name, u.email as performed_by_email
+            FROM record_state_history h
+            LEFT JOIN users u ON h.performed_by = u.id
+            WHERE h.record_type = ? AND h.record_id = ?
+            ORDER BY h.performed_at DESC
+        """, (record_type, record_id)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_all_state_history(self, filters: Dict = None) -> List[Dict]:
+        """Get all state history entries with optional filters."""
+        query = """
+            SELECT h.*, u.name as performed_by_name, u.email as performed_by_email
+            FROM record_state_history h
+            LEFT JOIN users u ON h.performed_by = u.id
+            WHERE 1=1
+        """
+        params = []
+
+        if filters:
+            if filters.get('from_date'):
+                query += " AND h.performed_at >= ?"
+                params.append(filters['from_date'])
+            if filters.get('to_date'):
+                query += " AND h.performed_at <= ?"
+                params.append(filters['to_date'])
+            if filters.get('user_id'):
+                query += " AND h.performed_by = ?"
+                params.append(filters['user_id'])
+            if filters.get('action'):
+                query += " AND h.action = ?"
+                params.append(filters['action'])
+            if filters.get('record_type'):
+                query += " AND h.record_type = ?"
+                params.append(filters['record_type'])
+
+        query += " ORDER BY h.performed_at DESC"
+
+        conn = self._get_conn()
+        rows = conn.execute(query, params).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    # ==================== AUDIT VIEWERS ====================
+
+    def get_audit_viewers(self, audit_id: int) -> List[Dict]:
+        """Get all viewers for an audit."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT av.*, u.name as viewer_name, u.email as viewer_email,
+                   g.name as granted_by_name
+            FROM audit_viewers av
+            JOIN users u ON av.viewer_user_id = u.id
+            LEFT JOIN users g ON av.granted_by = g.id
+            WHERE av.audit_id = ?
+            ORDER BY av.granted_at DESC
+        """, (audit_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def add_audit_viewer(self, audit_id: int, viewer_user_id: int,
+                        granted_by: int) -> int:
+        """Add a viewer to an audit. Returns viewer record ID."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            INSERT OR IGNORE INTO audit_viewers (audit_id, viewer_user_id, granted_by)
+            VALUES (?, ?, ?)
+        """, (audit_id, viewer_user_id, granted_by))
+        conn.commit()
+        viewer_id = cursor.lastrowid
+        conn.close()
+        return viewer_id
+
+    def remove_audit_viewer(self, audit_id: int, viewer_user_id: int) -> bool:
+        """Remove a viewer from an audit."""
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            DELETE FROM audit_viewers
+            WHERE audit_id = ? AND viewer_user_id = ?
+        """, (audit_id, viewer_user_id))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+
+    def is_viewer_of_audit(self, user_id: int, audit_id: int) -> bool:
+        """Check if a user is a viewer of an audit."""
+        conn = self._get_conn()
+        row = conn.execute("""
+            SELECT 1 FROM audit_viewers
+            WHERE audit_id = ? AND viewer_user_id = ?
+        """, (audit_id, user_id)).fetchone()
+        conn.close()
+        return row is not None
+
+    # ==================== AUDIT ASSIGNMENTS ====================
+
+    def update_audit_assignment(self, audit_id: int, auditor_id: int = None,
+                               reviewer_id: int = None) -> bool:
+        """Update auditor and/or reviewer assignment for an audit."""
+        updates = {}
+        if auditor_id is not None:
+            updates['auditor_id'] = auditor_id
+        if reviewer_id is not None:
+            updates['reviewer_id'] = reviewer_id
+
+        if not updates:
+            return False
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+
+        conn = self._get_conn()
+        cursor = conn.execute(
+            f"UPDATE audits SET {set_clause} WHERE id = ?",
+            (*updates.values(), audit_id)
+        )
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def get_audits_by_auditor(self, auditor_id: int) -> List[Dict]:
+        """Get all audits assigned to a specific auditor."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM audits WHERE auditor_id = ?
+            ORDER BY title
+        """, (auditor_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_audits_by_reviewer(self, reviewer_id: int) -> List[Dict]:
+        """Get all audits assigned to a specific reviewer."""
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT * FROM audits WHERE reviewer_id = ?
+            ORDER BY title
+        """, (reviewer_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    # ==================== WORKFLOW QUERIES ====================
+
+    def get_records_by_status(self, record_type: str, audit_id: int,
+                             status: str) -> List[Dict]:
+        """Get all records of a type with a specific status."""
+        table = 'risks' if record_type == 'risk' else 'issues'
+        conn = self._get_conn()
+        rows = conn.execute(f"""
+            SELECT * FROM {table}
+            WHERE audit_id = ? AND record_status = ?
+            ORDER BY id
+        """, (audit_id, status)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def get_records_in_review(self, reviewer_id: int) -> Dict[str, List[Dict]]:
+        """Get all records in review for a specific reviewer."""
+        conn = self._get_conn()
+
+        risks = conn.execute("""
+            SELECT r.*, a.title as audit_title
+            FROM risks r
+            JOIN audits a ON r.audit_id = a.id
+            WHERE a.reviewer_id = ? AND r.record_status = 'in_review'
+            ORDER BY r.audit_id, r.id
+        """, (reviewer_id,)).fetchall()
+
+        issues = conn.execute("""
+            SELECT i.*, a.title as audit_title
+            FROM issues i
+            JOIN audits a ON i.audit_id = a.id
+            WHERE a.reviewer_id = ? AND i.record_status = 'in_review'
+            ORDER BY i.audit_id, i.id
+        """, (reviewer_id,)).fetchall()
+
+        conn.close()
+        return {
+            'risks': [dict(row) for row in risks],
+            'issues': [dict(row) for row in issues]
+        }
+
+    def get_records_in_admin_hold(self) -> Dict[str, List[Dict]]:
+        """Get all records currently in admin hold."""
+        conn = self._get_conn()
+
+        risks = conn.execute("""
+            SELECT r.*, a.title as audit_title,
+                   u.name as locked_by_name
+            FROM risks r
+            JOIN audits a ON r.audit_id = a.id
+            LEFT JOIN users u ON r.admin_locked_by = u.id
+            WHERE r.record_status = 'admin_hold'
+            ORDER BY r.admin_locked_at DESC
+        """).fetchall()
+
+        issues = conn.execute("""
+            SELECT i.*, a.title as audit_title,
+                   u.name as locked_by_name
+            FROM issues i
+            JOIN audits a ON i.audit_id = a.id
+            LEFT JOIN users u ON i.admin_locked_by = u.id
+            WHERE i.record_status = 'admin_hold'
+            ORDER BY i.admin_locked_at DESC
+        """).fetchall()
+
+        conn.close()
+        return {
+            'risks': [dict(row) for row in risks],
+            'issues': [dict(row) for row in issues]
+        }
+
+    def get_workflow_summary(self, audit_id: int) -> Dict:
+        """Get a summary of workflow status for an audit."""
+        conn = self._get_conn()
+
+        risk_summary = conn.execute("""
+            SELECT record_status, COUNT(*) as count
+            FROM risks WHERE audit_id = ?
+            GROUP BY record_status
+        """, (audit_id,)).fetchall()
+
+        issue_summary = conn.execute("""
+            SELECT record_status, COUNT(*) as count
+            FROM issues WHERE audit_id = ?
+            GROUP BY record_status
+        """, (audit_id,)).fetchall()
+
+        conn.close()
+
+        return {
+            'risks': {row['record_status'] or 'draft': row['count'] for row in risk_summary},
+            'issues': {row['record_status'] or 'draft': row['count'] for row in issue_summary}
+        }
+
+    def get_all_records_by_status(self, status: str) -> List[Dict]:
+        """Get all records with a specific status across all audits."""
+        conn = self._get_conn()
+
+        risks = conn.execute("""
+            SELECT r.*, a.title as audit_title,
+                   u.name as signed_off_by_name,
+                   'risk' as record_type
+            FROM risks r
+            JOIN audits a ON r.audit_id = a.id
+            LEFT JOIN users u ON r.signed_off_by = u.id
+            WHERE r.record_status = ?
+            ORDER BY r.signed_off_at DESC
+        """, (status,)).fetchall()
+
+        issues = conn.execute("""
+            SELECT i.*, a.title as audit_title,
+                   u.name as signed_off_by_name,
+                   'issue' as record_type
+            FROM issues i
+            JOIN audits a ON i.audit_id = a.id
+            LEFT JOIN users u ON i.signed_off_by = u.id
+            WHERE i.record_status = ?
+            ORDER BY i.signed_off_at DESC
+        """, (status,)).fetchall()
+
+        conn.close()
+
+        return [dict(row) for row in risks] + [dict(row) for row in issues]
 
 
 # Singleton instance for easy import

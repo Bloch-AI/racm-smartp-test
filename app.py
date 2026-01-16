@@ -38,7 +38,9 @@ from database import get_db, RACMDatabase
 from auth import (
     get_current_user, require_login, require_admin, require_audit_access,
     login_user, logout_user, check_password, hash_password,
-    get_user_accessible_audits, get_active_audit_id, set_active_audit
+    get_user_accessible_audits, get_active_audit_id, set_active_audit,
+    get_user_role, can_edit_record, can_transition_record, get_record_permissions,
+    require_record_edit, require_transition
 )
 
 
@@ -568,17 +570,27 @@ def index():
 def get_data():
     """Get all spreadsheet data (RACM + Issues) for multi-tab view, filtered by active audit."""
     audit_id = get_active_audit_id()
+    user = get_current_user()
 
     if audit_id:
         # Get audit-filtered data
         risks = db.get_risks_by_audit(audit_id)
         issues = db.get_issues_by_audit(audit_id)
+        audit = db.get_audit(audit_id)
+
+        # Build audit context for permission checks
+        audit_context = {
+            'id': audit_id,
+            'auditor_id': audit.get('auditor_id') if audit else None,
+            'reviewer_id': audit.get('reviewer_id') if audit else None
+        }
 
         # Convert to spreadsheet format
         # Columns: Risk ID, Risk, Control ID, Control Owner, DE Testing, DE Conclusion,
         #          OE Testing, OE Conclusion, Status, Ready for Review?, Reviewer,
         #          Raise Issue?, Closed, Flowchart, Task, Evidence
         racm_rows = []
+        racm_metadata = []  # Additional data for workflow
         conn = db._get_conn()
         for r in risks:
             fc = conn.execute("SELECT name FROM flowcharts WHERE risk_id = ?", (r['id'],)).fetchone()
@@ -601,10 +613,24 @@ def get_data():
                 task['title'] if task else '',                         # 14: Task
                 ''                                                     # 15: Evidence (read-only)
             ])
+            # Add workflow metadata for each row
+            record_status = r.get('record_status') or 'draft'
+            permissions = get_record_permissions(user, audit_context, r)
+            racm_metadata.append({
+                'id': r['id'],
+                'record_status': record_status,
+                'current_owner_role': r.get('current_owner_role') or 'auditor',
+                'signed_off_by': r.get('signed_off_by'),
+                'signed_off_at': r.get('signed_off_at'),
+                'admin_lock_reason': r.get('admin_lock_reason'),
+                'permissions': permissions
+            })
         conn.close()
 
-        issues_rows = [
-            [
+        issues_rows = []
+        issues_metadata = []
+        for issue in issues:
+            issues_rows.append([
                 issue['issue_id'],
                 issue['risk_id'] or '',
                 issue['title'],
@@ -613,13 +639,31 @@ def get_data():
                 issue['status'],
                 issue['assigned_to'] or '',
                 issue['due_date'] or ''
-            ]
-            for issue in issues
-        ]
+            ])
+            record_status = issue.get('record_status') or 'draft'
+            permissions = get_record_permissions(user, audit_context, issue)
+            issues_metadata.append({
+                'id': issue['id'],
+                'record_status': record_status,
+                'current_owner_role': issue.get('current_owner_role') or 'auditor',
+                'signed_off_by': issue.get('signed_off_by'),
+                'signed_off_at': issue.get('signed_off_at'),
+                'admin_lock_reason': issue.get('admin_lock_reason'),
+                'permissions': permissions
+            })
 
         return jsonify({
             'racm': racm_rows,
-            'issues': issues_rows
+            'racm_metadata': racm_metadata,
+            'issues': issues_rows,
+            'issues_metadata': issues_metadata,
+            'audit': {
+                'id': audit_id,
+                'auditor_id': audit.get('auditor_id') if audit else None,
+                'reviewer_id': audit.get('reviewer_id') if audit else None,
+                'title': audit.get('title') if audit else None
+            },
+            'user_role': get_user_role(user)
         })
     else:
         # No audit selected - return empty data
@@ -706,6 +750,457 @@ def delete_risk(risk_id):
         increment_data_version()
         return jsonify({'status': 'deleted'})
     return not_found_response('Risk')
+
+# ==================== Workflow State Transition API ====================
+
+@app.route('/api/records/<record_type>/<int:record_id>/submit-for-review', methods=['POST'])
+@require_login
+@require_transition('risk', 'submit_for_review')
+def submit_for_review(record_type, record_id):
+    """Submit a record for review (draft -> in_review)."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    user = get_current_user()
+    record = g.record
+    data = request.get_json() or {}
+    notes = data.get('notes', '')
+
+    # Perform the transition
+    db.update_record_status(
+        record_type, record_id,
+        new_status='in_review',
+        new_owner_role='reviewer',
+        user_id=user['id']
+    )
+
+    # Log the state change
+    db.create_state_history(
+        record_type, record_id,
+        from_status=record.get('record_status', 'draft'),
+        to_status='in_review',
+        action='submit_for_review',
+        performed_by=user['id'],
+        notes=notes
+    )
+
+    increment_data_version()
+    return jsonify({'status': 'ok', 'record_status': 'in_review'})
+
+
+@app.route('/api/records/<record_type>/<int:record_id>/return-to-auditor', methods=['POST'])
+@require_login
+def return_to_auditor(record_type, record_id):
+    """Return a record to the auditor (in_review -> draft)."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    user = get_current_user()
+    record = db.get_record_with_audit(record_type, record_id)
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+
+    audit = {
+        'id': record.get('audit_id'),
+        'auditor_id': record.get('auditor_id'),
+        'reviewer_id': record.get('reviewer_id')
+    }
+
+    if not can_transition_record(user, audit, record, 'return_to_auditor'):
+        return jsonify({'error': 'Cannot return this record'}), 403
+
+    data = request.get_json() or {}
+    notes = data.get('notes', '')
+
+    # Notes are required for return
+    if not notes.strip():
+        return jsonify({'error': 'Feedback notes are required when returning a record'}), 400
+
+    # Perform the transition
+    db.update_record_status(
+        record_type, record_id,
+        new_status='draft',
+        new_owner_role='auditor',
+        user_id=user['id']
+    )
+
+    # Log the state change
+    db.create_state_history(
+        record_type, record_id,
+        from_status='in_review',
+        to_status='draft',
+        action='return_to_auditor',
+        performed_by=user['id'],
+        notes=notes
+    )
+
+    increment_data_version()
+    return jsonify({'status': 'ok', 'record_status': 'draft'})
+
+
+@app.route('/api/records/<record_type>/<int:record_id>/sign-off', methods=['POST'])
+@require_login
+def sign_off_record(record_type, record_id):
+    """Sign off a record (in_review -> signed_off)."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    user = get_current_user()
+    record = db.get_record_with_audit(record_type, record_id)
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+
+    audit = {
+        'id': record.get('audit_id'),
+        'auditor_id': record.get('auditor_id'),
+        'reviewer_id': record.get('reviewer_id')
+    }
+
+    if not can_transition_record(user, audit, record, 'sign_off'):
+        return jsonify({'error': 'Cannot sign off this record'}), 403
+
+    data = request.get_json() or {}
+    confirmation = data.get('confirmation', '')
+
+    # Require typed confirmation
+    if confirmation != 'SIGN OFF':
+        return jsonify({'error': 'Invalid confirmation. Type "SIGN OFF" to confirm.'}), 400
+
+    # Perform the transition
+    db.update_record_status(
+        record_type, record_id,
+        new_status='signed_off',
+        new_owner_role='none',
+        user_id=user['id'],
+        signed_off_by=user['id'],
+        signed_off_at=datetime.now().isoformat()
+    )
+
+    # Log the state change
+    db.create_state_history(
+        record_type, record_id,
+        from_status='in_review',
+        to_status='signed_off',
+        action='sign_off',
+        performed_by=user['id']
+    )
+
+    increment_data_version()
+    return jsonify({'status': 'ok', 'record_status': 'signed_off'})
+
+
+@app.route('/api/admin/records/<record_type>/<int:record_id>/lock', methods=['POST'])
+@require_login
+@require_admin
+def admin_lock_record(record_type, record_id):
+    """Admin: Lock a record (any -> admin_hold)."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    user = get_current_user()
+    record = db.get_record_with_audit(record_type, record_id)
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+
+    current_status = record.get('record_status', 'draft')
+    if current_status == 'admin_hold':
+        return jsonify({'error': 'Record is already on admin hold'}), 400
+
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+
+    # Reason is required for admin lock
+    if not reason.strip():
+        return jsonify({'error': 'Reason is required for admin lock'}), 400
+
+    # Perform the transition
+    db.update_record_status(
+        record_type, record_id,
+        new_status='admin_hold',
+        new_owner_role='none',
+        user_id=user['id'],
+        admin_lock_reason=reason,
+        admin_locked_by=user['id'],
+        admin_locked_at=datetime.now().isoformat()
+    )
+
+    # Log the state change
+    db.create_state_history(
+        record_type, record_id,
+        from_status=current_status,
+        to_status='admin_hold',
+        action='admin_lock',
+        performed_by=user['id'],
+        reason=reason
+    )
+
+    increment_data_version()
+    return jsonify({'status': 'ok', 'record_status': 'admin_hold'})
+
+
+@app.route('/api/admin/records/<record_type>/<int:record_id>/unlock', methods=['POST'])
+@require_login
+@require_admin
+def admin_unlock_record(record_type, record_id):
+    """Admin: Unlock a record from admin_hold."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    user = get_current_user()
+    record = db.get_record_with_audit(record_type, record_id)
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+
+    current_status = record.get('record_status', 'draft')
+    if current_status != 'admin_hold':
+        return jsonify({'error': 'Record is not on admin hold'}), 400
+
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+    return_to = data.get('return_to', 'draft')
+
+    if not reason.strip():
+        return jsonify({'error': 'Reason is required for unlock'}), 400
+
+    if return_to not in ('draft', 'in_review'):
+        return jsonify({'error': 'return_to must be "draft" or "in_review"'}), 400
+
+    new_owner_role = 'auditor' if return_to == 'draft' else 'reviewer'
+
+    # Perform the transition
+    db.update_record_status(
+        record_type, record_id,
+        new_status=return_to,
+        new_owner_role=new_owner_role,
+        user_id=user['id'],
+        admin_lock_reason=None,
+        admin_locked_by=None,
+        admin_locked_at=None
+    )
+
+    # Log the state change
+    db.create_state_history(
+        record_type, record_id,
+        from_status='admin_hold',
+        to_status=return_to,
+        action='admin_unlock',
+        performed_by=user['id'],
+        reason=reason
+    )
+
+    increment_data_version()
+    return jsonify({'status': 'ok', 'record_status': return_to})
+
+
+@app.route('/api/admin/records/<record_type>/<int:record_id>/unlock-signoff', methods=['POST'])
+@require_login
+@require_admin
+def admin_unlock_signoff(record_type, record_id):
+    """Admin: Unlock a signed-off record (requires stronger confirmation)."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    user = get_current_user()
+    record = db.get_record_with_audit(record_type, record_id)
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+
+    current_status = record.get('record_status', 'draft')
+    if current_status != 'signed_off':
+        return jsonify({'error': 'Record is not signed off'}), 400
+
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+    return_to = data.get('return_to', 'draft')
+    confirmation = data.get('confirmation', '')
+
+    if not reason.strip():
+        return jsonify({'error': 'Reason is required'}), 400
+
+    if return_to not in ('draft', 'in_review'):
+        return jsonify({'error': 'return_to must be "draft" or "in_review"'}), 400
+
+    if confirmation != 'UNLOCK SIGNED OFF':
+        return jsonify({'error': 'Invalid confirmation. Type "UNLOCK SIGNED OFF" to confirm.'}), 400
+
+    new_owner_role = 'auditor' if return_to == 'draft' else 'reviewer'
+
+    # Perform the transition
+    db.update_record_status(
+        record_type, record_id,
+        new_status=return_to,
+        new_owner_role=new_owner_role,
+        user_id=user['id'],
+        signed_off_by=None,
+        signed_off_at=None
+    )
+
+    # Log the state change
+    db.create_state_history(
+        record_type, record_id,
+        from_status='signed_off',
+        to_status=return_to,
+        action='admin_unlock_signoff',
+        performed_by=user['id'],
+        reason=reason
+    )
+
+    increment_data_version()
+    return jsonify({'status': 'ok', 'record_status': return_to})
+
+
+@app.route('/api/records/<record_type>/<int:record_id>/history', methods=['GET'])
+@require_login
+def get_record_history(record_type, record_id):
+    """Get the state transition history for a record."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    history = db.get_record_history(record_type, record_id)
+    return jsonify(history)
+
+
+@app.route('/api/records/<record_type>/<int:record_id>/permissions', methods=['GET'])
+@require_login
+def get_permissions_for_record(record_type, record_id):
+    """Get the current user's permissions for a specific record."""
+    if record_type not in ('risk', 'issue'):
+        return jsonify({'error': 'Invalid record type'}), 400
+
+    user = get_current_user()
+    record = db.get_record_with_audit(record_type, record_id)
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+
+    audit = {
+        'id': record.get('audit_id'),
+        'auditor_id': record.get('auditor_id'),
+        'reviewer_id': record.get('reviewer_id')
+    }
+
+    permissions = get_record_permissions(user, audit, record)
+    return jsonify(permissions)
+
+
+@app.route('/api/audits/<int:audit_id>/workflow-summary', methods=['GET'])
+@require_login
+def get_audit_workflow_summary(audit_id):
+    """Get workflow status summary for an audit."""
+    summary = db.get_workflow_summary(audit_id)
+    return jsonify(summary)
+
+
+# ==================== Viewer Management API ====================
+
+@app.route('/api/audits/<int:audit_id>/viewers', methods=['GET'])
+@require_login
+def get_audit_viewers(audit_id):
+    """Get all viewers for an audit."""
+    viewers = db.get_audit_viewers(audit_id)
+    return jsonify(viewers)
+
+
+@app.route('/api/audits/<int:audit_id>/viewers', methods=['POST'])
+@require_login
+def add_audit_viewer(audit_id):
+    """Add a viewer to an audit."""
+    user = get_current_user()
+    audit = db.get_audit(audit_id)
+    if not audit:
+        return jsonify({'error': 'Audit not found'}), 404
+
+    # Only auditor, reviewer of this audit, or admin can add viewers
+    is_assigned = (audit.get('auditor_id') == user['id'] or
+                   audit.get('reviewer_id') == user['id'])
+    if not user.get('is_admin') and not is_assigned:
+        return jsonify({'error': 'Not authorized to manage viewers'}), 403
+
+    data = request.get_json() or {}
+    viewer_user_id = data.get('user_id')
+    if not viewer_user_id:
+        return jsonify({'error': 'user_id is required'}), 400
+
+    viewer_id = db.add_audit_viewer(audit_id, viewer_user_id, user['id'])
+    return jsonify({'status': 'ok', 'viewer_id': viewer_id})
+
+
+@app.route('/api/audits/<int:audit_id>/viewers/<int:viewer_user_id>', methods=['DELETE'])
+@require_login
+def remove_audit_viewer(audit_id, viewer_user_id):
+    """Remove a viewer from an audit."""
+    user = get_current_user()
+    audit = db.get_audit(audit_id)
+    if not audit:
+        return jsonify({'error': 'Audit not found'}), 404
+
+    # Only auditor, reviewer of this audit, or admin can remove viewers
+    is_assigned = (audit.get('auditor_id') == user['id'] or
+                   audit.get('reviewer_id') == user['id'])
+    if not user.get('is_admin') and not is_assigned:
+        return jsonify({'error': 'Not authorized to manage viewers'}), 403
+
+    if db.remove_audit_viewer(audit_id, viewer_user_id):
+        return jsonify({'status': 'ok'})
+    return jsonify({'error': 'Viewer not found'}), 404
+
+
+# ==================== Audit Assignment API ====================
+
+@app.route('/api/audits/<int:audit_id>/assignment', methods=['PUT'])
+@require_login
+@require_admin
+def update_audit_assignment(audit_id):
+    """Update auditor/reviewer assignment for an audit."""
+    data = request.get_json() or {}
+    auditor_id = data.get('auditor_id')
+    reviewer_id = data.get('reviewer_id')
+
+    if db.update_audit_assignment(audit_id, auditor_id, reviewer_id):
+        return jsonify({'status': 'ok'})
+    return jsonify({'error': 'No changes made'}), 400
+
+
+# ==================== Admin Audit Log ====================
+
+@app.route('/api/admin/audit-log', methods=['GET'])
+@require_login
+@require_admin
+def get_admin_audit_log():
+    """Get all state history entries (admin audit log)."""
+    filters = {
+        'from_date': request.args.get('from_date'),
+        'to_date': request.args.get('to_date'),
+        'user_id': request.args.get('user_id', type=int),
+        'action': request.args.get('action'),
+        'record_type': request.args.get('record_type')
+    }
+    # Remove None values
+    filters = {k: v for k, v in filters.items() if v is not None}
+
+    history = db.get_all_state_history(filters if filters else None)
+    return jsonify(history)
+
+
+@app.route('/api/admin/records-in-hold', methods=['GET'])
+@require_login
+@require_admin
+def get_records_in_admin_hold():
+    """Get all records in admin_hold or signed_off status for admin override panel."""
+    # Get admin_hold records (already returns combined list with record_type)
+    hold_data = db.get_records_in_admin_hold()
+    hold_records = hold_data.get('risks', []) + hold_data.get('issues', [])
+    # Mark record types
+    for r in hold_records:
+        if 'risk_id' in r and r.get('risk_id'):
+            r['record_type'] = 'risk'
+        else:
+            r['record_type'] = 'issue'
+
+    # Get signed_off records
+    signedoff_records = db.get_all_records_by_status('signed_off')
+
+    return jsonify(hold_records + signedoff_records)
+
 
 # ==================== Flowchart API ====================
 
