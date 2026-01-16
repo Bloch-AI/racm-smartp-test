@@ -2140,8 +2140,8 @@
             const containerWidth = racmContainer.parentElement.offsetWidth - 2;
 
             // Calculate proportional column widths to fill screen
-            // RACM has 18 columns with relative proportions (added Workflow Status and Actions)
-            const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8, 0.6, 0.5, 0.8, 0.6, 0.7, 0.7, 1.0];
+            // RACM has 14 columns (removed legacy: Ready for Review?, Reviewer, Raise Issue?, Closed)
+            const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.7, 0.7, 1.2];
             const racmTotalProp = racmProportions.reduce((a, b) => a + b, 0);
             const racmBaseUnit = (containerWidth - 50) / racmTotalProp; // 50px for row numbers
             const racmColWidths = racmProportions.map(p => Math.floor(racmBaseUnit * p));
@@ -2162,22 +2162,18 @@
                     { type: 'text', width: racmColWidths[6], title: 'OE Testing', wordWrap: true },
                     { type: 'text', width: racmColWidths[7], title: 'OE Conclusion', wordWrap: true },
                     { type: 'dropdown', width: racmColWidths[8], title: 'Status', source: ['Effective', 'Not Effective', 'Not Complete'] },
-                    { type: 'checkbox', width: racmColWidths[9], title: 'Ready for Review?' },
-                    { type: 'text', width: racmColWidths[10], title: 'Reviewer' },
-                    { type: 'checkbox', width: racmColWidths[11], title: 'Raise Issue?' },
-                    { type: 'checkbox', width: racmColWidths[12], title: 'Closed' },
-                    { type: 'text', width: racmColWidths[13], title: 'Flowchart' },
-                    { type: 'text', width: racmColWidths[14], title: 'Task' },
-                    { type: 'text', width: racmColWidths[15], title: 'Evidence', readOnly: true },
-                    { type: 'text', width: racmColWidths[16], title: 'Workflow', readOnly: true },
-                    { type: 'text', width: racmColWidths[17], title: 'Actions', readOnly: true },
+                    { type: 'text', width: racmColWidths[9], title: 'Flowchart' },
+                    { type: 'text', width: racmColWidths[10], title: 'Task' },
+                    { type: 'text', width: racmColWidths[11], title: 'Evidence', readOnly: true },
+                    { type: 'text', width: racmColWidths[12], title: 'Workflow', readOnly: true },
+                    { type: 'text', width: racmColWidths[13], title: 'Actions', readOnly: true },
                 ],
                 wordWrap: true,
                 defaultRowHeight: 40,
                 columnResize: true,
                 rowResize: true,
                 columnDrag: true,
-                minDimensions: [18, 1],
+                minDimensions: [14, 1],
                 tableOverflow: true,
                 tableWidth: containerWidth + 'px',
                 tableHeight: 'auto',
@@ -2312,26 +2308,6 @@
                     }
                 }
             }
-            // Flowchart column (N = index 13) - chip badges
-            if (col == 13) {
-                if (val && val.trim()) {
-                    cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="chip chip-action chip-primary no-underline">View</a>';
-                } else {
-                    if (riskId && riskId.trim()) {
-                        cell.innerHTML = '<span class="create-flowchart chip chip-action chip-neutral" data-row="' + row + '">Add</span>';
-                    }
-                }
-            }
-            // Task column (O = index 14) - pill badges
-            if (col == 14) {
-                if (val && val.trim()) {
-                    cell.innerHTML = '<span class="edit-task chip chip-action chip-primary" data-task="' + val + '" data-row="' + row + '">Edit</span>';
-                } else {
-                    if (riskId && riskId.trim()) {
-                        cell.innerHTML = '<span class="create-task chip chip-action chip-neutral" data-row="' + row + '">Add</span>';
-                    }
-                }
-            }
             // Status column styling (I = index 8) - compact chip badges
             if (col == 8) {
                 const status = val ? val : '';
@@ -2345,8 +2321,28 @@
                     cell.innerHTML = '<span class="chip chip-neutral">' + status + '</span>';
                 }
             }
-            // Evidence column (P = index 15) - pill badges for risks
-            if (col == 15 && riskId && riskId.trim()) {
+            // Flowchart column (J = index 9) - chip badges
+            if (col == 9) {
+                if (val && val.trim()) {
+                    cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="chip chip-action chip-primary no-underline">View</a>';
+                } else {
+                    if (riskId && riskId.trim()) {
+                        cell.innerHTML = '<span class="create-flowchart chip chip-action chip-neutral" data-row="' + row + '">Add</span>';
+                    }
+                }
+            }
+            // Task column (K = index 10) - chip badges
+            if (col == 10) {
+                if (val && val.trim()) {
+                    cell.innerHTML = '<span class="edit-task chip chip-action chip-primary" data-task="' + val + '" data-row="' + row + '">Edit</span>';
+                } else {
+                    if (riskId && riskId.trim()) {
+                        cell.innerHTML = '<span class="create-task chip chip-action chip-neutral" data-row="' + row + '">Add</span>';
+                    }
+                }
+            }
+            // Evidence column (L = index 11) - chip badges for risks
+            if (col == 11 && riskId && riskId.trim()) {
                 const attachCount = riskAttachmentCache[riskId.toUpperCase()] || 0;
                 if (attachCount > 0) {
                     cell.innerHTML = '<span class="view-risk-attachments chip chip-action chip-primary" data-row="' + row + '" data-risk="' + riskId + '">' + attachCount + '</span>';
@@ -2354,8 +2350,8 @@
                     cell.innerHTML = '<span class="view-risk-attachments chip chip-action chip-neutral" data-row="' + row + '" data-risk="' + riskId + '">Attach</span>';
                 }
             }
-            // Workflow Status column (Q = index 16) - shows workflow state badge
-            if (col == 16) {
+            // Workflow Status column (M = index 12) - shows workflow state badge
+            if (col == 12) {
                 const meta = racmMetadata[row];
                 if (meta && meta.record_status) {
                     cell.innerHTML = renderStatusBadge(meta.record_status);
@@ -2368,12 +2364,21 @@
                     cell.innerHTML = renderStatusBadge('draft');
                 }
             }
-            // Actions column (R = index 17) - shows workflow action buttons
-            if (col == 17) {
+            // Actions column (N = index 13) - shows workflow action buttons + Create Issue
+            if (col == 13) {
                 const meta = racmMetadata[row];
+                let actions = '';
                 if (meta) {
-                    cell.innerHTML = renderWorkflowActions(meta, 'risk');
+                    actions = renderWorkflowActions(meta, 'risk');
                 }
+                // Add Create Issue button if risk has ID and no linked issue exists
+                if (riskId && riskId.trim() && currentUserRole !== 'viewer') {
+                    const hasIssue = riskHasIssue(riskId);
+                    if (!hasIssue) {
+                        actions += ' <span class="create-issue-from-risk chip chip-action chip-warning" data-risk="' + riskId + '" data-row="' + row + '">+ Issue</span>';
+                    }
+                }
+                cell.innerHTML = actions;
             }
         }
 
@@ -2452,31 +2457,57 @@
             }
         }
 
-        // Handle RACM changes - auto-create issue when checkbox ticked
-        async function onRACMChange(instance, cell, x, y, value) {
-            // Raise Issue? checkbox is column 11 (value can be true, 'true', or 1)
-            if (x == 11 && (value === true || value === 'true' || value === 1 || value === '1')) {
-                // Use global table variable since it's definitely set by now
-                const riskId = table.getValueFromCoords(0, y);
-                console.log('Raise Issue checkbox ticked for row', y, 'risk:', riskId);
-                if (riskId && riskId.trim()) {
-                    try {
-                        const response = await fetch(`/api/issues/from-risk/${encodeURIComponent(riskId)}`, {
-                            method: 'POST'
-                        });
-                        const data = await response.json();
-                        if (data.status === 'created') {
-                            showToast(`Issue ${data.issue_id} created for ${riskId}`, 'success');
-                            // Refresh the Issue Log tab
-                            await refreshIssueLog();
-                        } else if (data.status === 'exists') {
-                            showToast(`Issue already exists for ${riskId}`, 'info');
-                        }
-                    } catch (error) {
-                        console.error('Error creating issue:', error);
+        // Cache for tracking which risks have linked issues
+        let riskIssueCache = {};
+
+        // Check if a risk has a linked issue
+        function riskHasIssue(riskId) {
+            return riskIssueCache[riskId.toUpperCase()] === true;
+        }
+
+        // Load risk-issue mappings from issues data
+        function loadRiskIssueCache() {
+            riskIssueCache = {};
+            if (issueTable) {
+                const issuesData = issueTable.getData();
+                issuesData.forEach(row => {
+                    const linkedRiskId = row[1]; // Risk ID column in issues
+                    if (linkedRiskId && linkedRiskId.trim()) {
+                        riskIssueCache[linkedRiskId.toUpperCase()] = true;
                     }
-                }
+                });
             }
+        }
+
+        // Create issue from risk (called from Actions column button)
+        async function createIssueFromRisk(riskId) {
+            if (!riskId || !riskId.trim()) return;
+
+            try {
+                const response = await fetch(`/api/issues/from-risk/${encodeURIComponent(riskId)}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.status === 'created') {
+                    showToast(`Issue ${data.issue_id} created for ${riskId}`, 'success');
+                    // Refresh the Issue Log tab and cache
+                    await refreshIssueLog();
+                    loadRiskIssueCache();
+                    // Refresh RACM table to hide the button
+                    if (table) table.refresh();
+                } else if (data.status === 'exists') {
+                    showToast(`Issue already exists for ${riskId}`, 'info');
+                    riskIssueCache[riskId.toUpperCase()] = true;
+                }
+            } catch (error) {
+                console.error('Error creating issue:', error);
+                showToast('Failed to create issue', 'error');
+            }
+        }
+
+        // Handle RACM changes (no longer handles issue creation - moved to Actions button)
+        async function onRACMChange(instance, cell, x, y, value) {
+            // Reserved for future RACM-specific change handling
         }
 
         // Refresh just the Issue Log sheet
@@ -2828,9 +2859,9 @@
             const viewportHeight = window.innerHeight;
             const targetHeight = Math.max(400, viewportHeight - wrapperTop - 24); // 24px bottom margin
 
-            // Recalculate and resize RACM table columns
+            // Recalculate and resize RACM table columns (14 columns)
             if (table) {
-                const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8, 0.6, 0.5, 0.8, 0.6, 0.7, 0.7, 1.0];
+                const racmProportions = [0.5, 1.2, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.7, 0.7, 1.2];
                 const racmTotalProp = racmProportions.reduce((a, b) => a + b, 0);
                 const racmBaseUnit = (containerWidth - 50) / racmTotalProp;
                 racmProportions.forEach((p, i) => {
@@ -2881,7 +2912,7 @@
                 const riskId = table.getValueFromCoords(0, row);
                 if (riskId) {
                     const flowchartName = riskId.replace(/\s+/g, '-').toLowerCase() + '-walkthrough';
-                    table.setValueFromCoords(13, row, flowchartName);
+                    table.setValueFromCoords(9, row, flowchartName);
                     window.open('/flowchart/' + encodeURIComponent(flowchartName), '_blank');
                     saveData();
                 }
@@ -2951,6 +2982,18 @@
                 const recordId = e.target.getAttribute('data-id');
                 if (recordType && recordId) {
                     unlockSignoff(recordType, recordId);
+                }
+            }
+            // Create issue from risk handler
+            if (e.target.classList.contains('create-issue-from-risk')) {
+                // Block for admins (view-only) and viewers
+                if (isAdmin || userRole === 'viewer') {
+                    showToast(isAdmin ? 'Admins have view-only access' : 'Viewers cannot create issues', 'error');
+                    return;
+                }
+                const riskId = e.target.getAttribute('data-risk');
+                if (riskId) {
+                    createIssueFromRisk(riskId);
                 }
             }
         });

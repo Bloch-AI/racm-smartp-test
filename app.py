@@ -592,8 +592,7 @@ def get_data():
 
         # Convert to spreadsheet format
         # Columns: Risk ID, Risk, Control ID, Control Owner, DE Testing, DE Conclusion,
-        #          OE Testing, OE Conclusion, Status, Ready for Review?, Reviewer,
-        #          Raise Issue?, Closed, Flowchart, Task, Evidence
+        #          OE Testing, OE Conclusion, Status, Flowchart, Task, Evidence
         racm_rows = []
         racm_metadata = []  # Additional data for workflow
         conn = db._get_conn()
@@ -610,13 +609,9 @@ def get_data():
                 r.get('operational_effectiveness_test') or '',         # 6: OE Testing
                 r.get('operational_effectiveness_conclusion') or '',   # 7: OE Conclusion
                 r['status'] or '',                                     # 8: Status
-                r.get('ready_for_review', False),                      # 9: Ready for Review?
-                r.get('reviewer') or '',                               # 10: Reviewer
-                r.get('raise_issue', False),                           # 11: Raise Issue?
-                r.get('closed', False),                                # 12: Closed
-                fc['name'] if fc else '',                              # 13: Flowchart
-                task['title'] if task else '',                         # 14: Task
-                ''                                                     # 15: Evidence (read-only)
+                fc['name'] if fc else '',                              # 9: Flowchart
+                task['title'] if task else '',                         # 10: Task
+                ''                                                     # 11: Evidence (read-only)
             ])
             # Add workflow metadata for each row
             record_status = r.get('record_status') or 'draft'

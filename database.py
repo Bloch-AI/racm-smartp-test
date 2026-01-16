@@ -2771,7 +2771,11 @@ RELATIONSHIPS:
     # ==================== SPREADSHEET COMPATIBILITY ====================
 
     def get_as_spreadsheet(self) -> List[List]:
-        """Get risks in spreadsheet format (for backward compatibility)."""
+        """Get risks in spreadsheet format.
+
+        Columns: Risk ID, Risk, Control ID, Control Owner, DE Testing, DE Conclusion,
+                 OE Testing, OE Conclusion, Status, Flowchart, Task
+        """
         risks = self.get_all_risks()
 
         rows = []
@@ -2792,17 +2796,17 @@ RELATIONSHIPS:
                 r['operational_effectiveness_test'] or '',
                 r['operational_effectiveness_conclusion'] or '',
                 r['status'] or 'Not Complete',
-                r['ready_for_review'],
-                r['reviewer'] or '',
-                r['raise_issue'],
-                r['closed'],
                 fc['name'] if fc else '',
                 task['title'] if task else ''
             ])
         return rows
 
     def save_from_spreadsheet(self, data: List[List]):
-        """Save risks from spreadsheet format (for backward compatibility)."""
+        """Save risks from spreadsheet format.
+
+        Columns saved: 0-8 (Risk ID through Status)
+        Columns 9+ (Flowchart, Task, Evidence) are read-only UI columns.
+        """
         if not data or len(data) < 1:
             return
 
@@ -2810,18 +2814,6 @@ RELATIONSHIPS:
             if len(row) >= 1 and row[0]:  # Must have risk_id at minimum
                 risk_id = row[0]
                 existing = self.get_risk(risk_id)
-
-                # Convert checkbox values (True/False/1/0) to int
-                def to_int(val):
-                    if isinstance(val, bool):
-                        return 1 if val else 0
-                    if isinstance(val, int):
-                        return val
-                    return 0
-
-                ready_for_review = to_int(row[9]) if len(row) > 9 else 0
-                raise_issue = to_int(row[11]) if len(row) > 11 else 0
-                closed = to_int(row[12]) if len(row) > 12 else 0
 
                 if existing:
                     self.update_risk(
@@ -2833,11 +2825,7 @@ RELATIONSHIPS:
                         design_effectiveness_conclusion=row[5] if len(row) > 5 else '',
                         operational_effectiveness_test=row[6] if len(row) > 6 else '',
                         operational_effectiveness_conclusion=row[7] if len(row) > 7 else '',
-                        status=row[8] if len(row) > 8 else 'Not Complete',
-                        ready_for_review=ready_for_review,
-                        reviewer=row[10] if len(row) > 10 else '',
-                        raise_issue=raise_issue,
-                        closed=closed
+                        status=row[8] if len(row) > 8 else 'Not Complete'
                     )
                 else:
                     self.create_risk(
@@ -2849,11 +2837,7 @@ RELATIONSHIPS:
                         design_effectiveness_conclusion=row[5] if len(row) > 5 else '',
                         operational_effectiveness_test=row[6] if len(row) > 6 else '',
                         operational_effectiveness_conclusion=row[7] if len(row) > 7 else '',
-                        status=row[8] if len(row) > 8 else 'Not Complete',
-                        ready_for_review=ready_for_review,
-                        reviewer=row[10] if len(row) > 10 else '',
-                        raise_issue=raise_issue,
-                        closed=closed
+                        status=row[8] if len(row) > 8 else 'Not Complete'
                     )
 
     def get_kanban_format(self) -> Dict:
