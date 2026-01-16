@@ -8,25 +8,21 @@
  * - API calls for state transitions
  */
 
-// Status badge configuration
+// Status badge configuration - text only, no icons for consistency
 const STATUS_BADGES = {
     'draft': {
-        icon: '<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>',
         text: 'Draft',
         class: 'bg-blue-100 text-blue-700'
     },
     'in_review': {
-        icon: '<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>',
         text: 'In Review',
         class: 'bg-amber-100 text-amber-700'
     },
     'admin_hold': {
-        icon: '<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>',
-        text: 'Admin Hold',
+        text: 'Hold',
         class: 'bg-red-100 text-red-700'
     },
     'signed_off': {
-        icon: '<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>',
         text: 'Signed Off',
         class: 'bg-green-100 text-green-700'
     }
@@ -39,10 +35,7 @@ const STATUS_BADGES = {
  */
 function renderStatusBadge(status) {
     const badge = STATUS_BADGES[status] || STATUS_BADGES['draft'];
-    return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badge.class}">
-        ${badge.icon}
-        ${badge.text}
-    </span>`;
+    return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${badge.class}">${badge.text}</span>`;
 }
 
 /**
@@ -58,7 +51,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canSubmitForReview) {
         buttons.push(`
             <button onclick="showSubmitForReviewModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors">
+                    class="text-xs px-3 py-1 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors">
                 Submit for Review
             </button>
         `);
@@ -67,7 +60,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canReturnToAuditor) {
         buttons.push(`
             <button onclick="showReturnToAuditorModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-2 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors">
+                    class="text-xs px-3 py-1 bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors">
                 Return to Auditor
             </button>
         `);
@@ -76,7 +69,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canSignOff) {
         buttons.push(`
             <button onclick="showSignOffModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 transition-colors">
+                    class="text-xs px-3 py-1 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors">
                 Sign Off
             </button>
         `);
@@ -85,7 +78,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canAdminLock) {
         buttons.push(`
             <button onclick="showAdminLockModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors">
+                    class="text-xs px-3 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors">
                 Lock
             </button>
         `);
@@ -94,7 +87,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canAdminUnlock) {
         buttons.push(`
             <button onclick="showAdminUnlockModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-2 py-1 bg-slate-500 text-white rounded hover:bg-slate-600 transition-colors">
+                    class="text-xs px-3 py-1 bg-slate-500 text-white rounded-full hover:bg-slate-600 transition-colors">
                 Unlock
             </button>
         `);
@@ -103,7 +96,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canAdminUnlockSignoff) {
         buttons.push(`
             <button onclick="showAdminUnlockSignoffModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors">
+                    class="text-xs px-3 py-1 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors">
                 Unlock Sign-off
             </button>
         `);
@@ -155,11 +148,11 @@ function showSubmitForReviewModal(recordType, recordId) {
                 </div>
                 <div class="flex justify-end gap-3">
                     <button onclick="closeWorkflowModal()"
-                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
+                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
                         Cancel
                     </button>
                     <button onclick="submitForReview('${recordType}', ${recordId})"
-                        class="px-4 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                        class="px-4 py-2 text-sm bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
                         ${reviewers.length === 0 ? 'disabled' : ''}>
                         Submit for Review
                     </button>
@@ -189,11 +182,11 @@ function showReturnToAuditorModal(recordType, recordId) {
                 </div>
                 <div class="flex justify-end gap-3">
                     <button onclick="closeWorkflowModal()"
-                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
+                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
                         Cancel
                     </button>
                     <button onclick="returnToAuditor('${recordType}', ${recordId})"
-                        class="px-4 py-2 text-sm bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors">
+                        class="px-4 py-2 text-sm bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors">
                         Return to Auditor
                     </button>
                 </div>
@@ -227,11 +220,11 @@ function showSignOffModal(recordType, recordId) {
                 </div>
                 <div class="flex justify-end gap-3">
                     <button onclick="closeWorkflowModal()"
-                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
+                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
                         Cancel
                     </button>
                     <button onclick="signOffRecord('${recordType}', ${recordId})"
-                        class="px-4 py-2 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors">
+                        class="px-4 py-2 text-sm bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors">
                         Sign Off
                     </button>
                 </div>
@@ -260,11 +253,11 @@ function showAdminLockModal(recordType, recordId) {
                 </div>
                 <div class="flex justify-end gap-3">
                     <button onclick="closeWorkflowModal()"
-                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
+                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
                         Cancel
                     </button>
                     <button onclick="adminLockRecord('${recordType}', ${recordId})"
-                        class="px-4 py-2 text-sm bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">
+                        class="px-4 py-2 text-sm bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors">
                         Lock Record
                     </button>
                 </div>
@@ -306,11 +299,11 @@ function showAdminUnlockModal(recordType, recordId) {
                 </div>
                 <div class="flex justify-end gap-3">
                     <button onclick="closeWorkflowModal()"
-                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
+                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
                         Cancel
                     </button>
                     <button onclick="adminUnlockRecord('${recordType}', ${recordId})"
-                        class="px-4 py-2 text-sm bg-slate-500 text-white rounded-md hover:bg-slate-600 transition-colors">
+                        class="px-4 py-2 text-sm bg-slate-500 text-white rounded-full hover:bg-slate-600 transition-colors">
                         Unlock Record
                     </button>
                 </div>
@@ -363,11 +356,11 @@ function showAdminUnlockSignoffModal(recordType, recordId) {
                 </div>
                 <div class="flex justify-end gap-3">
                     <button onclick="closeWorkflowModal()"
-                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
+                        class="px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
                         Cancel
                     </button>
                     <button onclick="adminUnlockSignoff('${recordType}', ${recordId})"
-                        class="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors">
+                        class="px-4 py-2 text-sm bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors">
                         Unlock Record
                     </button>
                 </div>

@@ -1882,73 +1882,70 @@
                 console.warn('Could not get riskId in updateRACMTable:', e);
             }
 
-            // DE Testing column (E = index 4)
+            // DE Testing column (E = index 4) - pill badges
             if (col == 4) {
                 if (riskId && riskId.trim()) {
                     const cacheKey = `${riskId}_de_testing`;
                     const hasDoc = testDocCache[cacheKey] === true;
                     if (hasDoc) {
-                        cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">📄 Edit</span>';
+                        cell.innerHTML = '<span class="edit-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">Edit</span>';
                     } else {
-                        cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">+ Create</span>';
+                        cell.innerHTML = '<span class="create-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-type="de_testing" data-risk="' + riskId + '">Add</span>';
                     }
                 }
             }
-            // OE Testing column (G = index 6)
+            // OE Testing column (G = index 6) - pill badges
             if (col == 6) {
                 if (riskId && riskId.trim()) {
                     const cacheKey = `${riskId}_oe_testing`;
                     const hasDoc = testDocCache[cacheKey] === true;
                     if (hasDoc) {
-                        cell.innerHTML = '<span class="edit-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">📄 Edit</span>';
+                        cell.innerHTML = '<span class="edit-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">Edit</span>';
                     } else {
-                        cell.innerHTML = '<span class="create-test-doc text-emerald-600 hover:text-emerald-800 cursor-pointer text-sm" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">+ Create</span>';
+                        cell.innerHTML = '<span class="create-test-doc inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-type="oe_testing" data-risk="' + riskId + '">Add</span>';
                     }
                 }
             }
-            // Flowchart column (N = index 13)
+            // Flowchart column (N = index 13) - pill badges
             if (col == 13) {
                 if (val && val.trim()) {
-                    // Display flowchart name as clickable link with clear styling
-                    const displayName = val.replace(/-\d+$/, '').replace(/-/g, ' ');
-                    cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" style="color: #0066cc; text-decoration: underline; font-size: 13px;">📊 ' + displayName + '</a>';
+                    cell.innerHTML = '<a href="/flowchart/' + encodeURIComponent(val) + '" target="_blank" class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 no-underline">View</a>';
                 } else {
                     if (riskId && riskId.trim()) {
-                        cell.innerHTML = '<span class="create-flowchart" style="color: #0891b2; cursor: pointer; font-size: 13px;" data-row="' + row + '">+ Create</span>';
+                        cell.innerHTML = '<span class="create-flowchart inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '">Add</span>';
                     }
                 }
             }
-            // Task column (O = index 14)
+            // Task column (O = index 14) - pill badges
             if (col == 14) {
                 if (val && val.trim()) {
-                    cell.innerHTML = '<span class="edit-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-task="' + val + '" data-row="' + row + '">Edit Task</span>';
+                    cell.innerHTML = '<span class="edit-task inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-task="' + val + '" data-row="' + row + '">Edit</span>';
                 } else {
                     if (riskId && riskId.trim()) {
-                        cell.innerHTML = '<span class="create-task text-violet-600 hover:text-violet-800 cursor-pointer text-sm" data-row="' + row + '">+ Add Task</span>';
+                        cell.innerHTML = '<span class="create-task inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '">Add</span>';
                     }
                 }
             }
-            // Status column styling (I = index 8)
+            // Status column styling (I = index 8) - compact pill badges
             if (col == 8) {
                 const status = val ? val : '';
                 if (status === 'Effective') {
-                    cell.style.backgroundColor = '#d1fae5';
-                    cell.style.color = '#065f46';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Effective</span>';
                 } else if (status === 'Not Effective') {
-                    cell.style.backgroundColor = '#fee2e2';
-                    cell.style.color = '#991b1b';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Not Effective</span>';
                 } else if (status === 'Not Complete') {
-                    cell.style.backgroundColor = '#fef3c7';
-                    cell.style.color = '#92400e';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Not Complete</span>';
+                } else if (status) {
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + status + '</span>';
                 }
             }
-            // Evidence column (P = index 15) - shows attachment count for risks
+            // Evidence column (P = index 15) - pill badges for risks
             if (col == 15 && riskId && riskId.trim()) {
                 const attachCount = riskAttachmentCache[riskId.toUpperCase()] || 0;
                 if (attachCount > 0) {
-                    cell.innerHTML = '<span class="view-risk-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-risk="' + riskId + '">📎 ' + attachCount + ' file' + (attachCount > 1 ? 's' : '') + '</span>';
+                    cell.innerHTML = '<span class="view-risk-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-risk="' + riskId + '">' + attachCount + '</span>';
                 } else {
-                    cell.innerHTML = '<span class="view-risk-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm" data-row="' + row + '" data-risk="' + riskId + '">+ Attach</span>';
+                    cell.innerHTML = '<span class="view-risk-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-risk="' + riskId + '">Attach</span>';
                 }
             }
             // Workflow Status column (Q = index 16) - shows workflow state badge
@@ -1989,44 +1986,41 @@
                 }
             } catch (e) {}
 
-            // Severity column styling (col 4)
+            // Severity column styling (col 4) - compact pill badges
             if (col == 4) {
                 const severity = val ? val : '';
                 if (severity === 'Critical') {
-                    cell.style.backgroundColor = '#fee2e2';
-                    cell.style.color = '#991b1b';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Critical</span>';
                 } else if (severity === 'High') {
-                    cell.style.backgroundColor = '#ffedd5';
-                    cell.style.color = '#c2410c';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">High</span>';
                 } else if (severity === 'Medium') {
-                    cell.style.backgroundColor = '#fef3c7';
-                    cell.style.color = '#92400e';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Medium</span>';
                 } else if (severity === 'Low') {
-                    cell.style.backgroundColor = '#d1fae5';
-                    cell.style.color = '#065f46';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Low</span>';
+                } else if (severity) {
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + severity + '</span>';
                 }
             }
-            // Status column styling (col 5)
+            // Status column styling (col 5) - compact pill badges
             if (col == 5) {
                 const status = val ? val : '';
                 if (status === 'Closed' || status === 'Resolved') {
-                    cell.style.backgroundColor = '#d1fae5';
-                    cell.style.color = '#065f46';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">' + status + '</span>';
                 } else if (status === 'In Progress') {
-                    cell.style.backgroundColor = '#dbeafe';
-                    cell.style.color = '#1e40af';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">In Progress</span>';
                 } else if (status === 'Open') {
-                    cell.style.backgroundColor = '#fee2e2';
-                    cell.style.color = '#991b1b';
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Open</span>';
+                } else if (status) {
+                    cell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + status + '</span>';
                 }
             }
-            // Evidence column (col 8) - shows attachment count
+            // Evidence column (col 8) - pill badges
             if (col == 8 && issueId && issueId.trim()) {
                 const attachCount = issueAttachmentCache[issueId] || 0;
                 if (attachCount > 0) {
-                    cell.innerHTML = '<span class="view-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm font-medium" data-row="' + row + '" data-issue="' + issueId + '">📎 ' + attachCount + ' file' + (attachCount > 1 ? 's' : '') + '</span>';
+                    cell.innerHTML = '<span class="view-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 hover:bg-primary-200 cursor-pointer" data-row="' + row + '" data-issue="' + issueId + '">' + attachCount + '</span>';
                 } else {
-                    cell.innerHTML = '<span class="view-attachments text-amber-600 hover:text-amber-800 cursor-pointer text-sm" data-row="' + row + '" data-issue="' + issueId + '">+ Attach</span>';
+                    cell.innerHTML = '<span class="view-attachments inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer" data-row="' + row + '" data-issue="' + issueId + '">Attach</span>';
                 }
             }
             // Workflow Status column (col 9) - shows workflow state badge
