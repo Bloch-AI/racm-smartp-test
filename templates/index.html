@@ -931,66 +931,80 @@
         </main>
     </div>
 
-    <!-- Task Modal -->
-    <div id="taskModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
-        <div class="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-            <div class="modal-header">
-                <h3 id="taskModalTitle" class="modal-title">Add Task</h3>
-                <button onclick="closeTaskModal()" class="modal-close">
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+    <!-- Task Panel (slides in from right) -->
+    <div id="taskModal" class="fixed inset-y-0 right-0 w-full sm:w-[400px] max-w-full bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+        <!-- Header -->
+        <div class="drawer-header flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="drawer-header-icon">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
-                </button>
-            </div>
-            <div class="p-5 space-y-4">
-                <input type="hidden" id="taskId">
-                <input type="hidden" id="taskRow">
-
+                </div>
                 <div>
-                    <label class="form-label">Title</label>
-                    <input type="text" id="taskTitle" placeholder="Task title..." class="form-input">
-                </div>
-
-                <div>
-                    <label class="form-label">Description</label>
-                    <textarea id="taskDescription" placeholder="What needs to be done?" rows="3" class="form-input" style="height: auto; padding: 10px 12px;"></textarea>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="form-label">Priority</label>
-                        <select id="taskPriority" class="form-input">
-                            <option value="low">Low</option>
-                            <option value="medium" selected>Medium</option>
-                            <option value="high">High</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="form-label">Due Date</label>
-                        <input type="date" id="taskDueDate" class="form-input">
-                        <p class="form-hint">YYYY-MM-DD format</p>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="form-label">Assignee</label>
-                    <input type="text" id="taskAssignee" placeholder="Who is responsible?" class="form-input">
-                    <p class="form-hint">Team member or role</p>
-                </div>
-
-                <div id="taskStatus" class="hidden rounded-md bg-primary-50 p-3 border border-primary-200">
-                    <p class="text-sm text-primary-700">Status: <span id="taskStatusText" class="font-medium"></span></p>
+                    <h2 id="taskModalTitle" class="drawer-header-title">Add Task</h2>
+                    <p class="drawer-header-subtitle">Task details</p>
                 </div>
             </div>
-            <div class="px-5 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
-                <a id="viewOnBoardLink" href="/kanban" target="_blank" class="hidden">
-                    <button type="button" class="btn btn-secondary">View on Board</button>
-                </a>
-                <button onclick="closeTaskModal()" class="btn btn-secondary">Cancel</button>
-                <button onclick="saveTask()" class="btn btn-primary">Save Task</button>
+            <button onclick="closeTaskModal()" class="drawer-close" aria-label="Close">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
+            <input type="hidden" id="taskId">
+            <input type="hidden" id="taskRow">
+
+            <div>
+                <label class="form-label">Title</label>
+                <input type="text" id="taskTitle" placeholder="Task title..." class="form-input">
+            </div>
+
+            <div>
+                <label class="form-label">Description</label>
+                <textarea id="taskDescription" placeholder="What needs to be done?" rows="3" class="form-input" style="height: auto; padding: 10px 12px;"></textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="form-label">Priority</label>
+                    <select id="taskPriority" class="form-input">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Due Date</label>
+                    <input type="date" id="taskDueDate" class="form-input">
+                </div>
+            </div>
+
+            <div>
+                <label class="form-label">Assignee</label>
+                <input type="text" id="taskAssignee" placeholder="Who is responsible?" class="form-input">
+            </div>
+
+            <div id="taskStatus" class="hidden rounded-md bg-primary-50 p-3 border border-primary-200">
+                <p class="text-sm text-primary-700">Status: <span id="taskStatusText" class="font-medium"></span></p>
             </div>
         </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-end gap-2 flex-shrink-0">
+            <a id="viewOnBoardLink" href="/kanban" target="_blank" class="hidden">
+                <button type="button" class="btn btn-secondary">View on Board</button>
+            </a>
+            <button onclick="closeTaskModal()" class="btn btn-secondary">Cancel</button>
+            <button onclick="saveTask()" class="btn btn-primary">Save Task</button>
+        </div>
     </div>
+
+    <!-- Task Panel Backdrop -->
+    <div id="taskModalBackdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden" onclick="closeTaskModal()"></div>
 
     <!-- Test Document Editor Modal -->
     <div id="testDocModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden items-center justify-center">
@@ -2490,13 +2504,13 @@
                 document.getElementById('viewOnBoardLink').classList.add('hidden');
             }
 
-            document.getElementById('taskModal').classList.remove('hidden');
-            document.getElementById('taskModal').classList.add('flex');
+            document.getElementById('taskModal').classList.remove('translate-x-full');
+            document.getElementById('taskModalBackdrop').classList.remove('hidden');
         }
 
         function closeTaskModal() {
-            document.getElementById('taskModal').classList.add('hidden');
-            document.getElementById('taskModal').classList.remove('flex');
+            document.getElementById('taskModal').classList.add('translate-x-full');
+            document.getElementById('taskModalBackdrop').classList.add('hidden');
         }
 
         async function saveTask() {
@@ -2537,8 +2551,11 @@
             closeTaskModal();
         }
 
-        document.getElementById('taskModal').addEventListener('click', function(e) {
-            if (e.target === this) closeTaskModal();
+        // Escape key closes task panel
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !document.getElementById('taskModal').classList.contains('translate-x-full')) {
+                closeTaskModal();
+            }
         });
 
         // ==================== Test Document Editor Functions ====================
