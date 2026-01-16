@@ -350,26 +350,40 @@ class RACMDatabase:
         user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         if user_count == 0:
             import os
+            import secrets
             from werkzeug.security import generate_password_hash
             import logging
 
             admin_email = os.environ.get('ADMIN_EMAIL', 'admin@localhost')
-            admin_password = os.environ.get('ADMIN_PASSWORD', 'changeme123')
+            admin_password = os.environ.get('ADMIN_PASSWORD')
+
+            # Security: Never use hardcoded default password
+            # Generate random password if not provided via environment
+            generated_password = False
+            if not admin_password:
+                admin_password = secrets.token_urlsafe(16)
+                generated_password = True
+
             password_hash = generate_password_hash(admin_password, method='pbkdf2:sha256')
 
+            # Insert without role column first (it's added in migration below)
             conn.execute("""
                 INSERT INTO users (email, name, password_hash, is_active, is_admin)
                 VALUES (?, 'Default Admin', ?, 1, 1)
             """, (admin_email, password_hash))
             conn.commit()
 
-            # Log warning about default credentials
-            if admin_password == 'changeme123':
+            # Log credentials - CRITICAL for generated passwords
+            if generated_password:
                 logging.warning(
-                    "Default admin created with email '%s' and default password. "
-                    "Please change the password immediately! "
-                    "Set ADMIN_EMAIL and ADMIN_PASSWORD environment variables for custom credentials.",
-                    admin_email
+                    "\n" + "="*60 + "\n"
+                    "DEFAULT ADMIN CREATED WITH GENERATED PASSWORD\n"
+                    "Email: %s\n"
+                    "Password: %s\n"
+                    "SAVE THIS PASSWORD - it will not be shown again!\n"
+                    "Set ADMIN_EMAIL and ADMIN_PASSWORD env vars to customize.\n"
+                    + "="*60,
+                    admin_email, admin_password
                 )
 
         # Migration: Add audit_id column to tables that need scoping
@@ -439,6 +453,35 @@ class RACMDatabase:
             conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_audit ON {table}(audit_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_risk_row ON issues(risk_row_id)")
         conn.commit()
+
+        # Migration: Fix flowcharts uniqueness - change from global name to (audit_id, name)
+        # Check if migration is needed by looking for the old global unique constraint
+        flowchart_schema = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='flowcharts'"
+        ).fetchone()
+        if flowchart_schema and 'name TEXT UNIQUE' in flowchart_schema[0]:
+            # Recreate table with correct uniqueness constraint
+            conn.execute("""
+                CREATE TABLE flowcharts_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    data JSON NOT NULL,
+                    risk_id INTEGER REFERENCES risks(id) ON DELETE SET NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    audit_id INTEGER,
+                    UNIQUE(audit_id, name)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO flowcharts_new (id, name, data, risk_id, created_at, updated_at, audit_id)
+                SELECT id, name, data, risk_id, created_at, updated_at, audit_id FROM flowcharts
+            """)
+            conn.execute("DROP TABLE flowcharts")
+            conn.execute("ALTER TABLE flowcharts_new RENAME TO flowcharts")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_flowcharts_risk ON flowcharts(risk_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_flowcharts_audit ON flowcharts(audit_id)")
+            conn.commit()
 
         # ==================== WORKFLOW STATE MIGRATIONS ====================
 
@@ -606,6 +649,51 @@ class RACMDatabase:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_assigned_reviewer ON issues(assigned_reviewer_id)")
         conn.commit()
 
+        # Migration: Expand audit_team to allow 'viewer' role and migrate audit_viewers
+        # Check if audit_team CHECK constraint needs updating (doesn't allow 'viewer')
+        audit_team_schema = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_team'"
+        ).fetchone()
+        if audit_team_schema and "'viewer'" not in audit_team_schema[0]:
+            # Recreate audit_team with expanded CHECK constraint
+            conn.execute("""
+                CREATE TABLE audit_team_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    audit_id INTEGER NOT NULL REFERENCES audits(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    team_role TEXT NOT NULL CHECK (team_role IN ('auditor', 'reviewer', 'viewer')),
+                    assigned_by INTEGER REFERENCES users(id),
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    granted_by INTEGER REFERENCES users(id),
+                    granted_at TIMESTAMP,
+                    UNIQUE(audit_id, user_id, team_role)
+                )
+            """)
+            # Copy existing audit_team data
+            conn.execute("""
+                INSERT INTO audit_team_new (id, audit_id, user_id, team_role, assigned_by, assigned_at)
+                SELECT id, audit_id, user_id, team_role, assigned_by, assigned_at FROM audit_team
+            """)
+            conn.execute("DROP TABLE audit_team")
+            conn.execute("ALTER TABLE audit_team_new RENAME TO audit_team")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_team_audit ON audit_team(audit_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_team_user ON audit_team(user_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_team_role ON audit_team(team_role)")
+            conn.commit()
+
+        # Migration: Migrate audit_viewers data to audit_team (as 'viewer' role)
+        # This unifies all user-audit assignments into one authoritative table
+        viewers_exist = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_viewers'"
+        ).fetchone()
+        if viewers_exist:
+            conn.execute("""
+                INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role, granted_by, granted_at)
+                SELECT audit_id, viewer_user_id, 'viewer', granted_by, granted_at
+                FROM audit_viewers
+            """)
+            conn.commit()
+
         # ==================== SEED TEST ACCOUNTS ====================
         # Only seed if we have less than 3 users (just the default admin)
         user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
@@ -664,33 +752,63 @@ class RACMDatabase:
                     design_effectiveness_conclusion: str = "", operational_effectiveness_test: str = "",
                     operational_effectiveness_conclusion: str = "", status: str = "Not Complete",
                     ready_for_review: int = 0, reviewer: str = "",
-                    raise_issue: int = 0, closed: int = 0) -> int:
-        """Create a new risk/control. Returns the new ID."""
+                    raise_issue: int = 0, closed: int = 0,
+                    audit_id: int = None, created_by: int = None) -> int:
+        """Create a new risk/control. Returns the new ID.
+
+        New records use workflow fields (record_status, assigned_reviewer_id).
+        Legacy fields (ready_for_review, reviewer, closed) kept for import compatibility.
+        """
+        # Derive initial workflow state from legacy fields for backward compatibility
+        record_status = 'draft'
+        if closed:
+            record_status = 'signed_off'
+        elif ready_for_review:
+            record_status = 'in_review'
+
         conn = self._get_conn()
         cursor = conn.execute("""
             INSERT INTO risks (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
                               design_effectiveness_conclusion, operational_effectiveness_test,
                               operational_effectiveness_conclusion, status, ready_for_review,
-                              reviewer, raise_issue, closed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              reviewer, raise_issue, closed, audit_id, record_status, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
               design_effectiveness_conclusion, operational_effectiveness_test,
               operational_effectiveness_conclusion, status, ready_for_review,
-              reviewer, raise_issue, closed))
+              reviewer, raise_issue, closed, audit_id, record_status, created_by))
         conn.commit()
         new_id = cursor.lastrowid
         conn.close()
         return new_id
 
     def update_risk(self, risk_id: str, **kwargs) -> bool:
-        """Update a risk. Pass fields to update as kwargs."""
-        allowed = {'risk', 'control_id', 'control_owner', 'design_effectiveness_testing',
-                   'design_effectiveness_conclusion', 'operational_effectiveness_test',
-                   'operational_effectiveness_conclusion', 'status', 'ready_for_review',
-                   'reviewer', 'raise_issue', 'closed'}
+        """Update a risk. Pass fields to update as kwargs.
+
+        Supports both legacy fields (ready_for_review, reviewer, closed) and
+        new workflow fields (record_status, assigned_reviewer_id, etc).
+        """
+        # Content fields
+        content_fields = {'risk', 'control_id', 'control_owner', 'design_effectiveness_testing',
+                         'design_effectiveness_conclusion', 'operational_effectiveness_test',
+                         'operational_effectiveness_conclusion', 'status', 'raise_issue'}
+        # Legacy workflow fields (kept for import/export compatibility)
+        legacy_fields = {'ready_for_review', 'reviewer', 'closed'}
+        # New workflow fields
+        workflow_fields = {'record_status', 'assigned_reviewer_id', 'current_owner_role',
+                          'admin_lock_reason', 'admin_locked_by', 'admin_locked_at',
+                          'signed_off_by', 'signed_off_at', 'updated_by', 'audit_id'}
+
+        allowed = content_fields | legacy_fields | workflow_fields
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return False
+
+        # Sync legacy -> new workflow fields if legacy fields are being set
+        if 'closed' in updates and updates['closed'] and 'record_status' not in updates:
+            updates['record_status'] = 'signed_off'
+        elif 'ready_for_review' in updates and updates['ready_for_review'] and 'record_status' not in updates:
+            updates['record_status'] = 'in_review'
 
         updates['updated_at'] = datetime.now().isoformat()
         set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
@@ -1079,7 +1197,10 @@ class RACMDatabase:
         return None
 
     def save_flowchart(self, name: str, data: Dict, risk_id: Optional[str] = None, audit_id: Optional[int] = None) -> int:
-        """Save/update a flowchart. Returns the ID."""
+        """Save/update a flowchart. Returns the ID.
+
+        Flowcharts are unique per (audit_id, name) combination.
+        """
         conn = self._get_conn()
 
         # Look up risk foreign key if provided
@@ -1089,20 +1210,22 @@ class RACMDatabase:
             if row:
                 fk_risk_id = row['id']
 
-        # Upsert
+        # Upsert - uniqueness is now (audit_id, name)
         cursor = conn.execute("""
             INSERT INTO flowcharts (name, data, risk_id, audit_id, updated_at)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(name) DO UPDATE SET
+            ON CONFLICT(audit_id, name) DO UPDATE SET
                 data = excluded.data,
                 risk_id = excluded.risk_id,
-                audit_id = excluded.audit_id,
                 updated_at = CURRENT_TIMESTAMP
         """, (name, json.dumps(data), fk_risk_id, audit_id))
         conn.commit()
 
         # Get the ID
-        row = conn.execute("SELECT id FROM flowcharts WHERE name = ?", (name,)).fetchone()
+        row = conn.execute(
+            "SELECT id FROM flowcharts WHERE name = ? AND (audit_id = ? OR (audit_id IS NULL AND ? IS NULL))",
+            (name, audit_id, audit_id)
+        ).fetchone()
         flowchart_id = row['id'] if row else cursor.lastrowid
         conn.close()
         return flowchart_id
@@ -2083,37 +2206,44 @@ class RACMDatabase:
     def user_has_audit_access(self, user_id: int, audit_id: int, min_role: str = 'viewer') -> bool:
         """Check if a user has at least the specified role level for an audit.
 
-        Role hierarchy (higher number = more permissions):
-        - viewer (4): read-only
-        - reviewer (3): read + comments
-        - auditor (2): edit assigned audits
-        - admin (1): full access
+        Uses audit_team table (authoritative) for auditor/reviewer assignments.
+        Uses audit_viewers table for viewer assignments.
 
-        Returns True if user's role level is <= min_role level (lower id = higher permission).
-        Also checks audit_viewers table for viewer-level access.
+        Role hierarchy (lower number = higher permission):
+        - auditor (2): can edit records in draft status
+        - reviewer (3): can review/sign-off records in_review status
+        - viewer (4): read-only access
+
+        Returns True if user's team role meets or exceeds min_role requirement.
         """
         role_hierarchy = {'admin': 1, 'auditor': 2, 'reviewer': 3, 'viewer': 4}
         required_level = role_hierarchy.get(min_role, 999)
 
-        # Check audit_memberships first (team members)
-        membership = self.get_audit_membership(user_id, audit_id)
-        if membership:
-            user_level = role_hierarchy.get(membership['role_name'], 999)
+        conn = self._get_conn()
+
+        # Check audit_team table (authoritative for auditor/reviewer)
+        team_row = conn.execute("""
+            SELECT team_role FROM audit_team
+            WHERE user_id = ? AND audit_id = ?
+        """, (user_id, audit_id)).fetchone()
+
+        if team_row:
+            user_level = role_hierarchy.get(team_row[0], 999)
             if user_level <= required_level:
+                conn.close()
                 return True
 
-        # Check audit_viewers table (assigned viewers)
-        # Viewers have level 4, so only grant access if min_role is 'viewer'
+        # Check audit_viewers table for viewer-level access
         if required_level >= 4:  # viewer level or lower requirement
-            conn = self._get_conn()
-            row = conn.execute("""
+            viewer_row = conn.execute("""
                 SELECT id FROM audit_viewers
                 WHERE viewer_user_id = ? AND audit_id = ?
             """, (user_id, audit_id)).fetchone()
-            conn.close()
-            if row:
+            if viewer_row:
+                conn.close()
                 return True
 
+        conn.close()
         return False
 
     # ==================== SCOPED QUERIES (BY AUDIT) ====================
@@ -2877,9 +3007,18 @@ RELATIONSHIPS:
 
     def add_audit_viewer(self, audit_id: int, viewer_user_id: int,
                         granted_by: int) -> int:
-        """Add a viewer to an audit. Returns viewer record ID."""
+        """Add a viewer to an audit. Returns viewer record ID.
+
+        Adds to both audit_team (authoritative) and audit_viewers (legacy compatibility).
+        """
         conn = self._get_conn()
+        # Add to audit_team (authoritative)
         cursor = conn.execute("""
+            INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role, granted_by, granted_at)
+            VALUES (?, ?, 'viewer', ?, CURRENT_TIMESTAMP)
+        """, (audit_id, viewer_user_id, granted_by))
+        # Also add to audit_viewers for legacy compatibility
+        conn.execute("""
             INSERT OR IGNORE INTO audit_viewers (audit_id, viewer_user_id, granted_by)
             VALUES (?, ?, ?)
         """, (audit_id, viewer_user_id, granted_by))
@@ -2889,9 +3028,18 @@ RELATIONSHIPS:
         return viewer_id
 
     def remove_audit_viewer(self, audit_id: int, viewer_user_id: int) -> bool:
-        """Remove a viewer from an audit."""
+        """Remove a viewer from an audit.
+
+        Removes from both audit_team (authoritative) and audit_viewers (legacy).
+        """
         conn = self._get_conn()
+        # Remove from audit_team (authoritative)
         cursor = conn.execute("""
+            DELETE FROM audit_team
+            WHERE audit_id = ? AND user_id = ? AND team_role = 'viewer'
+        """, (audit_id, viewer_user_id))
+        # Also remove from audit_viewers (legacy)
+        conn.execute("""
             DELETE FROM audit_viewers
             WHERE audit_id = ? AND viewer_user_id = ?
         """, (audit_id, viewer_user_id))
@@ -2901,8 +3049,20 @@ RELATIONSHIPS:
         return deleted
 
     def is_viewer_of_audit(self, user_id: int, audit_id: int) -> bool:
-        """Check if a user is a viewer of an audit."""
+        """Check if a user is a viewer of an audit.
+
+        Checks audit_team (authoritative) and audit_viewers (legacy fallback).
+        """
         conn = self._get_conn()
+        # Check audit_team first (authoritative after migration)
+        row = conn.execute("""
+            SELECT 1 FROM audit_team
+            WHERE audit_id = ? AND user_id = ? AND team_role = 'viewer'
+        """, (audit_id, user_id)).fetchone()
+        if row:
+            conn.close()
+            return True
+        # Fallback to audit_viewers (legacy, for unmigrated data)
         row = conn.execute("""
             SELECT 1 FROM audit_viewers
             WHERE audit_id = ? AND viewer_user_id = ?
