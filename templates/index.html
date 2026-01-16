@@ -1034,8 +1034,8 @@
         </div>
     </div>
 
-    <!-- Evidence Panel (slides in from left) -->
-    <div id="evidencePanel" class="fixed inset-y-0 left-0 w-full sm:w-[480px] max-w-full bg-white shadow-2xl z-50 transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+    <!-- Evidence Panel (slides in from right) -->
+    <div id="evidencePanel" class="fixed inset-y-0 right-0 w-full sm:w-[480px] max-w-full bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
         <!-- Header - uses unified drawer style -->
         <div class="drawer-header flex-shrink-0">
             <div class="flex items-center gap-3">
@@ -2990,7 +2990,7 @@
             }
 
             // Show panel
-            panel.classList.remove('-translate-x-full');
+            panel.classList.remove('translate-x-full');
             backdrop.classList.remove('hidden');
             evidencePanelOpen = true;
         }
@@ -2998,7 +2998,7 @@
         function closeEvidencePanel() {
             const panel = document.getElementById('evidencePanel');
             const backdrop = document.getElementById('evidenceBackdrop');
-            panel.classList.add('-translate-x-full');
+            panel.classList.add('translate-x-full');
             backdrop.classList.add('hidden');
             evidencePanelOpen = false;
         }
