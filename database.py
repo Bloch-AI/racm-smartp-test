@@ -2070,16 +2070,31 @@ class RACMDatabase:
         - admin (1): full access
 
         Returns True if user's role level is <= min_role level (lower id = higher permission).
+        Also checks audit_viewers table for viewer-level access.
         """
-        membership = self.get_audit_membership(user_id, audit_id)
-        if not membership:
-            return False
-
         role_hierarchy = {'admin': 1, 'auditor': 2, 'reviewer': 3, 'viewer': 4}
-        user_level = role_hierarchy.get(membership['role_name'], 999)
         required_level = role_hierarchy.get(min_role, 999)
 
-        return user_level <= required_level
+        # Check audit_memberships first (team members)
+        membership = self.get_audit_membership(user_id, audit_id)
+        if membership:
+            user_level = role_hierarchy.get(membership['role_name'], 999)
+            if user_level <= required_level:
+                return True
+
+        # Check audit_viewers table (assigned viewers)
+        # Viewers have level 4, so only grant access if min_role is 'viewer'
+        if required_level >= 4:  # viewer level or lower requirement
+            conn = self._get_conn()
+            row = conn.execute("""
+                SELECT id FROM audit_viewers
+                WHERE viewer_user_id = ? AND audit_id = ?
+            """, (user_id, audit_id)).fetchone()
+            conn.close()
+            if row:
+                return True
+
+        return False
 
     # ==================== SCOPED QUERIES (BY AUDIT) ====================
 

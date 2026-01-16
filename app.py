@@ -1408,23 +1408,13 @@ def audit_plan():
 # ==================== Annual Audit Plan API ====================
 
 @app.route('/api/audits', methods=['GET'])
-@require_login
 def get_audits():
-    """Get audits from the annual audit plan.
+    """Get all audits from the annual audit plan.
 
-    Admins/Auditors/Reviewers see all audits.
-    Viewers only see audits they're specifically assigned to.
+    Everyone can see the full audit plan (it's the annual overview).
+    Access restrictions apply when selecting/working on specific audits.
     """
-    user = get_current_user()
-    user_role = get_user_role(user)
-
-    # Viewers only see their assigned audits
-    if user_role == 'viewer':
-        audits = db.get_accessible_audits(user['id'], is_admin=False)
-    else:
-        # Admins, auditors, reviewers see all audits
-        audits = db.get_all_audits()
-
+    audits = db.get_all_audits()
     return jsonify(audits)
 
 
@@ -1500,21 +1490,9 @@ def delete_audit(audit_id):
 
 
 @app.route('/api/audits/spreadsheet', methods=['GET'])
-@require_login
 def get_audits_spreadsheet():
-    """Get audits in spreadsheet format (array of arrays).
-
-    Viewers only see their assigned audits.
-    """
-    user = get_current_user()
-    user_role = get_user_role(user)
-
-    if user_role == 'viewer':
-        audits = db.get_accessible_audits(user['id'], is_admin=False)
-        data = db.audits_to_spreadsheet_format(audits)
-    else:
-        data = db.get_audits_as_spreadsheet()
-
+    """Get audits in spreadsheet format (array of arrays)."""
+    data = db.get_audits_as_spreadsheet()
     return jsonify(data)
 
 
@@ -1532,21 +1510,9 @@ def save_audits_spreadsheet():
 
 
 @app.route('/api/audits/kanban', methods=['GET'])
-@require_login
 def get_audits_kanban():
-    """Get audits in kanban board format.
-
-    Viewers only see their assigned audits.
-    """
-    user = get_current_user()
-    user_role = get_user_role(user)
-
-    if user_role == 'viewer':
-        audits = db.get_accessible_audits(user['id'], is_admin=False)
-        board = db.audits_to_kanban_format(audits)
-    else:
-        board = db.get_audits_as_kanban()
-
+    """Get audits in kanban board format."""
+    board = db.get_audits_as_kanban()
     return jsonify(board)
 
 
