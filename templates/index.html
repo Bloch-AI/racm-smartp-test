@@ -1315,6 +1315,112 @@
         let currentAudit = null;
         let currentUserRole = null;
         let auditTeam = { auditors: [], reviewers: [] };  // For reviewer selection in submit-for-review
+        const isAdmin = {{ 'true' if session.is_admin else 'false' }};
+
+        // Render a workflow status badge
+        function renderStatusBadge(status) {
+            const badges = {
+                'draft': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Draft</span>',
+                'in_review': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">In Review</span>',
+                'signed_off': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Signed Off</span>',
+                'admin_hold': '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Locked</span>'
+            };
+            return badges[status] || badges['draft'];
+        }
+
+        // Get row CSS class based on status
+        function getRowStatusClass(status) {
+            const classes = {
+                'signed_off': 'bg-green-50',
+                'admin_hold': 'bg-red-50',
+                'in_review': 'bg-blue-50'
+            };
+            return classes[status] || '';
+        }
+
+        // Render workflow action buttons based on status and permissions
+        function renderWorkflowActions(meta, recordType) {
+            if (!meta) return '';
+            const status = meta.record_status || 'draft';
+            const recordId = meta.id;
+            let buttons = [];
+
+            // For admin_hold (locked) records, only admins can unlock
+            if (status === 'admin_hold') {
+                if (isAdmin) {
+                    buttons.push(`<span class="unlock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Unlock</span>`);
+                } else {
+                    buttons.push('<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Locked</span>');
+                }
+                return buttons.join(' ');
+            }
+
+            // For signed_off records, only admins can unlock the sign-off
+            if (status === 'signed_off') {
+                if (isAdmin) {
+                    buttons.push(`<span class="lock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
+                }
+                return buttons.join(' ');
+            }
+
+            // For draft and in_review, show appropriate actions based on role
+            if (currentUserRole === 'viewer') {
+                return '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">View Only</span>';
+            }
+
+            // Admin can lock any non-locked record
+            if (isAdmin && status !== 'admin_hold') {
+                buttons.push(`<span class="lock-record inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer" data-type="${recordType}" data-id="${recordId}">Lock</span>`);
+            }
+
+            return buttons.join(' ');
+        }
+
+        // Lock a record (admin only)
+        async function lockRecord(recordType, recordId) {
+            const reason = prompt('Enter reason for locking this record:');
+            if (!reason) return;
+
+            try {
+                const response = await fetch(`/api/admin/records/${recordType}/${recordId}/lock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('Record locked', 'success');
+                    loadData();
+                } else {
+                    showToast(data.error || 'Failed to lock record', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to lock record', 'error');
+            }
+        }
+
+        // Unlock a record (admin only)
+        async function unlockRecord(recordType, recordId) {
+            const reason = prompt('Enter reason for unlocking this record:');
+            if (!reason) return;
+
+            try {
+                const response = await fetch(`/api/admin/records/${recordType}/${recordId}/unlock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason, return_to: 'draft' })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('Record unlocked', 'success');
+                    loadData();
+                } else {
+                    showToast(data.error || 'Failed to unlock record', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to unlock record', 'error');
+            }
+        }
 
         // Switch active audit and reload page
         async function switchAudit(auditId) {
@@ -1814,6 +1920,20 @@
                 filters: true,
                 search: false,
                 updateTable: updateRACMTable,
+                onbeforechange: function(instance, cell, x, y, value) {
+                    // Check if record is locked (admin_hold)
+                    const meta = racmMetadata[y];
+                    if (meta && meta.record_status === 'admin_hold' && !isAdmin) {
+                        showToast('This record is locked and cannot be edited', 'error');
+                        return false;
+                    }
+                    // Check if user is viewer
+                    if (currentUserRole === 'viewer') {
+                        showToast('You have view-only access', 'error');
+                        return false;
+                    }
+                    return true;
+                },
                 onchange: onRACMChange,
                 contextMenu: function(obj, x, y, e) {
                     let items = [];
@@ -1871,6 +1991,20 @@
                 filters: true,
                 search: false,
                 updateTable: updateIssueTable,
+                onbeforechange: function(instance, cell, x, y, value) {
+                    // Check if record is locked (admin_hold)
+                    const meta = issuesMetadata[y];
+                    if (meta && meta.record_status === 'admin_hold' && !isAdmin) {
+                        showToast('This record is locked and cannot be edited', 'error');
+                        return false;
+                    }
+                    // Check if user is viewer
+                    if (currentUserRole === 'viewer') {
+                        showToast('You have view-only access', 'error');
+                        return false;
+                    }
+                    return true;
+                },
                 contextMenu: function(obj, x, y, e) {
                     let items = [];
                     items.push({ title: 'Insert row above', onclick: function() { obj.insertRow(1, y, true); } });
@@ -2468,6 +2602,21 @@
                     openAttachmentsModal(riskId, 'risk');
                 }
             }
+            // Lock/Unlock handlers (admin only)
+            if (e.target.classList.contains('lock-record')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    lockRecord(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('unlock-record')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    unlockRecord(recordType, recordId);
+                }
+            }
         });
 
         // Task Modal Functions
@@ -2925,6 +3074,21 @@
                 const issueId = e.target.getAttribute('data-issue');
                 if (issueId) {
                     openAttachmentsModal(issueId, 'issue');
+                }
+            }
+            // Lock/Unlock handlers (admin only)
+            if (e.target.classList.contains('lock-record')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    lockRecord(recordType, recordId);
+                }
+            }
+            if (e.target.classList.contains('unlock-record')) {
+                const recordType = e.target.getAttribute('data-type');
+                const recordId = e.target.getAttribute('data-id');
+                if (recordType && recordId) {
+                    unlockRecord(recordType, recordId);
                 }
             }
         });
