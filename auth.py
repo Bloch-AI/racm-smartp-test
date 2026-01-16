@@ -212,7 +212,13 @@ def set_active_audit(audit_id):
         session['active_audit_id'] = audit_id
         return True
 
-    # Check membership
+    # Global auditors can access any audit
+    user_role = get_user_role(user)
+    if user_role == 'auditor':
+        session['active_audit_id'] = audit_id
+        return True
+
+    # Viewers need explicit assignment (via audit_team or audit_viewers)
     db = get_db()
     if db.user_has_audit_access(user['id'], audit_id, 'viewer'):
         session['active_audit_id'] = audit_id
@@ -231,7 +237,8 @@ def get_user_accessible_audits():
         return []
 
     db = get_db()
-    return db.get_accessible_audits(user['id'], user['is_admin'])
+    user_role = get_user_role(user)
+    return db.get_accessible_audits(user['id'], user['is_admin'], user_role)
 
 
 def login_user(user_id, email, name, is_admin):

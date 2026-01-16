@@ -2344,24 +2344,29 @@ class RACMDatabase:
             counts[value] = counts.get(value, 0) + 1
         return counts
 
-    def get_accessible_audits(self, user_id: int, is_admin: bool = False) -> List[Dict]:
+    def get_accessible_audits(self, user_id: int, is_admin: bool = False, user_role: str = None) -> List[Dict]:
         """Get audits accessible to a user.
 
-        Admins see all audits.
-        Non-admins see audits where they are:
-        - A team member (audit_memberships table), OR
-        - Assigned as a viewer (audit_viewers table)
+        Permission model:
+        - Admins: see all audits
+        - Auditors (global role): see ALL audits (full visibility for audit work)
+        - Viewers: see ONLY audits they're explicitly assigned to via audit_team or audit_viewers
         """
+        # Admins see all
         if is_admin:
             return self.get_all_audits()
 
+        # Global auditors see all audits (consolidated from reviewer role)
+        if user_role == 'auditor':
+            return self.get_all_audits()
+
+        # Viewers see only assigned audits (via audit_team or audit_viewers)
         conn = self._get_conn()
-        # Get audits from both memberships and viewer assignments
         rows = conn.execute("""
             SELECT DISTINCT a.* FROM audits a
-            LEFT JOIN audit_memberships am ON a.id = am.audit_id AND am.user_id = ?
+            LEFT JOIN audit_team at ON a.id = at.audit_id AND at.user_id = ?
             LEFT JOIN audit_viewers av ON a.id = av.audit_id AND av.viewer_user_id = ?
-            WHERE am.user_id IS NOT NULL OR av.viewer_user_id IS NOT NULL
+            WHERE at.user_id IS NOT NULL OR av.viewer_user_id IS NOT NULL
             ORDER BY a.title
         """, (user_id, user_id)).fetchall()
         conn.close()
