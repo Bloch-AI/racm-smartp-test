@@ -78,7 +78,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canAdminLock) {
         buttons.push(`
             <button onclick="showAdminLockModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-3 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors">
+                    class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer">
                 Lock
             </button>
         `);
@@ -87,7 +87,7 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canAdminUnlock) {
         buttons.push(`
             <button onclick="showAdminUnlockModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-3 py-1 bg-slate-500 text-white rounded-full hover:bg-slate-600 transition-colors">
+                    class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer">
                 Unlock
             </button>
         `);
@@ -96,8 +96,8 @@ function renderWorkflowActions(metadata, recordType) {
     if (permissions.canAdminUnlockSignoff) {
         buttons.push(`
             <button onclick="showAdminUnlockSignoffModal('${recordType}', ${metadata.id})"
-                    class="text-xs px-3 py-1 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors">
-                Unlock Sign-off
+                    class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer">
+                Unlock
             </button>
         `);
     }
