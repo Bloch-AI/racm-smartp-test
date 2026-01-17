@@ -713,17 +713,21 @@ def save_data():
 # ==================== Risks API (for direct access) ====================
 
 @app.route('/api/risks', methods=['GET'])
+@require_login
 def get_risks():
     """Get all risks as JSON."""
     return jsonify(db.get_all_risks())
 
 @app.route('/api/risks/<risk_id>', methods=['GET'])
+@require_login
 def get_risk(risk_id):
     """Get a single risk."""
     risk = db.get_risk(risk_id)
     return jsonify(risk) if risk else not_found_response('Risk')
 
 @app.route('/api/risks', methods=['POST'])
+@require_login
+@require_non_viewer
 def create_risk():
     """Create a new risk."""
     data = request.json or {}
@@ -745,6 +749,8 @@ def create_risk():
     return jsonify({'status': 'created', 'id': new_id})
 
 @app.route('/api/risks/<risk_id>', methods=['PUT'])
+@require_login
+@require_non_viewer
 def update_risk(risk_id):
     """Update a risk."""
     # Thread-safe data version update
@@ -753,6 +759,8 @@ def update_risk(risk_id):
     return jsonify({'status': 'updated'})
 
 @app.route('/api/risks/<risk_id>', methods=['DELETE'])
+@require_login
+@require_non_viewer
 def delete_risk(risk_id):
     """Delete a risk."""
     if db.delete_risk(risk_id):
@@ -1314,6 +1322,7 @@ def save_flowchart(flowchart_id):
     return jsonify({'status': 'saved'})
 
 @app.route('/api/flowcharts', methods=['GET'])
+@require_login
 def list_flowcharts():
     """List flowchart names for the active audit."""
     audit_id = get_active_audit_id()
@@ -1405,6 +1414,7 @@ def audit_plan():
 # ==================== Annual Audit Plan API ====================
 
 @app.route('/api/audits', methods=['GET'])
+@require_login
 def get_audits():
     """Get all audits from the annual audit plan.
 
@@ -1444,6 +1454,7 @@ def create_audit():
 
 
 @app.route('/api/audits/<int:audit_id>', methods=['GET'])
+@require_login
 def get_audit(audit_id):
     """Get a single audit by ID."""
     audit = db.get_audit(audit_id)
@@ -1487,6 +1498,7 @@ def delete_audit(audit_id):
 
 
 @app.route('/api/audits/spreadsheet', methods=['GET'])
+@require_login
 def get_audits_spreadsheet():
     """Get audits in spreadsheet format (array of arrays)."""
     data = db.get_audits_as_spreadsheet()
@@ -1507,6 +1519,7 @@ def save_audits_spreadsheet():
 
 
 @app.route('/api/audits/kanban', methods=['GET'])
+@require_login
 def get_audits_kanban():
     """Get audits in kanban board format."""
     board = db.get_audits_as_kanban()
@@ -1514,6 +1527,7 @@ def get_audits_kanban():
 
 
 @app.route('/api/audits/summary', methods=['GET'])
+@require_login
 def get_audits_summary():
     """Get summary statistics for the annual audit plan."""
     summary = db.get_audit_summary()
@@ -1534,6 +1548,7 @@ def library():
 # ==================== LIBRARY API ====================
 
 @app.route('/api/library/documents', methods=['GET'])
+@require_login
 def list_library_documents():
     """List all library documents."""
     doc_type = request.args.get('type')
@@ -1542,6 +1557,8 @@ def list_library_documents():
 
 
 @app.route('/api/library/documents', methods=['POST'])
+@require_login
+@require_non_viewer
 def upload_library_document():
     """Upload a new library document."""
     if 'file' not in request.files:
@@ -1604,6 +1621,7 @@ def upload_library_document():
 
 
 @app.route('/api/library/documents/<int:doc_id>', methods=['GET'])
+@require_login
 def get_library_document(doc_id):
     """Get a library document's details."""
     doc = db.get_library_document(doc_id)
@@ -1613,6 +1631,8 @@ def get_library_document(doc_id):
 
 
 @app.route('/api/library/documents/<int:doc_id>', methods=['PUT'])
+@require_login
+@require_non_viewer
 def update_library_document_route(doc_id):
     """Update a library document's metadata."""
     data = request.json
@@ -1626,6 +1646,8 @@ def update_library_document_route(doc_id):
 
 
 @app.route('/api/library/documents/<int:doc_id>', methods=['DELETE'])
+@require_login
+@require_non_viewer
 def delete_library_document_route(doc_id):
     """Delete a library document and its chunks."""
     doc = db.get_library_document(doc_id)
@@ -1643,6 +1665,7 @@ def delete_library_document_route(doc_id):
 
 
 @app.route('/api/library/documents/<int:doc_id>/file', methods=['GET'])
+@require_login
 def download_library_document(doc_id):
     """Download/view the original library document file."""
     doc = db.get_library_document(doc_id)
@@ -1665,6 +1688,7 @@ def download_library_document(doc_id):
 
 
 @app.route('/api/library/documents/<int:doc_id>/chunks', methods=['GET'])
+@require_login
 def get_library_document_chunks(doc_id):
     """Get all chunks for a document."""
     chunks = db.get_library_chunks(doc_id)
@@ -1672,6 +1696,7 @@ def get_library_document_chunks(doc_id):
 
 
 @app.route('/api/library/search', methods=['POST'])
+@require_login
 def search_library():
     """Search the library using semantic search."""
     data = request.json
@@ -1699,6 +1724,7 @@ def search_library():
 
 
 @app.route('/api/library/stats', methods=['GET'])
+@require_login
 def get_library_stats():
     """Get library statistics."""
     stats = db.get_library_stats()
@@ -1706,12 +1732,15 @@ def get_library_stats():
 
 
 @app.route('/api/kanban/<board_id>', methods=['GET'])
+@require_login
 def get_kanban(board_id):
     """Get kanban board in legacy format."""
     kanban_format = db.get_kanban_format()
     return jsonify(kanban_format['boards'].get(board_id))
 
 @app.route('/api/kanban/<board_id>', methods=['POST'])
+@require_login
+@require_non_viewer
 def save_kanban(board_id):
     """Save kanban board from legacy format."""
     # Thread-safe data version update
@@ -1734,6 +1763,8 @@ def save_kanban(board_id):
     return jsonify({'status': 'saved'})
 
 @app.route('/api/kanban/<board_id>/task', methods=['POST'])
+@require_login
+@require_non_viewer
 def create_kanban_task(board_id):
     """Create a new task on the kanban board."""
     # Thread-safe data version update
@@ -1752,6 +1783,7 @@ def create_kanban_task(board_id):
     return jsonify({'status': 'created', 'taskId': str(task_id)})
 
 @app.route('/api/kanban/<board_id>/task/<task_id>', methods=['GET'])
+@require_login
 def get_kanban_task(board_id, task_id):
     """Get a specific task."""
     task = db.get_task(int(task_id))
@@ -1768,6 +1800,8 @@ def get_kanban_task(board_id, task_id):
     return jsonify(None)
 
 @app.route('/api/kanban/<board_id>/task/<task_id>', methods=['PUT'])
+@require_login
+@require_non_viewer
 def update_kanban_task(board_id, task_id):
     """Update a specific task."""
     # Thread-safe data version update
@@ -1879,17 +1913,21 @@ def get_context():
 # ==================== Issues API ====================
 
 @app.route('/api/issues', methods=['GET'])
+@require_login
 def get_issues():
     """Get all issues."""
     return jsonify(db.get_all_issues())
 
 @app.route('/api/issues/<issue_id>', methods=['GET'])
+@require_login
 def get_issue(issue_id):
     """Get a single issue."""
     issue = db.get_issue(issue_id)
     return jsonify(issue) if issue else not_found_response('Issue')
 
 @app.route('/api/issues', methods=['POST'])
+@require_login
+@require_non_viewer
 def create_issue():
     """Create a new issue."""
     # Thread-safe data version update
@@ -1907,6 +1945,8 @@ def create_issue():
     return jsonify({'status': 'created', 'issue_id': issue_id})
 
 @app.route('/api/issues/<issue_id>', methods=['PUT'])
+@require_login
+@require_non_viewer
 def update_issue(issue_id):
     """Update an issue."""
     if db.update_issue(issue_id, **request.json):
@@ -1915,6 +1955,8 @@ def update_issue(issue_id):
     return not_found_response('Issue')
 
 @app.route('/api/issues/<issue_id>', methods=['DELETE'])
+@require_login
+@require_non_viewer
 def delete_issue(issue_id):
     """Delete an issue."""
     if db.delete_issue(issue_id):
@@ -1923,6 +1965,7 @@ def delete_issue(issue_id):
     return not_found_response('Issue')
 
 @app.route('/api/issues/<issue_id>/documentation', methods=['GET'])
+@require_login
 def get_issue_documentation(issue_id):
     """Get documentation for an issue."""
     doc = db.get_issue_documentation(issue_id)
@@ -1959,6 +2002,7 @@ def save_issue_documentation(issue_id):
     return not_found_response('Issue')
 
 @app.route('/api/issues/<issue_id>/documentation/exists', methods=['GET'])
+@require_login
 def issue_documentation_exists(issue_id):
     """Check if an issue has documentation."""
     return jsonify({'exists': db.has_issue_documentation(issue_id)})
@@ -2026,6 +2070,7 @@ def _format_attachment_list(attachments: list, entity_type: str, entity_id: str)
 
 
 @app.route('/api/issues/<issue_id>/attachments', methods=['GET'])
+@require_login
 def get_issue_attachments(issue_id):
     """Get all attachments for an issue."""
     attachments = db.get_attachments_for_issue(issue_id)
@@ -2132,6 +2177,7 @@ def delete_attachment(attachment_id):
 # ==================== Risk Attachments API ====================
 
 @app.route('/api/risks/<risk_id>/attachments', methods=['GET'])
+@require_login
 def get_risk_attachments(risk_id):
     """Get all attachments for a risk."""
     attachments = db.get_attachments_for_risk(risk_id)
@@ -2243,6 +2289,7 @@ def delete_risk_attachment(attachment_id):
 # ==================== Audit Attachments API ====================
 
 @app.route('/api/audits/<int:audit_id>/attachments', methods=['GET'])
+@require_login
 def get_audit_attachments(audit_id):
     """Get all attachments for an audit."""
     attachments = db.get_attachments_for_audit(audit_id)
@@ -2341,11 +2388,14 @@ def create_issue_from_risk(risk_id):
 # ==================== Export/Import ====================
 
 @app.route('/api/export', methods=['GET'])
+@require_login
 def export_data():
     """Export all data as JSON."""
     return jsonify(db.export_all())
 
 @app.route('/api/import', methods=['POST'])
+@require_login
+@require_non_viewer
 def import_data():
     """Import data from JSON."""
     # Thread-safe data version update
@@ -2376,6 +2426,7 @@ def get_recent_chat_history(count: int = 10) -> list:
         return chat_history[-count:]
 
 @app.route('/api/chat/status', methods=['GET'])
+@require_login
 def chat_status():
     """Check if API key is configured."""
     return jsonify({'configured': bool(ANTHROPIC_API_KEY)})
@@ -2782,6 +2833,8 @@ Be concise and professional. Use markdown formatting for clarity."""
 
 
 @app.route('/api/chat', methods=['POST'])
+@require_login
+@require_non_viewer
 def chat():
     # Thread-safe data version update
     data = request.json
@@ -3316,6 +3369,7 @@ def execute_tool(tool_name, tool_input):
 
 
 @app.route('/api/chat/clear', methods=['POST'])
+@require_login
 def clear_chat():
     global chat_history
     chat_history = []
@@ -3501,6 +3555,7 @@ def send_felix_message(conv_id):
 # ===== Felix Attachment Routes =====
 
 @app.route('/api/felix/conversations/<conv_id>/attachments', methods=['GET'])
+@require_login
 def get_felix_attachments(conv_id):
     """Get all attachments for a conversation."""
     with db._connection() as conn:
@@ -3513,6 +3568,8 @@ def get_felix_attachments(conv_id):
 
 
 @app.route('/api/felix/conversations/<conv_id>/attachments', methods=['POST'])
+@require_login
+@require_non_viewer
 def upload_felix_attachment(conv_id):
     """Upload file(s) to a conversation."""
     if 'file' not in request.files:
@@ -3553,6 +3610,8 @@ def upload_felix_attachment(conv_id):
 
 
 @app.route('/api/felix/attachments/<int:attachment_id>', methods=['DELETE'])
+@require_login
+@require_non_viewer
 def delete_felix_attachment(attachment_id):
     """Delete an attachment."""
     with db._connection() as conn:
@@ -3577,6 +3636,7 @@ def delete_felix_attachment(attachment_id):
 
 
 @app.route('/api/felix/attachments/<int:attachment_id>/download')
+@require_login
 def download_felix_attachment(attachment_id):
     """Download an attachment."""
     with db._connection() as conn:

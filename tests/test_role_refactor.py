@@ -5,6 +5,8 @@ Tests the consolidation of global 'reviewer' role into 'auditor' while preservin
 per-audit reviewer assignments via the audit_team table.
 
 Run with: pytest tests/test_role_refactor.py -v
+Run regression tests: pytest -m regression
+Run auth tests: pytest -m auth
 """
 import pytest
 import uuid
@@ -12,6 +14,9 @@ import app as app_module
 import database as db_module
 from database import RACMDatabase
 from werkzeug.security import generate_password_hash
+
+# Mark entire module
+pytestmark = [pytest.mark.regression, pytest.mark.auth]
 
 
 # ==================== FIXTURES ====================
@@ -158,14 +163,11 @@ class TestCurrentRoleBehavior:
         assert assigned_audit_id in audit_ids
         assert unassigned_audit_id not in audit_ids
 
-    @pytest.mark.xfail(reason="Pre-existing behavior: /api/risks endpoint doesn't enforce viewer read-only restriction. Outside scope of role refactoring.")
     def test_viewer_cannot_edit_records(self, client, test_db):
         """Viewer users should not be able to edit records.
 
-        Note: This test documents expected behavior that viewer role users
-        should have read-only access. Currently the /api/risks PUT endpoint
-        doesn't enforce this restriction. This is a pre-existing issue,
-        not related to the reviewer->auditor role consolidation.
+        Viewers have read-only access and should receive 403 Forbidden
+        when attempting to modify records via /api/risks PUT endpoint.
         """
         # Create viewer user
         viewer_id = create_user(test_db, unique_email('viewer'), 'Viewer User', role='viewer')

@@ -1,8 +1,25 @@
-"""Security-focused tests for RACM Smart-P application."""
+"""Security-focused tests for RACM Smart-P application.
+
+These tests cover:
+- Password security (hashing, salting)
+- SQL injection prevention
+- Input validation and XSS prevention
+- File upload security
+- Session security
+- Authorization and access control
+- AI tool security
+- Rate limiting
+
+Run security tests: pytest -m security
+Run regression tests: pytest -m regression
+"""
 import pytest
 import app as app_module
 from database import RACMDatabase
 from werkzeug.security import generate_password_hash, check_password_hash
+
+# Mark entire module as security tests
+pytestmark = [pytest.mark.security]
 
 
 @pytest.fixture
@@ -30,6 +47,7 @@ def client(test_db, tmp_path):
     app_module.db = original_db
 
 
+@pytest.mark.regression
 class TestPasswordSecurity:
     """Tests for password hashing and storage."""
 
@@ -86,6 +104,7 @@ class TestPasswordSecurity:
         assert check_password_hash(user['password_hash'], '') is False
 
 
+@pytest.mark.regression
 class TestSQLInjectionPrevention:
     """Tests for SQL injection prevention."""
 
@@ -234,6 +253,7 @@ class TestFileUploadSecurity:
         assert response.status_code in [200, 400, 401]
 
 
+@pytest.mark.regression
 class TestSessionSecurity:
     """Tests for session security."""
 
@@ -268,6 +288,8 @@ class TestSessionSecurity:
         assert response.status_code in [200, 302]
 
 
+@pytest.mark.regression
+@pytest.mark.auth
 class TestAuthorizationChecks:
     """Tests for authorization and access control."""
 
@@ -276,6 +298,70 @@ class TestAuthorizationChecks:
         response = client.get('/api/admin/users')
         # Should require authentication
         assert response.status_code in [401, 403, 302]
+
+    def test_all_api_routes_require_authentication(self, client):
+        """Verify ALL /api/* routes return 401 when unauthenticated.
+
+        This is a comprehensive test to prevent auth decorator regressions.
+        Every API endpoint must require authentication.
+        """
+        # Collect all API routes from the app
+        api_routes = []
+        for rule in app_module.app.url_map.iter_rules():
+            if rule.rule.startswith('/api/'):
+                # Skip routes with complex converters we can't easily test
+                if '<' in rule.rule:
+                    # Use placeholder values for path parameters
+                    test_path = rule.rule
+                    test_path = test_path.replace('<int:', '<').replace('<string:', '<')
+                    test_path = test_path.replace('<risk_id>', 'TEST_RISK_ID')
+                    test_path = test_path.replace('<record_id>', '999')
+                    test_path = test_path.replace('<issue_id>', '999')
+                    test_path = test_path.replace('<audit_id>', '999')
+                    test_path = test_path.replace('<user_id>', '999')
+                    test_path = test_path.replace('<attachment_id>', '999')
+                    test_path = test_path.replace('<record_type>', 'risk')
+                    test_path = test_path.replace('<item_id>', '999')
+                    test_path = test_path.replace('<library_id>', '999')
+                    test_path = test_path.replace('<chunk_id>', '999')
+                    # Handle any remaining generic patterns
+                    import re
+                    test_path = re.sub(r'<[^>]+>', '999', test_path)
+                else:
+                    test_path = rule.rule
+
+                for method in rule.methods:
+                    if method in ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']:
+                        api_routes.append((test_path, method))
+
+        # Test each route
+        unprotected_routes = []
+        for path, method in api_routes:
+            if method == 'GET':
+                response = client.get(path)
+            elif method == 'POST':
+                response = client.post(path, json={})
+            elif method == 'PUT':
+                response = client.put(path, json={})
+            elif method == 'DELETE':
+                response = client.delete(path)
+            elif method == 'PATCH':
+                response = client.patch(path, json={})
+            else:
+                continue
+
+            # 401 = Unauthorized (correct)
+            # 400 = Bad Request (acceptable - validation before auth in some cases)
+            # 404 = Not Found (acceptable - resource doesn't exist)
+            # Anything else (200, 201, 204) = UNPROTECTED ROUTE!
+            if response.status_code not in [400, 401, 403, 404, 405]:
+                unprotected_routes.append(f"{method} {path} -> {response.status_code}")
+
+        # Fail if any routes are unprotected
+        assert not unprotected_routes, (
+            f"Found {len(unprotected_routes)} unprotected API routes:\n" +
+            "\n".join(unprotected_routes)
+        )
 
     def test_admin_endpoint_requires_admin(self, client, test_db):
         """Verify admin endpoints require admin role."""
