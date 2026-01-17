@@ -9,6 +9,8 @@ Provides persistent storage for:
 Can be imported as a module into larger projects.
 """
 
+import logging
+import os
 import sqlite3
 import json
 import re
@@ -16,6 +18,12 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Development mode flag - set DEV_MODE=true for development features
+DEV_MODE = os.environ.get('DEV_MODE', 'false').lower() in ('true', '1', 'yes')
 
 # Default database path - can be overridden
 DEFAULT_DB_PATH = Path(__file__).parent / "racm_data.db"
@@ -48,7 +56,24 @@ class RACMDatabase:
             conn.close()
 
     def _init_db(self):
-        """Initialize database schema."""
+        """Initialize database schema using migrations."""
+        from migrations.runner import MigrationRunner
+
+        # Run all pending migrations
+        runner = MigrationRunner(self.db_path)
+        runner.run_migrations()
+
+        # Seed dev accounts if in DEV_MODE
+        if DEV_MODE:
+            from migrations.seeds.dev_accounts import seed_dev_accounts
+            conn = self._get_conn()
+            try:
+                seed_dev_accounts(conn)
+            finally:
+                conn.close()
+
+    def _init_db_legacy(self):
+        """Legacy initialization - kept for reference only. Use migrations instead."""
         conn = self._get_conn()
         conn.executescript("""
             -- Risks and Controls (RACM rows)
@@ -374,17 +399,24 @@ class RACMDatabase:
             conn.commit()
 
             # Log credentials - CRITICAL for generated passwords
+            # Only show password in DEV_MODE to prevent credential leakage in production logs
             if generated_password:
-                logging.warning(
-                    "\n" + "="*60 + "\n"
-                    "DEFAULT ADMIN CREATED WITH GENERATED PASSWORD\n"
-                    "Email: %s\n"
-                    "Password: %s\n"
-                    "SAVE THIS PASSWORD - it will not be shown again!\n"
-                    "Set ADMIN_EMAIL and ADMIN_PASSWORD env vars to customize.\n"
-                    + "="*60,
-                    admin_email, admin_password
-                )
+                if DEV_MODE:
+                    logger.warning(
+                        "\n" + "="*60 + "\n"
+                        "DEFAULT ADMIN CREATED WITH GENERATED PASSWORD\n"
+                        "Email: %s\n"
+                        "Password: %s\n"
+                        "SAVE THIS PASSWORD - it will not be shown again!\n"
+                        "Set ADMIN_EMAIL and ADMIN_PASSWORD env vars to customize.\n"
+                        + "="*60,
+                        admin_email, admin_password
+                    )
+                else:
+                    logger.warning(
+                        "Default admin created with generated password. "
+                        "Check server startup logs or set ADMIN_EMAIL/ADMIN_PASSWORD env vars."
+                    )
 
         # Migration: Add audit_id column to tables that need scoping
         tables_needing_audit_id = [
@@ -695,32 +727,34 @@ class RACMDatabase:
             conn.commit()
 
         # ==================== SEED TEST ACCOUNTS ====================
-        # Only seed if we have less than 3 users (just the default admin)
-        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        if user_count < 3:
-            from werkzeug.security import generate_password_hash
-            test_password = generate_password_hash('Test123!', method='pbkdf2:sha256')
+        # Only seed test accounts in DEV_MODE
+        if DEV_MODE:
+            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            if user_count < 3:
+                from werkzeug.security import generate_password_hash
+                test_password = generate_password_hash('Test123!', method='pbkdf2:sha256')
 
-            test_accounts = [
-                ('auditor1@test.com', 'Alice Auditor', 'auditor'),
-                ('auditor2@test.com', 'Bob Auditor', 'auditor'),
-                ('reviewer1@test.com', 'Rachel Reviewer', 'reviewer'),
-                ('reviewer2@test.com', 'Richard Reviewer', 'reviewer'),
-                ('admin@test.com', 'Adam Admin', 'admin'),
-                ('viewer1@test.com', 'Victor Viewer', 'viewer'),
-            ]
+                test_accounts = [
+                    ('auditor1@test.com', 'Alice Auditor', 'auditor'),
+                    ('auditor2@test.com', 'Bob Auditor', 'auditor'),
+                    ('reviewer1@test.com', 'Rachel Reviewer', 'reviewer'),
+                    ('reviewer2@test.com', 'Richard Reviewer', 'reviewer'),
+                    ('admin@test.com', 'Adam Admin', 'admin'),
+                    ('viewer1@test.com', 'Victor Viewer', 'viewer'),
+                ]
 
-            for email, name, role in test_accounts:
-                # Check if user already exists
-                existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
-                if not existing:
-                    is_admin = 1 if role == 'admin' else 0
-                    conn.execute("""
-                        INSERT INTO users (email, name, password_hash, is_active, is_admin, role)
-                        VALUES (?, ?, ?, 1, ?, ?)
-                    """, (email, name, test_password, is_admin, role))
+                for email, name, role in test_accounts:
+                    # Check if user already exists
+                    existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+                    if not existing:
+                        is_admin = 1 if role == 'admin' else 0
+                        conn.execute("""
+                            INSERT INTO users (email, name, password_hash, is_active, is_admin, role)
+                            VALUES (?, ?, ?, 1, ?, ?)
+                        """, (email, name, test_password, is_admin, role))
 
-            conn.commit()
+                conn.commit()
+                logger.info("DEV_MODE: Seeded test accounts")
 
         conn.close()
 

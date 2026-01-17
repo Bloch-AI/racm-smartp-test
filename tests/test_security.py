@@ -403,8 +403,7 @@ class TestAIToolSecurity:
         result = app_module.execute_tool('execute_sql', {
             'sql': "SELECT risk_id FROM risks UNION SELECT password_hash FROM users"
         })
-        # Should either block or return error
-        # Note: Current implementation may allow UNION
+        # Should either block or return error (UNION is blocked in database.py)
         assert 'error' in result.lower() or isinstance(result, str)
 
 

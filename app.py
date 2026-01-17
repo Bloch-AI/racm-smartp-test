@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import json
+import logging
 import os
 import re
 import uuid
@@ -9,6 +10,13 @@ import threading
 import anthropic
 import mimetypes
 from datetime import datetime
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Development mode flag - set DEV_MODE=true for development features
+DEV_MODE = os.environ.get('DEV_MODE', 'false').lower() in ('true', '1', 'yes')
 
 # Constants
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
@@ -137,7 +145,15 @@ def extract_text_from_file(filepath: str, mime_type: str = None) -> str:
         return f"[Error extracting text: {str(e)}]"
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'smartpapers-dev-key-change-in-production')
+
+# Secret key configuration with production safety check
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    if DEV_MODE:
+        app.secret_key = 'smartpapers-dev-key-DO-NOT-USE-IN-PRODUCTION'
+        logger.warning("Using development secret key - set SECRET_KEY env var for production")
+    else:
+        raise ValueError("SECRET_KEY environment variable is required in production")
 
 # Session security configuration
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
@@ -322,7 +338,10 @@ def seed_initial_data():
         db.create_task('Request documentation', 'PBC list to client', 'medium', '', 'planning')
         db.create_task('Control walkthroughs', 'Document process flows', 'medium', '', 'fieldwork')
 
-seed_initial_data()
+# Only seed sample data in development mode
+if DEV_MODE:
+    seed_initial_data()
+    logger.info("DEV_MODE: Seeded initial sample data")
 
 # Data version for frontend refresh detection (thread-safe)
 _data_version = 0
@@ -358,9 +377,9 @@ def get_embedding_model():
         try:
             from sentence_transformers import SentenceTransformer
             _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            print("[Library] Loaded embedding model: all-MiniLM-L6-v2")
+            logger.info("[Library] Loaded embedding model: all-MiniLM-L6-v2")
         except Exception as e:
-            print(f"[Library] Warning: Could not load embedding model: {e}")
+            logger.warning(f"[Library] Could not load embedding model: {e}")
     return _embedding_model
 
 def generate_embedding(text: str) -> list:
@@ -372,7 +391,7 @@ def generate_embedding(text: str) -> list:
         embedding = model.encode(text, convert_to_numpy=True)
         return embedding.tolist()
     except Exception as e:
-        print(f"[Library] Error generating embedding: {e}")
+        logger.error(f"[Library] Error generating embedding: {e}")
         return None
 
 def chunk_document(text: str, chunk_size: int = 500, overlap: int = 50) -> list:
@@ -449,7 +468,7 @@ def process_library_document(filepath: str, doc_id: int, mime_type: str = None) 
     # Check for error messages (e.g., "[PDF extraction not available...]")
     # but allow normal page markers like "[Page 1]"
     if not text or (text.startswith('[') and 'not available' in text.lower()):
-        print(f"[Library] Warning: Could not extract text from document {doc_id}")
+        logger.warning(f"[Library] Could not extract text from document {doc_id}")
         return 0
 
     # Normalize whitespace while preserving paragraph breaks
@@ -460,7 +479,7 @@ def process_library_document(filepath: str, doc_id: int, mime_type: str = None) 
 
     # Chunk the document
     chunks = chunk_document(text)
-    print(f"[Library] Document {doc_id}: Created {len(chunks)} chunks")
+    logger.info(f"[Library] Document {doc_id}: Created {len(chunks)} chunks")
 
     # Initialize vector table
     db._init_vector_table()
@@ -1636,7 +1655,7 @@ def upload_library_document():
             'message': f'Document uploaded and processed into {chunk_count} chunks'
         })
     except Exception as e:
-        print(f"[Library] Error processing document: {e}")
+        logger.error(f"[Library] Error processing document: {e}")
         return jsonify({
             'id': doc_id,
             'name': name,
@@ -3891,7 +3910,7 @@ def call_felix_ai(messages, attachments=None):
                 except Exception as e:
                     # Log error but continue with other tools
                     error_msg = f"Error executing {content.name}: {str(e)}"
-                    print(f"[Felix AI] {error_msg}")
+                    logger.error(f"[Felix AI] {error_msg}")
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": content.id,
