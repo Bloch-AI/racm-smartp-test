@@ -3,6 +3,7 @@ Exhaustive tests for RACM Smart-P application.
 Tests every route, button, link, form, and API endpoint.
 
 Run with: pytest tests/test_exhaustive.py -v
+Run regression tests: pytest -m regression
 """
 import io
 import json
@@ -10,6 +11,9 @@ import pytest
 import uuid
 import app as app_module
 from database import RACMDatabase
+
+# Mark entire module as regression tests
+pytestmark = [pytest.mark.regression, pytest.mark.api]
 
 
 # ==================== FIXTURES ====================

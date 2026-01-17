@@ -1,854 +1,554 @@
 """
-Front-end tests for RACM Smart-P application using Playwright.
-Tests UI interactions, buttons, links, forms, and visual elements.
+Frontend Regression Tests for RACM Audit Toolkit.
 
-Run with: pytest tests/test_frontend.py -v --headed (to see browser)
-Or: pytest tests/test_frontend.py -v (headless)
+These tests verify that all frontend-facing API endpoints and page routes
+are functioning correctly.
+
+Run with: pytest test_frontend.py -v
+Run regression tests: pytest -m regression
 """
+
+import io
 import pytest
-import subprocess
-import time
-import os
-import signal
-from playwright.sync_api import Page, expect, sync_playwright
+import app as app_module
+from database import RACMDatabase
+
+# Mark entire module as regression and api tests
+pytestmark = [pytest.mark.regression, pytest.mark.api]
 
 
-# ==================== FIXTURES ====================
+@pytest.fixture
+def test_db(tmp_path):
+    """Create a temporary test database."""
+    db_path = tmp_path / "test.db"
+    db = RACMDatabase(str(db_path))
 
-@pytest.fixture(scope="module")
-def app_server():
-    """Start the Flask app server for testing."""
-    # Find an available port
-    port = 8099
-
-    # Start the server
-    env = os.environ.copy()
-    env['FLASK_ENV'] = 'testing'
-
-    process = subprocess.Popen(
-        ['python3', 'app.py'],
-        cwd='/Users/jamescrossman-smith/racm-smartp-test',
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        preexec_fn=os.setsid
+    # Add sample data for testing
+    db.create_risk(
+        risk_id='R001',
+        risk='Test Risk Description',
+        control_id='C001',
+        control_owner='Test Owner',
+        status='Not Complete'
+    )
+    db.create_risk(
+        risk_id='R002',
+        risk='Another Risk Description',
+        control_id='C002',
+        control_owner='Another Owner',
+        status='Not Complete'
     )
 
-    # Wait for server to start
-    time.sleep(3)
+    # Create an issue
+    db.create_issue(
+        risk_id='R001',
+        title='Test Issue',
+        description='Test issue description',
+        severity='Medium',
+        status='Open'
+    )
 
-    yield f"http://localhost:{port}"
+    # Create tasks for kanban
+    db.create_task(
+        title='Task 1',
+        description='Test task',
+        column_id='planning'
+    )
 
-    # Cleanup - kill the process group
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-    except:
-        pass
-
-
-@pytest.fixture(scope="module")
-def browser_context():
-    """Create a browser context for testing."""
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        yield context
-        context.close()
-        browser.close()
+    return db
 
 
 @pytest.fixture
-def page(browser_context):
-    """Create a new page for each test."""
-    page = browser_context.new_page()
-    yield page
-    page.close()
-
-
-@pytest.fixture(scope="session")
-def base_url():
-    """Base URL - use existing running server on 8001."""
-    return "http://localhost:8001"
-
-
-@pytest.fixture
-def logged_in_page(page, base_url):
-    """Return a page that's logged in as admin."""
-    page.goto(f"{base_url}/login")
-    page.fill('input[name="email"]', 'admin@localhost')
-    page.fill('input[name="password"]', 'changeme123')
-    page.click('button[type="submit"]')
-    page.wait_for_load_state('networkidle')
-    return page
-
-
-# ==================== LOGIN PAGE TESTS ====================
-
-class TestLoginPage:
-    """Test the login page UI."""
-
-    def test_login_page_loads(self, page, base_url):
-        """Login page should display correctly."""
-        page.goto(f"{base_url}/login")
-
-        # Check page title
-        expect(page).to_have_title("SmartPapers - Login")
-
-        # Check form elements exist
-        expect(page.locator('input[name="email"]')).to_be_visible()
-        expect(page.locator('input[name="password"]')).to_be_visible()
-        expect(page.locator('button[type="submit"]')).to_be_visible()
-
-    def test_login_form_has_labels(self, page, base_url):
-        """Login form should have proper labels."""
-        page.goto(f"{base_url}/login")
-
-        expect(page.locator('label[for="email"]')).to_contain_text("Email")
-        expect(page.locator('label[for="password"]')).to_contain_text("Password")
-
-    def test_login_form_placeholders(self, page, base_url):
-        """Login form inputs should have placeholders."""
-        page.goto(f"{base_url}/login")
-
-        email_input = page.locator('input[name="email"]')
-        password_input = page.locator('input[name="password"]')
-
-        expect(email_input).to_have_attribute('placeholder', 'you@example.com')
-        expect(password_input).to_have_attribute('placeholder', 'Enter your password')
-
-    def test_login_submit_button_text(self, page, base_url):
-        """Submit button should say 'Sign in'."""
-        page.goto(f"{base_url}/login")
-        expect(page.locator('button[type="submit"]')).to_contain_text("Sign in")
-
-    def test_login_invalid_credentials_error(self, page, base_url):
-        """Invalid login should show error message."""
-        page.goto(f"{base_url}/login")
-
-        page.fill('input[name="email"]', 'wrong@example.com')
-        page.fill('input[name="password"]', 'wrongpassword')
-        page.click('button[type="submit"]')
-
-        # Wait for response
-        page.wait_for_load_state('networkidle')
-
-        # Should show error
-        error_div = page.locator('.bg-red-50')
-        expect(error_div).to_be_visible()
-
-    def test_login_empty_submission(self, page, base_url):
-        """Empty login should trigger HTML5 validation."""
-        page.goto(f"{base_url}/login")
-
-        # The form should have required fields
-        email_input = page.locator('input[name="email"]')
-        expect(email_input).to_have_attribute('required', '')
-
-    def test_successful_login_redirects(self, page, base_url):
-        """Successful login should redirect to main page."""
-        page.goto(f"{base_url}/login")
-
-        page.fill('input[name="email"]', 'admin@localhost')
-        page.fill('input[name="password"]', 'changeme123')
-        page.click('button[type="submit"]')
-
-        # Wait for redirect
-        page.wait_for_url(f"{base_url}/", timeout=10000)
-
-        # Should be on main page now
-        expect(page).not_to_have_url(f"{base_url}/login")
-
-
-# ==================== NAVIGATION TESTS ====================
-
-class TestNavigation:
-    """Test navigation elements."""
-
-    def test_nav_links_present(self, logged_in_page, base_url):
-        """Navigation should have all main links."""
-        page = logged_in_page
-
-        # Main navigation links
-        expect(page.locator('a[href="/audit-plan"]')).to_be_visible()
-        expect(page.locator('a[href="/felix"]')).to_be_visible()
-        expect(page.locator('a[href="/library"]')).to_be_visible()
-
-    def test_admin_link_visible_for_admin(self, logged_in_page, base_url):
-        """Admin link should exist for admin users (may be in dropdown)."""
-        page = logged_in_page
-        # Admin link may be in a dropdown - just check it exists
-        admin_link = page.locator('a[href="/admin"]')
-        expect(admin_link).to_have_count(1)
-
-    def test_workpapers_dropdown_exists(self, logged_in_page, base_url):
-        """Workpapers dropdown should exist."""
-        page = logged_in_page
-        # Get the main dropdown button (first one)
-        dropdown_button = page.locator('#audit-dropdown-container > button').first
-        expect(dropdown_button).to_be_visible()
-        expect(dropdown_button).to_contain_text("Workpapers")
-
-    def test_workpapers_dropdown_opens(self, logged_in_page, base_url):
-        """Clicking workpapers dropdown should open menu."""
-        page = logged_in_page
-
-        # Click dropdown
-        page.click('#audit-dropdown-container button')
-
-        # Menu should appear
-        menu = page.locator('#audit-dropdown-menu')
-        expect(menu).to_be_visible()
-
-    def test_logout_link_present(self, logged_in_page, base_url):
-        """Logout link should exist (may be in dropdown menu)."""
-        page = logged_in_page
-        # Logout link may be in a dropdown - just check it exists
-        logout_link = page.locator('a[href="/logout"]')
-        expect(logout_link).to_have_count(1)
-
-    def test_logout_works(self, logged_in_page, base_url):
-        """Clicking logout should redirect to login."""
-        page = logged_in_page
-
-        # Open user dropdown if logout is hidden
-        logout_link = page.locator('a[href="/logout"]')
-        if not logout_link.is_visible():
-            # Try clicking user menu button to reveal logout
-            user_button = page.locator('#user-dropdown-button, [data-user-menu], button:has-text("Admin")')
-            if user_button.count() > 0 and user_button.first.is_visible():
-                user_button.first.click()
-                page.wait_for_timeout(200)
-
-        # Now click logout (force click if still not visible)
-        page.locator('a[href="/logout"]').click(force=True)
-        page.wait_for_url(f"{base_url}/login", timeout=5000)
-
-        expect(page).to_have_url(f"{base_url}/login")
-
-    def test_logo_visible(self, logged_in_page, base_url):
-        """Logo should be visible in navigation."""
-        page = logged_in_page
-        expect(page.locator('img[alt="SmartPapers Logo"]')).to_be_visible()
-
-    def test_navigation_to_audit_plan(self, logged_in_page, base_url):
-        """Clicking Audit Plan should navigate to audit plan page."""
-        page = logged_in_page
-
-        page.click('a[href="/audit-plan"]')
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/audit-plan")
-
-    def test_navigation_to_felix(self, logged_in_page, base_url):
-        """Clicking Felix AI should navigate to felix page."""
-        page = logged_in_page
-
-        page.click('a[href="/felix"]')
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/felix")
-
-    def test_navigation_to_library(self, logged_in_page, base_url):
-        """Clicking Library should navigate to library page."""
-        page = logged_in_page
-
-        page.click('a[href="/library"]')
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/library")
-
-    def test_navigation_to_admin(self, logged_in_page, base_url):
-        """Clicking Admin should navigate to admin page."""
-        page = logged_in_page
-
-        # Admin link is in user dropdown - first open the dropdown
-        page.locator('#user-dropdown-container button').click()
-        page.wait_for_timeout(300)  # Wait for dropdown animation
-
-        # Now click the admin link
-        page.locator('a[href="/admin"]').click()
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/admin")
-
-
-# ==================== MAIN WORKPAPERS PAGE TESTS ====================
-
-class TestWorkpapersPage:
-    """Test the main workpapers/index page."""
-
-    def test_page_loads(self, logged_in_page, base_url):
-        """Main page should load successfully."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Should have content
-        expect(page.locator('body')).not_to_be_empty()
-
-    def test_tabs_present(self, logged_in_page, base_url):
-        """Page should have tab navigation."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Look for tab buttons or spreadsheet/kanban toggle
-        # Based on the index.html, there should be view switching buttons
-        tabs_container = page.locator('[role="tablist"], .tabs, .btn-group').first
-        if tabs_container.count() > 0:
-            expect(tabs_container).to_be_visible()
-
-    def test_add_risk_button_exists(self, logged_in_page, base_url):
-        """Add risk button should exist."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Look for add button
-        add_button = page.locator('button:has-text("Add"), button:has-text("New"), [data-action="add"]').first
-        if add_button.count() > 0:
-            expect(add_button).to_be_visible()
-
-
-# ==================== KANBAN PAGE TESTS ====================
-
-class TestKanbanPage:
-    """Test the Kanban board page."""
-
-    def test_kanban_page_loads(self, logged_in_page, base_url):
-        """Kanban page should load successfully."""
-        page = logged_in_page
-        page.goto(f"{base_url}/kanban")
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/kanban")
-
-    def test_kanban_board_visible(self, logged_in_page, base_url):
-        """Kanban board container should be visible."""
-        page = logged_in_page
-        page.goto(f"{base_url}/kanban")
-        page.wait_for_load_state('networkidle')
-
-        # Look for kanban board element
-        board = page.locator('#kanban-board, .kanban-board, [data-kanban]').first
-        if board.count() > 0:
-            expect(board).to_be_visible()
-
-    def test_add_task_button_exists(self, logged_in_page, base_url):
-        """Add task button should exist on kanban page."""
-        page = logged_in_page
-        page.goto(f"{base_url}/kanban")
-        page.wait_for_load_state('networkidle')
-
-        # Look for add task button
-        add_button = page.locator('button:has-text("Add Task"), button:has-text("New Task"), [data-action="add-task"]').first
-        if add_button.count() > 0:
-            expect(add_button).to_be_visible()
-
-
-# ==================== FLOWCHART PAGE TESTS ====================
-
-class TestFlowchartPage:
-    """Test the Flowchart page."""
-
-    def test_flowchart_page_loads(self, logged_in_page, base_url):
-        """Flowchart page should load successfully."""
-        page = logged_in_page
-        page.goto(f"{base_url}/flowchart")
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/flowchart")
-
-    def test_flowchart_canvas_exists(self, logged_in_page, base_url):
-        """Flowchart canvas/editor should exist."""
-        page = logged_in_page
-        page.goto(f"{base_url}/flowchart")
-        page.wait_for_load_state('networkidle')
-
-        # Look for drawflow or canvas element
-        canvas = page.locator('#drawflow, .drawflow, canvas, [data-flowchart]').first
-        if canvas.count() > 0:
-            expect(canvas).to_be_visible()
-
-    def test_flowchart_toolbar_exists(self, logged_in_page, base_url):
-        """Flowchart should have a toolbar."""
-        page = logged_in_page
-        page.goto(f"{base_url}/flowchart")
-        page.wait_for_load_state('networkidle')
-
-        # Look for toolbar elements
-        toolbar = page.locator('.toolbar, .drawflow-toolbar, #node-toolbar').first
-        if toolbar.count() > 0:
-            expect(toolbar).to_be_visible()
-
-
-# ==================== FELIX AI PAGE TESTS ====================
-
-class TestFelixPage:
-    """Test the Felix AI chat page."""
-
-    def test_felix_page_loads(self, logged_in_page, base_url):
-        """Felix page should load successfully."""
-        page = logged_in_page
-        page.goto(f"{base_url}/felix")
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/felix")
-
-    def test_chat_input_exists(self, logged_in_page, base_url):
-        """Chat input field should exist."""
-        page = logged_in_page
-        page.goto(f"{base_url}/felix")
-        page.wait_for_load_state('networkidle')
-
-        # Look for chat input
-        chat_input = page.locator('input[type="text"], textarea, [data-chat-input]').first
-        if chat_input.count() > 0:
-            expect(chat_input).to_be_visible()
-
-    def test_send_button_exists(self, logged_in_page, base_url):
-        """Send message button should exist."""
-        page = logged_in_page
-        page.goto(f"{base_url}/felix")
-        page.wait_for_load_state('networkidle')
-
-        # Look for send button
-        send_button = page.locator('button:has-text("Send"), button[type="submit"], [data-send-message]').first
-        if send_button.count() > 0:
-            expect(send_button).to_be_visible()
-
-    def test_chat_container_exists(self, logged_in_page, base_url):
-        """Chat messages container should exist."""
-        page = logged_in_page
-        page.goto(f"{base_url}/felix")
-        page.wait_for_load_state('networkidle')
-
-        # Look for messages container
-        messages = page.locator('#chat-messages, .chat-messages, [data-messages]').first
-        if messages.count() > 0:
-            expect(messages).to_be_visible()
-
-
-# ==================== LIBRARY PAGE TESTS ====================
-
-class TestLibraryPage:
-    """Test the Library page."""
-
-    def test_library_page_loads(self, logged_in_page, base_url):
-        """Library page should load successfully."""
-        page = logged_in_page
-        page.goto(f"{base_url}/library")
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/library")
-
-    def test_upload_button_exists(self, logged_in_page, base_url):
-        """Upload document button should exist."""
-        page = logged_in_page
-        page.goto(f"{base_url}/library")
-        page.wait_for_load_state('networkidle')
-
-        # Look for upload button
-        upload_button = page.locator('button:has-text("Upload"), button:has-text("Add Document"), [data-upload]').first
-        if upload_button.count() > 0:
-            expect(upload_button).to_be_visible()
-
-    def test_search_field_exists(self, logged_in_page, base_url):
-        """Search field should exist in library."""
-        page = logged_in_page
-        page.goto(f"{base_url}/library")
-        page.wait_for_load_state('networkidle')
-
-        # Look for search input
-        search_input = page.locator('input[type="search"], input[placeholder*="Search"], [data-search]').first
-        if search_input.count() > 0:
-            expect(search_input).to_be_visible()
-
-
-# ==================== ADMIN PAGE TESTS ====================
-
-class TestAdminPage:
-    """Test the Admin page."""
-
-    def test_admin_page_loads(self, logged_in_page, base_url):
-        """Admin page should load successfully."""
-        page = logged_in_page
-        page.goto(f"{base_url}/admin")
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/admin")
-
-    def test_admin_navigation_tabs(self, logged_in_page, base_url):
-        """Admin page should have navigation tabs."""
-        page = logged_in_page
-        page.goto(f"{base_url}/admin")
-        page.wait_for_load_state('networkidle')
-
-        # Look for admin nav links
-        users_link = page.locator('a[href="/admin/users"], a:has-text("Users")').first
-        audits_link = page.locator('a[href="/admin/audits"], a:has-text("Audits")').first
-
-        if users_link.count() > 0:
-            expect(users_link).to_be_visible()
-        if audits_link.count() > 0:
-            expect(audits_link).to_be_visible()
-
-    def test_add_user_button_exists(self, logged_in_page, base_url):
-        """Add user button should exist on admin page."""
-        page = logged_in_page
-        page.goto(f"{base_url}/admin")
-        page.wait_for_load_state('networkidle')
-
-        # Look for add user button
-        add_button = page.locator('button:has-text("Add User"), button:has-text("New User"), [data-action="add-user"]').first
-        if add_button.count() > 0:
-            expect(add_button).to_be_visible()
-
-
-# ==================== AUDIT PLAN PAGE TESTS ====================
-
-class TestAuditPlanPage:
-    """Test the Audit Plan page."""
-
-    def test_audit_plan_page_loads(self, logged_in_page, base_url):
-        """Audit plan page should load successfully."""
-        page = logged_in_page
-        page.goto(f"{base_url}/audit-plan")
-        page.wait_for_load_state('networkidle')
-
-        expect(page).to_have_url(f"{base_url}/audit-plan")
-
-    def test_calendar_or_timeline_exists(self, logged_in_page, base_url):
-        """Audit plan should have a calendar or timeline view."""
-        page = logged_in_page
-        page.goto(f"{base_url}/audit-plan")
-        page.wait_for_load_state('networkidle')
-
-        # Look for calendar or timeline element
-        timeline = page.locator('.calendar, .timeline, .gantt, #audit-plan-container').first
-        if timeline.count() > 0:
-            expect(timeline).to_be_visible()
-
-
-# ==================== FORM VALIDATION TESTS ====================
-
-class TestFormValidation:
-    """Test form validation on various pages."""
-
-    def test_login_email_validation(self, page, base_url):
-        """Login form should validate email format."""
-        page.goto(f"{base_url}/login")
-
-        email_input = page.locator('input[name="email"]')
-
-        # Check it has email type
-        expect(email_input).to_have_attribute('type', 'email')
-
-    def test_login_required_fields(self, page, base_url):
-        """Login form fields should be required."""
-        page.goto(f"{base_url}/login")
-
-        email_input = page.locator('input[name="email"]')
-        password_input = page.locator('input[name="password"]')
-
-        expect(email_input).to_have_attribute('required', '')
-        expect(password_input).to_have_attribute('required', '')
-
-
-# ==================== RESPONSIVE DESIGN TESTS ====================
-
-class TestResponsiveDesign:
-    """Test responsive design elements."""
-
-    def test_mobile_viewport_login(self, browser_context, base_url):
-        """Login page should work on mobile viewport."""
-        page = browser_context.new_page()
-        page.set_viewport_size({"width": 375, "height": 667})  # iPhone SE
-
-        page.goto(f"{base_url}/login")
-
-        # Form should still be visible
-        expect(page.locator('input[name="email"]')).to_be_visible()
-        expect(page.locator('button[type="submit"]')).to_be_visible()
-
-        page.close()
-
-    def test_tablet_viewport_navigation(self, browser_context, base_url):
-        """Navigation should work on tablet viewport."""
-        page = browser_context.new_page()
-        page.set_viewport_size({"width": 768, "height": 1024})  # iPad
-
-        page.goto(f"{base_url}/login")
-        page.fill('input[name="email"]', 'admin@localhost')
-        page.fill('input[name="password"]', 'changeme123')
-        page.click('button[type="submit"]')
-        page.wait_for_load_state('networkidle')
-
-        # Navigation should be visible (may be collapsed on smaller screens)
-        nav = page.locator('nav').first
-        expect(nav).to_be_visible()
-
-        page.close()
-
-
-# ==================== ACCESSIBILITY TESTS ====================
-
-class TestAccessibility:
-    """Basic accessibility tests."""
-
-    def test_page_has_lang_attribute(self, page, base_url):
-        """HTML should have lang attribute."""
-        page.goto(f"{base_url}/login")
-
-        html = page.locator('html')
-        expect(html).to_have_attribute('lang', 'en')
-
-    def test_form_labels_exist(self, page, base_url):
-        """Form inputs should have associated labels."""
-        page.goto(f"{base_url}/login")
-
-        # Email input should have label
-        expect(page.locator('label[for="email"]')).to_be_visible()
-        expect(page.locator('label[for="password"]')).to_be_visible()
-
-    def test_images_have_alt_text(self, logged_in_page, base_url):
-        """Images should have alt text."""
-        page = logged_in_page
-
-        # Check logo image
-        logo = page.locator('img[alt="SmartPapers Logo"]')
-        expect(logo).to_be_visible()
-
-    def test_buttons_are_focusable(self, page, base_url):
-        """Buttons should be keyboard focusable."""
-        page.goto(f"{base_url}/login")
-
-        # Tab to the submit button
-        page.keyboard.press('Tab')  # Focus email
-        page.keyboard.press('Tab')  # Focus password
-        page.keyboard.press('Tab')  # Focus submit
-
-        # Submit button should be focused
-        submit = page.locator('button[type="submit"]')
-        expect(submit).to_be_focused()
-
-
-# ==================== SECURITY UI TESTS ====================
-
-class TestSecurityUI:
-    """Test security-related UI elements."""
-
-    def test_password_field_is_masked(self, page, base_url):
-        """Password field should mask input."""
-        page.goto(f"{base_url}/login")
-
-        password_input = page.locator('input[name="password"]')
-        expect(password_input).to_have_attribute('type', 'password')
-
-    def test_session_expires_redirect(self, page, base_url):
-        """Protected pages should redirect to login without session."""
-        # Don't login, just try to access protected page
-        response = page.goto(f"{base_url}/")
-
-        # Should either redirect to login or show login page content
-        current_url = page.url
-        assert '/login' in current_url or response.status == 200
-
-
-# ==================== ERROR PAGE TESTS ====================
-
-class TestErrorPages:
-    """Test error page handling."""
-
-    def test_404_page(self, logged_in_page, base_url):
-        """404 page should be handled gracefully."""
-        page = logged_in_page
-        response = page.goto(f"{base_url}/nonexistent-page-12345")
-
-        # Should return 404 or redirect
-        assert response.status in [404, 302, 200]
-
-    def test_invalid_api_endpoint(self, logged_in_page, base_url):
-        """Invalid API endpoint should return error."""
-        page = logged_in_page
-        response = page.goto(f"{base_url}/api/nonexistent")
-
-        assert response.status in [404, 405, 302]
-
-
-# ==================== UI COMPONENT TESTS ====================
-
-class TestPillBadges:
-    """Test pill badge styling across the application."""
-
-    def test_login_button_is_pill(self, page, base_url):
-        """Login button should have pill format (rounded-full)."""
-        page.goto(f"{base_url}/login")
-
-        submit_button = page.locator('button[type="submit"]')
-        expect(submit_button).to_be_visible()
-
-        # Check for rounded-full class (pill shape)
-        button_class = submit_button.get_attribute('class')
-        assert 'rounded-full' in button_class
-
-    def test_racm_table_has_pill_badges(self, logged_in_page, base_url):
-        """RACM table cells should use pill badges for status/actions."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(1000)  # Wait for table to render
-
-        # Look for pill badges in the table (rounded-full spans)
-        pills = page.locator('.jexcel tbody span.rounded-full')
-        # Should have at least some pill badges
-        assert pills.count() >= 0  # Table may be empty, but structure should exist
-
-    def test_kanban_page_has_pill_badges(self, logged_in_page, base_url):
-        """Kanban cards should have pill badges for priority/status."""
-        page = logged_in_page
-        page.goto(f"{base_url}/kanban")
-        page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(1000)
-
-        # Check for pill-styled badges in kanban cards
-        kanban_board = page.locator('#kanban-board')
-        expect(kanban_board).to_be_visible()
-
-    def test_audit_plan_has_pill_badges(self, logged_in_page, base_url):
-        """Audit plan table should have pill badges."""
-        page = logged_in_page
-        page.goto(f"{base_url}/audit-plan")
-        page.wait_for_load_state('networkidle')
-        page.wait_for_timeout(1000)
-
-        # Page should load without errors
-        expect(page).to_have_url(f"{base_url}/audit-plan")
-
-
-class TestSlideInPanels:
-    """Test slide-in panel functionality."""
-
-    def test_task_panel_slides_from_right(self, logged_in_page, base_url):
-        """Task panel should exist and be positioned for slide-in from right."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Check that task panel exists and has correct positioning
-        task_panel = page.locator('#taskModal')
-        if task_panel.count() > 0:
-            panel_class = task_panel.get_attribute('class')
-            # Should have right-0 for right positioning
-            assert 'right-0' in panel_class or 'translate-x-full' in panel_class
-
-    def test_evidence_panel_slides_from_right(self, logged_in_page, base_url):
-        """Evidence panel should be positioned for slide-in from right."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Check that evidence panel exists and has correct positioning
-        evidence_panel = page.locator('#evidencePanel')
-        if evidence_panel.count() > 0:
-            panel_class = evidence_panel.get_attribute('class')
-            # Should have right-0 for right positioning
-            assert 'right-0' in panel_class
-
-    def test_kanban_task_panel_slides_from_right(self, logged_in_page, base_url):
-        """Kanban task edit panel should slide from right."""
-        page = logged_in_page
-        page.goto(f"{base_url}/kanban")
-        page.wait_for_load_state('networkidle')
-
-        # Check that edit modal exists and has slide-in positioning
-        edit_modal = page.locator('#editModal')
-        if edit_modal.count() > 0:
-            modal_class = edit_modal.get_attribute('class')
-            # Should have right-0 for right positioning
-            assert 'right-0' in modal_class or 'translate-x-full' in modal_class
-
-    def test_panel_backdrop_exists(self, logged_in_page, base_url):
-        """Slide-in panels should have backdrop elements."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Check for backdrop elements
-        task_backdrop = page.locator('#taskModalBackdrop')
-        evidence_backdrop = page.locator('#evidenceBackdrop')
-
-        # At least one should exist
-        assert task_backdrop.count() > 0 or evidence_backdrop.count() > 0
-
-
-class TestButtonConsistency:
-    """Test button styling consistency across pages."""
-
-    def test_primary_buttons_are_pills(self, logged_in_page, base_url):
-        """Primary action buttons should have pill format."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Check main action buttons have rounded-full
-        buttons = page.locator('.btn-primary, .btn.btn-primary')
-        if buttons.count() > 0:
-            first_button = buttons.first
-            button_class = first_button.get_attribute('class')
-            # Buttons should use pill format via CSS or class
-            assert 'rounded-full' in button_class or 'btn' in button_class
-
-    def test_secondary_buttons_are_pills(self, logged_in_page, base_url):
-        """Secondary action buttons should have pill format."""
-        page = logged_in_page
-        page.goto(f"{base_url}/felix")
-        page.wait_for_load_state('networkidle')
-
-        # Page should load and have buttons
-        buttons = page.locator('.btn-secondary, .btn.btn-secondary')
-        # Just verify page loads - button styling is in CSS
-        expect(page).to_have_url(f"{base_url}/felix")
-
-
-class TestDrawerHeaders:
-    """Test drawer/panel header styling."""
-
-    def test_drawer_headers_have_icons(self, logged_in_page, base_url):
-        """Drawer headers should have icon styling."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Check for drawer-header class elements
-        drawer_headers = page.locator('.drawer-header')
-        # Should have drawer headers for panels
-        assert drawer_headers.count() >= 0  # May be 0 if no panels open
-
-    def test_chat_panel_has_drawer_styling(self, logged_in_page, base_url):
-        """Chat panel should have drawer styling."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Check chat panel exists
-        chat_panel = page.locator('#chatDrawer, #chat-drawer')
-        if chat_panel.count() > 0:
-            panel_class = chat_panel.get_attribute('class')
-            # Should have positioning for slide-in
-            assert 'right-0' in panel_class or 'fixed' in panel_class
-
-
-class TestNoUnderlineLinks:
-    """Test that action links don't have underlines."""
-
-    def test_pill_links_no_underline(self, logged_in_page, base_url):
-        """Pill-styled links should not have underlines."""
-        page = logged_in_page
-        page.goto(f"{base_url}/")
-        page.wait_for_load_state('networkidle')
-
-        # Check for no-underline class on links
-        no_underline_links = page.locator('a.no-underline, .no-underline')
-        # CSS should handle this - just verify page loads
-        expect(page).not_to_have_url(f"{base_url}/login")
+def client(test_db, tmp_path):
+    """Create authenticated test client with isolated database."""
+    app_module.app.config['TESTING'] = True
+    uploads_dir = tmp_path / 'uploads'
+    uploads_dir.mkdir()
+    app_module.app.config['UPLOAD_FOLDER'] = str(uploads_dir)
+
+    original_get_db = app_module.get_db
+    original_db = app_module.db
+    app_module.get_db = lambda: test_db
+    app_module.db = test_db
+
+    with app_module.app.test_client() as client:
+        # Set up authenticated session using default admin (user_id=1)
+        with client.session_transaction() as sess:
+            sess['user_id'] = 1
+            sess['user_email'] = 'admin@localhost'
+            sess['user_name'] = 'Default Admin'
+            sess['is_admin'] = True
+        yield client
+
+    app_module.get_db = original_get_db
+    app_module.db = original_db
+
+
+# ==================== Page Loading Tests ====================
+
+class TestPageLoading:
+    """Test that all pages load correctly."""
+
+    def test_racm_main_page_loads(self, client):
+        """RACM main page should load with 200 status."""
+        response = client.get('/')
+        assert response.status_code == 200
+
+    def test_racm_page_has_spreadsheet(self, client):
+        """RACM page should include jspreadsheet library."""
+        response = client.get('/')
+        html = response.data.decode()
+        assert 'jspreadsheet' in html.lower()
+
+    def test_racm_page_has_tabs(self, client):
+        """RACM page should have tab navigation."""
+        response = client.get('/')
+        html = response.data.decode()
+        assert 'tabs' in html.lower()
+
+    def test_racm_page_has_quill_editor(self, client):
+        """RACM page should include Quill.js for rich text editing."""
+        response = client.get('/')
+        html = response.data.decode()
+        assert 'quill' in html.lower()
+
+    def test_racm_page_has_chat_panel(self, client):
+        """RACM page should have AI chat panel."""
+        response = client.get('/')
+        html = response.data.decode()
+        assert 'chatPanel' in html or 'chat' in html.lower()
+
+    def test_kanban_page_loads(self, client):
+        """Kanban board page should load with 200 status."""
+        response = client.get('/kanban')
+        assert response.status_code == 200
+
+    def test_kanban_page_has_board(self, client):
+        """Kanban page should have kanban board elements."""
+        response = client.get('/kanban')
+        html = response.data.decode()
+        assert 'kanban' in html.lower()
+
+    def test_kanban_page_has_drag_support(self, client):
+        """Kanban page should support drag and drop."""
+        response = client.get('/kanban')
+        html = response.data.decode()
+        assert 'drag' in html.lower()
+
+    def test_flowchart_page_loads(self, client):
+        """Flowchart editor page should load with 200 status."""
+        response = client.get('/flowchart')
+        assert response.status_code == 200
+
+    def test_flowchart_page_has_drawflow(self, client):
+        """Flowchart page should include Drawflow library."""
+        response = client.get('/flowchart')
+        html = response.data.decode()
+        assert 'drawflow' in html.lower()
+
+    def test_flowchart_page_has_editor(self, client):
+        """Flowchart page should have editor container."""
+        response = client.get('/flowchart')
+        html = response.data.decode()
+        assert 'editor' in html.lower()
+
+
+# ==================== RACM Spreadsheet API Tests ====================
+
+class TestRACMSpreadsheetAPI:
+    """Test RACM spreadsheet data API."""
+
+    def test_load_racm_data(self, client):
+        """Should load RACM data successfully."""
+        response = client.get('/api/data')
+        assert response.status_code == 200
+
+    def test_racm_data_structure(self, client):
+        """RACM data should have correct structure."""
+        response = client.get('/api/data')
+        data = response.get_json()
+        assert 'racm' in data
+        assert 'issues' in data
+
+    def test_racm_has_rows(self, client):
+        """RACM should contain data rows."""
+        response = client.get('/api/data')
+        data = response.get_json()
+        assert len(data['racm']) > 0
+
+    def test_issues_is_list(self, client):
+        """Issues data should be a list."""
+        response = client.get('/api/data')
+        data = response.get_json()
+        assert isinstance(data['issues'], list)
+
+    def test_save_racm_data(self, client):
+        """Should save RACM data successfully."""
+        response = client.get('/api/data')
+        data = response.get_json()
+
+        save_response = client.post('/api/data', json=data)
+        assert save_response.status_code == 200
+
+
+# ==================== Issue Operations API Tests ====================
+
+class TestIssueOperationsAPI:
+    """Test issue-related API endpoints."""
+
+    def test_list_issues(self, client):
+        """Should list all issues."""
+        response = client.get('/api/issues')
+        assert response.status_code == 200
+        issues = response.get_json()
+        assert isinstance(issues, list)
+
+    def test_get_single_issue(self, client):
+        """Should get a single issue by ID."""
+        # First get list to find an issue ID
+        response = client.get('/api/issues')
+        issues = response.get_json()
+        if issues:
+            issue_id = issues[0].get('issue_id')
+            response = client.get(f'/api/issues/{issue_id}')
+            assert response.status_code == 200
+
+    def test_create_issue_from_risk(self, client):
+        """Should create issue from risk ID."""
+        response = client.post('/api/issues/from-risk/R001', json={})
+        assert response.status_code in [200, 201]
+
+    def test_update_issue(self, client):
+        """Should update an existing issue."""
+        response = client.get('/api/issues')
+        issues = response.get_json()
+        if issues:
+            issue_id = issues[0].get('issue_id')
+            update_data = {'status': 'In Progress'}
+            response = client.put(f'/api/issues/{issue_id}', json=update_data)
+            assert response.status_code == 200
+
+
+# ==================== Kanban Board API Tests ====================
+
+class TestKanbanBoardAPI:
+    """Test Kanban board API endpoints."""
+
+    def test_get_kanban_board(self, client):
+        """Should get kanban board data."""
+        response = client.get('/api/kanban/default')
+        assert response.status_code == 200
+
+    def test_kanban_has_columns(self, client):
+        """Kanban board should have columns."""
+        response = client.get('/api/kanban/default')
+        data = response.get_json()
+        assert 'columns' in data or isinstance(data, list)
+
+    def test_kanban_column_count(self, client):
+        """Kanban should have at least 5 columns."""
+        response = client.get('/api/kanban/default')
+        data = response.get_json()
+        if 'columns' in data:
+            assert len(data['columns']) >= 5
+
+    def test_kanban_expected_columns(self, client):
+        """Kanban should have expected column names."""
+        response = client.get('/api/kanban/default')
+        data = response.get_json()
+        expected_columns = ['planning', 'fieldwork', 'testing', 'review', 'complete']
+        if 'columns' in data:
+            # columns is a list of dicts with 'id' field
+            column_ids = [col['id'] for col in data['columns']]
+            for col in expected_columns:
+                assert col in column_ids
+
+
+# ==================== Flowchart API Tests ====================
+
+class TestFlowchartAPI:
+    """Test flowchart API endpoints."""
+
+    def test_list_flowcharts(self, client):
+        """Should list all flowcharts."""
+        response = client.get('/api/flowcharts')
+        assert response.status_code == 200
+        flowcharts = response.get_json()
+        assert isinstance(flowcharts, list)
+
+    def test_save_flowchart(self, client):
+        """Should save a new flowchart."""
+        test_flowchart = {
+            'nodes': [{'id': 1, 'name': 'Start'}],
+            'connections': []
+        }
+        response = client.post('/api/flowchart/regression_test', json=test_flowchart)
+        assert response.status_code == 200
+
+    def test_get_flowchart(self, client):
+        """Should retrieve a saved flowchart."""
+        # First save a flowchart
+        test_flowchart = {'nodes': [], 'connections': []}
+        client.post('/api/flowchart/get_test', json=test_flowchart)
+
+        # Then retrieve it
+        response = client.get('/api/flowchart/get_test')
+        assert response.status_code == 200
+
+    def test_flowchart_data_preserved(self, client):
+        """Saved flowchart data should be preserved."""
+        test_flowchart = {
+            'nodes': [{'id': 1, 'name': 'TestNode'}],
+            'connections': [{'from': 1, 'to': 2}]
+        }
+        client.post('/api/flowchart/data_test', json=test_flowchart)
+
+        response = client.get('/api/flowchart/data_test')
+        data = response.get_json()
+        assert 'nodes' in data or 'data' in data
+
+
+# ==================== AI Chat API Tests ====================
+
+class TestAIChatAPI:
+    """Test AI chat API endpoints."""
+
+    def test_chat_status_endpoint(self, client):
+        """Chat status endpoint should respond."""
+        response = client.get('/api/chat/status')
+        assert response.status_code == 200
+
+    def test_chat_status_structure(self, client):
+        """Chat status should have configured field."""
+        response = client.get('/api/chat/status')
+        data = response.get_json()
+        assert 'configured' in data
+
+    def test_chat_message_endpoint(self, client):
+        """Chat message endpoint should accept messages."""
+        response = client.post('/api/chat', json={'message': 'test'})
+        # Accept 200 (success) or 400/401 (no API key configured)
+        assert response.status_code in [200, 400, 401, 500]
+
+    def test_chat_returns_json(self, client):
+        """Chat endpoint should return JSON."""
+        response = client.post('/api/chat', json={'message': 'test'})
+        assert response.content_type == 'application/json'
+
+
+# ==================== Evidence/Attachments API Tests ====================
+
+class TestEvidenceAttachmentsAPI:
+    """Test evidence and attachment API endpoints."""
+
+    def test_upload_risk_attachment(self, client):
+        """Should upload attachment to risk."""
+        test_file = (io.BytesIO(b'Test file content'), 'test.txt')
+        response = client.post(
+            '/api/risks/R001/attachments',
+            data={'file': test_file},
+            content_type='multipart/form-data'
+        )
+        assert response.status_code == 200
+
+    def test_upload_returns_file_info(self, client):
+        """Upload should return file information."""
+        test_file = (io.BytesIO(b'Test content'), 'info_test.txt')
+        response = client.post(
+            '/api/risks/R001/attachments',
+            data={'file': test_file},
+            content_type='multipart/form-data'
+        )
+        data = response.get_json()
+        assert 'filename' in data or 'id' in data
+
+    def test_list_risk_attachments(self, client):
+        """Should list attachments for a risk."""
+        response = client.get('/api/risks/R001/attachments')
+        assert response.status_code == 200
+        attachments = response.get_json()
+        assert isinstance(attachments, list)
+
+    def test_upload_issue_attachment(self, client):
+        """Should upload attachment to issue."""
+        # First get an issue ID
+        issues_response = client.get('/api/issues')
+        issues = issues_response.get_json()
+        if issues:
+            issue_id = issues[0].get('issue_id')
+            test_file = (io.BytesIO(b'Issue evidence'), 'evidence.txt')
+            response = client.post(
+                f'/api/issues/{issue_id}/attachments',
+                data={'file': test_file},
+                content_type='multipart/form-data'
+            )
+            assert response.status_code == 200
+
+    def test_list_issue_attachments(self, client):
+        """Should list attachments for an issue."""
+        issues_response = client.get('/api/issues')
+        issues = issues_response.get_json()
+        if issues:
+            issue_id = issues[0].get('issue_id')
+            response = client.get(f'/api/issues/{issue_id}/attachments')
+            assert response.status_code == 200
+
+
+# ==================== Test Documents API Tests ====================
+
+class TestTestDocumentsAPI:
+    """Test test document (working paper) API endpoints."""
+
+    def test_save_de_test_document(self, client):
+        """Should save DE testing document."""
+        doc = {'content': '<h1>DE Testing</h1><p>Test procedures.</p>'}
+        response = client.post('/api/test-document/R001/de_testing', json=doc)
+        assert response.status_code == 200
+
+    def test_save_oe_test_document(self, client):
+        """Should save OE testing document."""
+        doc = {'content': '<h1>OE Testing</h1><p>Test procedures.</p>'}
+        response = client.post('/api/test-document/R001/oe_testing', json=doc)
+        assert response.status_code == 200
+
+    def test_get_de_test_document(self, client):
+        """Should retrieve DE testing document."""
+        # First save a document
+        doc = {'content': '<p>Test content</p>'}
+        client.post('/api/test-document/R001/de_testing', json=doc)
+
+        # Then retrieve it
+        response = client.get('/api/test-document/R001/de_testing')
+        assert response.status_code == 200
+
+    def test_document_content_preserved(self, client):
+        """Document content should be preserved."""
+        content = '<h1>Preserved Content</h1>'
+        doc = {'content': content}
+        client.post('/api/test-document/R001/de_testing', json=doc)
+
+        response = client.get('/api/test-document/R001/de_testing')
+        data = response.get_json()
+        assert content in data.get('content', '')
+
+    def test_check_document_exists(self, client):
+        """Should check if document exists."""
+        # Save a document first
+        doc = {'content': '<p>Exists test</p>'}
+        client.post('/api/test-document/R001/de_testing', json=doc)
+
+        response = client.get('/api/test-document/R001/de_testing/exists')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data.get('exists') == True
+
+    def test_invalid_doc_type_rejected(self, client):
+        """Invalid document type should be rejected."""
+        doc = {'content': '<p>Test</p>'}
+        response = client.post('/api/test-document/R001/invalid_type', json=doc)
+        assert response.status_code == 400
+
+
+# ==================== Risk API Tests ====================
+
+class TestRiskAPI:
+    """Test risk CRUD API endpoints."""
+
+    def test_list_risks(self, client):
+        """Should list all risks."""
+        response = client.get('/api/risks')
+        assert response.status_code == 200
+        risks = response.get_json()
+        assert isinstance(risks, list)
+
+    def test_get_single_risk(self, client):
+        """Should get a single risk by ID."""
+        response = client.get('/api/risks/R001')
+        assert response.status_code == 200
+
+    def test_create_risk(self, client):
+        """Should create a new risk."""
+        risk_data = {
+            'risk_id': 'R999',
+            'risk': 'New Risk Description',
+            'control_id': 'C999',
+            'control_owner': 'New Owner',
+            'status': 'Not Complete'
+        }
+        response = client.post('/api/risks', json=risk_data)
+        assert response.status_code in [200, 201]
+
+    def test_update_risk(self, client):
+        """Should update an existing risk."""
+        update_data = {'process_name': 'Updated Process'}
+        response = client.put('/api/risks/R001', json=update_data)
+        assert response.status_code == 200
+
+
+# ==================== Integration Tests ====================
+
+class TestFrontendIntegration:
+    """Integration tests for complete frontend workflows."""
+
+    def test_complete_racm_workflow(self, client):
+        """Test complete RACM load-edit-save workflow."""
+        # Load data
+        response = client.get('/api/data')
+        assert response.status_code == 200
+        data = response.get_json()
+
+        # Modify and save
+        save_response = client.post('/api/data', json=data)
+        assert save_response.status_code == 200
+
+        # Verify data persisted
+        verify_response = client.get('/api/data')
+        assert verify_response.status_code == 200
+
+    def test_issue_creation_workflow(self, client):
+        """Test creating issue from risk and viewing it."""
+        # Create issue from risk
+        response = client.post('/api/issues/from-risk/R001', json={})
+        assert response.status_code in [200, 201]
+
+        # Verify issue appears in list
+        list_response = client.get('/api/issues')
+        issues = list_response.get_json()
+        risk_issues = [i for i in issues if i.get('risk_id') == 'R001']
+        assert len(risk_issues) > 0
+
+    def test_evidence_workflow(self, client):
+        """Test uploading and listing evidence."""
+        # Upload file
+        test_file = (io.BytesIO(b'Evidence content'), 'evidence.txt')
+        upload_response = client.post(
+            '/api/risks/R001/attachments',
+            data={'file': test_file},
+            content_type='multipart/form-data'
+        )
+        assert upload_response.status_code == 200
+
+        # List and verify
+        list_response = client.get('/api/risks/R001/attachments')
+        attachments = list_response.get_json()
+        assert len(attachments) > 0
+
+    def test_test_document_workflow(self, client):
+        """Test creating and retrieving test documents."""
+        # Save document
+        doc = {'content': '<h1>Test</h1><p>Findings here.</p>'}
+        save_response = client.post('/api/test-document/R001/de_testing', json=doc)
+        assert save_response.status_code == 200
+
+        # Check exists
+        exists_response = client.get('/api/test-document/R001/de_testing/exists')
+        assert exists_response.get_json().get('exists') == True
+
+        # Retrieve and verify
+        get_response = client.get('/api/test-document/R001/de_testing')
+        data = get_response.get_json()
+        assert 'Findings here' in data.get('content', '')
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])

@@ -1,4 +1,8 @@
-"""AI service tests with proper mocking."""
+"""AI service tests with proper mocking.
+
+Run with: pytest tests/test_ai_mocked.py -v
+Run regression tests: pytest -m regression
+"""
 import json
 import pytest
 from unittest.mock import patch, Mock, MagicMock
@@ -6,6 +10,9 @@ import app as app_module
 import database as database_module
 from database import RACMDatabase
 from werkzeug.security import generate_password_hash
+
+# Mark entire module as regression tests (AI functionality is critical)
+pytestmark = [pytest.mark.regression]
 
 
 @pytest.fixture

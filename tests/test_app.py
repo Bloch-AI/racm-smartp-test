@@ -1,6 +1,8 @@
 """
 Comprehensive Test Suite for RACM Audit Toolkit
+
 Run with: pytest test_app.py -v
+Run regression tests: pytest -m regression
 
 Includes:
 - Unit tests for database.py
@@ -14,6 +16,9 @@ import sys
 import os
 import tempfile
 import shutil
+
+# Mark entire module as regression tests
+pytestmark = [pytest.mark.regression]
 
 # Add the app directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
