@@ -221,22 +221,7 @@ def record_login_attempt(ip_address: str, success: bool):
 @app.context_processor
 def inject_audit_context():
     """Inject audit-related variables into all templates."""
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-
-    # Find the active audit details
-    active_audit = None
-    if active_audit_id and accessible_audits:
-        for audit in accessible_audits:
-            if audit['id'] == active_audit_id:
-                active_audit = audit
-                break
-
-    return {
-        'accessible_audits': accessible_audits,
-        'active_audit_id': active_audit_id,
-        'active_audit': active_audit
-    }
+    return get_audit_context(auto_select=False)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -255,6 +240,74 @@ def error_response(message: str, status_code: int = 400):
 def not_found_response(entity: str = 'Resource'):
     """Return a standardized 404 response."""
     return jsonify({'error': f'{entity} not found'}), 404
+
+
+def get_audit_context(auto_select: bool = True) -> dict:
+    """Get the current audit context for the user.
+
+    Returns dict with:
+        - accessible_audits: List of audits the user can access
+        - active_audit_id: ID of the currently selected audit
+        - active_audit: Full details of the active audit (or None)
+
+    If auto_select is True and no audit is selected, selects the first available.
+    """
+    accessible_audits = get_user_accessible_audits()
+    active_audit_id = get_active_audit_id()
+
+    # Auto-select first audit if none selected
+    if auto_select and accessible_audits and not active_audit_id:
+        set_active_audit(accessible_audits[0]['id'])
+        active_audit_id = accessible_audits[0]['id']
+
+    # Find active audit details
+    active_audit = None
+    if active_audit_id and accessible_audits:
+        for audit in accessible_audits:
+            if audit['id'] == active_audit_id:
+                active_audit = audit
+                break
+
+    return {
+        'accessible_audits': accessible_audits,
+        'active_audit_id': active_audit_id,
+        'active_audit': active_audit
+    }
+
+
+def check_attachment_permission(record: dict, record_type: str = 'record') -> tuple:
+    """Check if current user can upload attachments to a record.
+
+    Returns (allowed: bool, error_response: tuple or None).
+    If allowed is True, error_response is None.
+    If allowed is False, error_response is a (jsonify, status_code) tuple.
+    """
+    user = get_current_user()
+    if user.get('is_admin'):
+        return True, None
+
+    audit_id = record.get('audit_id') or get_active_audit_id()
+    audit = db.get_audit(audit_id) if audit_id else None
+    audit_context = {
+        'id': audit_id,
+        'auditor_id': audit.get('auditor_id') if audit else None,
+        'reviewer_id': audit.get('reviewer_id') if audit else None
+    }
+    if not can_edit_record(user, audit_context, record):
+        return False, (jsonify({'error': f'Cannot upload attachment - {record_type} is not editable'}), 403)
+    return True, None
+
+
+def attachment_upload_response(file_info: dict, attachment_id: int) -> dict:
+    """Format a standard attachment upload response."""
+    return {
+        'status': 'uploaded',
+        'id': attachment_id,
+        'filename': file_info['original_filename'],
+        'size': file_info['file_size'],
+        'text_extracted': len(file_info['extracted_text']) > 0 and not file_info['extracted_text'].startswith('[')
+    }
+
 
 # Seed initial data if database is empty
 def seed_initial_data():
@@ -541,21 +594,7 @@ def api_accessible_audits():
 @app.route('/')
 @require_login
 def index():
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-
-    # Auto-select first audit if none is selected
-    if accessible_audits and not active_audit_id:
-        set_active_audit(accessible_audits[0]['id'])
-        active_audit_id = accessible_audits[0]['id']
-
-    # Get the active audit details
-    active_audit = None
-    if active_audit_id:
-        for audit in accessible_audits:
-            if audit['id'] == active_audit_id:
-                active_audit = audit
-                break
+    ctx = get_audit_context()
 
     # Get user role for template (viewers don't see AI link)
     user = get_current_user()
@@ -563,10 +602,8 @@ def index():
 
     return render_template('index.html',
                            active_page='workpapers',
-                           accessible_audits=accessible_audits,
-                           active_audit_id=active_audit_id,
-                           active_audit=active_audit,
-                           user_role=user_role)
+                           user_role=user_role,
+                           **ctx)
 
 # ==================== RACM (Spreadsheet) API ====================
 
@@ -1252,13 +1289,10 @@ def get_records_in_admin_hold():
 @app.route('/flowchart/<flowchart_id>')
 @require_login
 def flowchart(flowchart_id=None):
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    ctx = get_audit_context()
     is_admin = session.get('is_admin', False)
     return render_template('flowchart.html', flowchart_id=flowchart_id, active_page='flowchart',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit,
-                           is_admin=is_admin)
+                           is_admin=is_admin, **ctx)
 
 @app.route('/api/flowchart/<flowchart_id>', methods=['GET'])
 @require_login
@@ -1389,26 +1423,20 @@ def test_document_exists(risk_code, doc_type):
 @app.route('/kanban/<board_id>')
 @require_login
 def kanban(board_id='default'):
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
-    return render_template('kanban.html', board_id=board_id, active_page='kanban',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
+    ctx = get_audit_context()
+    return render_template('kanban.html', board_id=board_id, active_page='kanban', **ctx)
 
 
 @app.route('/audit-plan')
 @require_login
 def audit_plan():
     """Annual Audit Plan page with spreadsheet and kanban views."""
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
+    ctx = get_audit_context()
     user = get_current_user()
     user_role = get_user_role(user) if user else None
     is_admin = session.get('is_admin', False)
     return render_template('audit_plan.html', active_page='audit-plan',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit,
-                           user_role=user_role, is_admin=is_admin)
+                           user_role=user_role, is_admin=is_admin, **ctx)
 
 
 # ==================== Annual Audit Plan API ====================
@@ -1538,11 +1566,8 @@ def get_audits_summary():
 @require_login
 def library():
     """Audit Library page for managing reference documents."""
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
-    return render_template('library.html', active_page='library',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
+    ctx = get_audit_context()
+    return render_template('library.html', active_page='library', **ctx)
 
 
 # ==================== LIBRARY API ====================
@@ -2080,23 +2105,13 @@ def get_issue_attachments(issue_id):
 @require_login
 def upload_issue_attachment(issue_id):
     """Upload a file attachment for an issue. Enforces edit permissions."""
-    # Get the issue and check permissions
     issue = db.get_issue(issue_id)
     if not issue:
         return not_found_response('Issue')
 
-    user = get_current_user()
-    # Admins can always upload attachments
-    if not user.get('is_admin'):
-        audit_id = issue.get('audit_id') or get_active_audit_id()
-        audit = db.get_audit(audit_id) if audit_id else None
-        audit_context = {
-            'id': audit_id,
-            'auditor_id': audit.get('auditor_id') if audit else None,
-            'reviewer_id': audit.get('reviewer_id') if audit else None
-        }
-        if not can_edit_record(user, audit_context, issue):
-            return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
+    allowed, error = check_attachment_permission(issue, 'issue')
+    if not allowed:
+        return error
 
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -2106,27 +2121,18 @@ def upload_issue_attachment(issue_id):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    description = request.form.get('description', '')
-
-    # Save to database
     attachment_id = db.add_attachment(
         issue_id=issue_id,
         filename=file_info['unique_filename'],
         original_filename=file_info['original_filename'],
         file_size=file_info['file_size'],
         mime_type=file_info['mime_type'],
-        description=description,
+        description=request.form.get('description', ''),
         extracted_text=file_info['extracted_text']
     )
 
     increment_data_version()
-    return jsonify({
-        'status': 'uploaded',
-        'id': attachment_id,
-        'filename': file_info['original_filename'],
-        'size': file_info['file_size'],
-        'text_extracted': len(file_info['extracted_text']) > 0 and not file_info['extracted_text'].startswith('[')
-    })
+    return jsonify(attachment_upload_response(file_info, attachment_id))
 
 @app.route('/api/attachments/<int:attachment_id>', methods=['GET'])
 def download_attachment(attachment_id):
@@ -2187,23 +2193,13 @@ def get_risk_attachments(risk_id):
 @require_login
 def upload_risk_attachment(risk_id):
     """Upload a file attachment for a risk. Enforces edit permissions."""
-    # Get the risk and check permissions
     risk = db.get_risk(risk_id)
     if not risk:
         return not_found_response('Risk')
 
-    user = get_current_user()
-    # Admins can always upload attachments
-    if not user.get('is_admin'):
-        audit_id = risk.get('audit_id') or get_active_audit_id()
-        audit = db.get_audit(audit_id) if audit_id else None
-        audit_context = {
-            'id': audit_id,
-            'auditor_id': audit.get('auditor_id') if audit else None,
-            'reviewer_id': audit.get('reviewer_id') if audit else None
-        }
-        if not can_edit_record(user, audit_context, risk):
-            return jsonify({'error': 'Cannot upload attachment - record is not editable'}), 403
+    allowed, error = check_attachment_permission(risk, 'risk')
+    if not allowed:
+        return error
 
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -2213,32 +2209,23 @@ def upload_risk_attachment(risk_id):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    description = request.form.get('description', '')
     category = request.form.get('category', 'planning')
-    # Validate category
     if category not in ('planning', 'de', 'oe'):
         category = 'planning'
 
-    # Save to database
     attachment_id = db.add_risk_attachment(
         risk_id=risk_id,
         filename=file_info['unique_filename'],
         original_filename=file_info['original_filename'],
         file_size=file_info['file_size'],
         mime_type=file_info['mime_type'],
-        description=description,
+        description=request.form.get('description', ''),
         category=category,
         extracted_text=file_info['extracted_text']
     )
 
     increment_data_version()
-    return jsonify({
-        'status': 'uploaded',
-        'id': attachment_id,
-        'filename': file_info['original_filename'],
-        'size': file_info['file_size'],
-        'text_extracted': len(file_info['extracted_text']) > 0 and not file_info['extracted_text'].startswith('[')
-    })
+    return jsonify(attachment_upload_response(file_info, attachment_id))
 
 @app.route('/api/risk-attachments/<int:attachment_id>', methods=['GET'])
 def download_risk_attachment(attachment_id):
@@ -2308,25 +2295,18 @@ def upload_audit_attachment(audit_id):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    description = request.form.get('description', '')
-
-    # Save to database
     attachment_id = db.add_audit_attachment(
         audit_id=audit_id,
         filename=file_info['unique_filename'],
         original_filename=file_info['original_filename'],
         file_size=file_info['file_size'],
         mime_type=file_info['mime_type'],
-        description=description,
+        description=request.form.get('description', ''),
         extracted_text=file_info['extracted_text']
     )
 
     increment_data_version()
-    return jsonify({
-        'status': 'uploaded',
-        'attachment_id': attachment_id,
-        'filename': file_info['original_filename']
-    })
+    return jsonify(attachment_upload_response(file_info, attachment_id))
 
 @app.route('/api/audit-attachments/<int:attachment_id>', methods=['GET'])
 def download_audit_attachment(attachment_id):
@@ -3427,11 +3407,8 @@ def felix_chat():
     """Felix AI full-screen chat page."""
     user = get_current_user()
     user_id = user['id'] if user else 'default_user'
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
-    return render_template('felix.html', user_id=user_id, active_page='felix',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
+    ctx = get_audit_context()
+    return render_template('felix.html', user_id=user_id, active_page='felix', **ctx)
 
 
 @app.route('/api/felix/conversations', methods=['GET'])
@@ -3970,11 +3947,8 @@ def call_felix_ai(messages, attachments=None):
 @require_admin
 def admin_dashboard():
     """Admin dashboard page."""
-    accessible_audits = get_user_accessible_audits()
-    active_audit_id = get_active_audit_id()
-    active_audit = next((a for a in accessible_audits if a['id'] == active_audit_id), None) if active_audit_id else None
-    return render_template('admin/dashboard.html', active_page='admin',
-                           accessible_audits=accessible_audits, active_audit_id=active_audit_id, active_audit=active_audit)
+    ctx = get_audit_context()
+    return render_template('admin/dashboard.html', active_page='admin', **ctx)
 
 
 @app.route('/admin/users')

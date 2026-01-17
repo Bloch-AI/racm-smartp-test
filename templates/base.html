@@ -12,44 +12,7 @@
 
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        'sans': ['Inter', 'system-ui', 'sans-serif'],
-                        'display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-                        'mono': ['DM Mono', 'monospace'],
-                    },
-                    colors: {
-                        primary: {
-                            50: '#e6f4fa',
-                            100: '#cce9f5',
-                            200: '#99d3eb',
-                            300: '#66bde1',
-                            400: '#33a7d7',
-                            500: '#008bd1',
-                            600: '#007ab8',
-                            700: '#00689e',
-                            800: '#005785',
-                            900: '#00456b',
-                        },
-                        success: { light: '#dcfce7', DEFAULT: '#22c55e', dark: '#15803d' },
-                        warning: { light: '#fef3c7', DEFAULT: '#f59e0b', dark: '#b45309' },
-                        danger: { light: '#fee2e2', DEFAULT: '#ef4444', dark: '#b91c1c' },
-                        info: { light: '#dbeafe', DEFAULT: '#3b82f6', dark: '#1d4ed8' },
-                        felix: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+    <script src="/static/js/tailwind-config.js"></script>
 
     <!-- Shared CSS -->
     <link rel="stylesheet" href="/static/css/common.css">
@@ -186,84 +149,7 @@
 
     <!-- Shared JavaScript utilities -->
     <script src="/static/js/utils.js"></script>
-
-    <!-- Dropdown functions -->
-    <script>
-        function toggleAuditDropdown() {
-            const menu = document.getElementById('audit-dropdown-menu');
-            const arrow = document.getElementById('audit-dropdown-arrow');
-            // Close user dropdown if open
-            closeUserDropdown();
-            if (menu) {
-                menu.classList.toggle('hidden');
-                if (arrow) {
-                    arrow.classList.toggle('rotate-180');
-                }
-            }
-        }
-
-        function toggleUserDropdown() {
-            const menu = document.getElementById('user-dropdown-menu');
-            const arrow = document.getElementById('user-dropdown-arrow');
-            // Close audit dropdown if open
-            closeAuditDropdown();
-            if (menu) {
-                menu.classList.toggle('hidden');
-                if (arrow) {
-                    arrow.classList.toggle('rotate-180');
-                }
-            }
-        }
-
-        function closeAuditDropdown() {
-            const menu = document.getElementById('audit-dropdown-menu');
-            const arrow = document.getElementById('audit-dropdown-arrow');
-            if (menu) menu.classList.add('hidden');
-            if (arrow) arrow.classList.remove('rotate-180');
-        }
-
-        function closeUserDropdown() {
-            const menu = document.getElementById('user-dropdown-menu');
-            const arrow = document.getElementById('user-dropdown-arrow');
-            if (menu) menu.classList.add('hidden');
-            if (arrow) arrow.classList.remove('rotate-180');
-        }
-
-        function switchAudit(auditId) {
-            fetch('/api/auth/set-audit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ audit_id: parseInt(auditId) })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    // Reload the page to refresh data for the new audit
-                    window.location.href = '/';
-                } else {
-                    alert('Failed to switch audit: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Error switching audit:', error);
-                alert('Failed to switch audit');
-            });
-        }
-
-        // Close dropdowns when clicking outside
-        document.addEventListener('click', function(event) {
-            const auditContainer = document.getElementById('audit-dropdown-container');
-            const userContainer = document.getElementById('user-dropdown-container');
-
-            if (auditContainer && !auditContainer.contains(event.target)) {
-                closeAuditDropdown();
-            }
-            if (userContainer && !userContainer.contains(event.target)) {
-                closeUserDropdown();
-            }
-        });
-    </script>
+    <script src="/static/js/nav-dropdowns.js"></script>
 
     {% block scripts %}{% endblock %}
 </body>

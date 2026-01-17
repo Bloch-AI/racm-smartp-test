@@ -8,11 +8,21 @@ Provides decorators for protecting Flask routes:
 """
 
 from functools import wraps
-from flask import session, redirect, url_for, request, jsonify, g
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from flask import session, redirect, url_for, request, jsonify, g, Response
 from database import get_db
 
+# Type aliases for clarity
+UserDict = Dict[str, Any]
+AuditDict = Dict[str, Any]
+RecordDict = Dict[str, Any]
+PermissionsDict = Dict[str, bool]
 
-def get_current_user():
+# For decorator typing
+F = TypeVar('F', bound=Callable[..., Any])
+
+
+def get_current_user() -> Optional[UserDict]:
     """Get the current logged-in user from session.
 
     Returns user dict with: id, email, name, is_admin, is_active
@@ -44,14 +54,14 @@ def get_current_user():
     return None
 
 
-def require_login(f):
+def require_login(f: F) -> F:
     """Decorator that requires the user to be logged in.
 
     For page routes: redirects to /login if not authenticated.
     For API routes (starting with /api/): returns 401 JSON response.
     """
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         user = get_current_user()
         if not user:
             if request.path.startswith('/api/'):
@@ -68,13 +78,13 @@ def require_login(f):
     return decorated_function
 
 
-def require_non_viewer(f):
+def require_non_viewer(f: F) -> F:
     """Decorator that blocks viewer role from write/modify operations.
 
     Viewers have read-only access - they cannot modify data or use AI features.
     """
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         user = get_current_user()
         if not user:
             if request.path.startswith('/api/'):
@@ -91,14 +101,14 @@ def require_non_viewer(f):
     return decorated_function
 
 
-def require_admin(f):
+def require_admin(f: F) -> F:
     """Decorator that requires the user to be an admin.
 
     Returns 403 Forbidden if not an admin.
     Must be used after @require_login.
     """
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         user = get_current_user()
         if not user:
             if request.path.startswith('/api/'):
@@ -114,7 +124,7 @@ def require_admin(f):
     return decorated_function
 
 
-def require_audit_access(min_role='viewer'):
+def require_audit_access(min_role: str = 'viewer') -> Callable[[F], F]:
     """Decorator factory that requires the user to have access to an audit.
 
     The audit_id must be:
@@ -139,9 +149,9 @@ def require_audit_access(min_role='viewer'):
         def get_audit_risks(audit_id):
             ...
     """
-    def decorator(f):
+    def decorator(f: F) -> F:
         @wraps(f)
-        def decorated_function(*args, **kwargs):
+        def decorated_function(*args: Any, **kwargs: Any) -> Any:
             user = get_current_user()
             if not user:
                 if request.path.startswith('/api/'):
@@ -185,11 +195,11 @@ def require_audit_access(min_role='viewer'):
                 return "Access denied to this audit", 403
 
             return f(*args, **kwargs)
-        return decorated_function
+        return decorated_function  # type: ignore
     return decorator
 
 
-def get_active_audit_id():
+def get_active_audit_id() -> Optional[int]:
     """Get the currently active audit ID from session.
 
     Returns None if no audit is selected.
@@ -197,7 +207,7 @@ def get_active_audit_id():
     return session.get('active_audit_id')
 
 
-def set_active_audit(audit_id):
+def set_active_audit(audit_id: int) -> bool:
     """Set the active audit in the session.
 
     Verifies the user has access before setting.
@@ -227,7 +237,7 @@ def set_active_audit(audit_id):
     return False
 
 
-def get_user_accessible_audits():
+def get_user_accessible_audits() -> List[AuditDict]:
     """Get list of audits the current user can access.
 
     Returns empty list if not logged in.
@@ -241,7 +251,7 @@ def get_user_accessible_audits():
     return db.get_accessible_audits(user['id'], user['is_admin'], user_role)
 
 
-def login_user(user_id, email, name, is_admin):
+def login_user(user_id: int, email: str, name: str, is_admin: bool) -> None:
     """Set session variables for a logged-in user."""
     session['user_id'] = user_id
     session['user_email'] = email
@@ -249,18 +259,18 @@ def login_user(user_id, email, name, is_admin):
     session['is_admin'] = bool(is_admin)
 
 
-def logout_user():
+def logout_user() -> None:
     """Clear all session data."""
     session.clear()
 
 
-def check_password(password, password_hash):
+def check_password(password: str, password_hash: str) -> bool:
     """Verify a password against its hash."""
     from werkzeug.security import check_password_hash
     return check_password_hash(password_hash, password)
 
 
-def hash_password(password):
+def hash_password(password: str) -> str:
     """Hash a password for storage."""
     from werkzeug.security import generate_password_hash
     return generate_password_hash(password, method='pbkdf2:sha256')
@@ -268,7 +278,7 @@ def hash_password(password):
 
 # ==================== WORKFLOW PERMISSION FUNCTIONS ====================
 
-def get_user_role(user):
+def get_user_role(user: Optional[UserDict]) -> Optional[str]:
     """Get the user's role from the database (not from session).
 
     Returns: 'admin', 'auditor', 'reviewer', 'viewer'
@@ -289,7 +299,7 @@ def get_user_role(user):
     return 'viewer'
 
 
-def can_view_audit(user, audit):
+def can_view_audit(user: Optional[UserDict], audit: Optional[Union[AuditDict, int]]) -> bool:
     """Check if user can view an audit.
 
     Permission model:
@@ -320,7 +330,7 @@ def can_view_audit(user, audit):
     return False
 
 
-def can_edit_record(user, audit, record):
+def can_edit_record(user: Optional[UserDict], audit: Optional[Union[AuditDict, int]], record: Optional[RecordDict]) -> bool:
     """Check if user can edit a specific record based on its workflow status.
 
     Edit permission depends on:
@@ -362,7 +372,7 @@ def can_edit_record(user, audit, record):
     return False
 
 
-def can_transition_record(user, audit, record, action):
+def can_transition_record(user: Optional[UserDict], audit: Optional[Union[AuditDict, int]], record: Optional[RecordDict], action: str) -> bool:
     """Check if user can perform a specific state transition.
 
     Actions:
@@ -420,7 +430,7 @@ def can_transition_record(user, audit, record, action):
     return check() if check else False
 
 
-def get_record_permissions(user, audit, record):
+def get_record_permissions(user: Optional[UserDict], audit: Optional[Union[AuditDict, int]], record: Optional[RecordDict]) -> PermissionsDict:
     """Get all permissions for a record in one call.
 
     Returns a dict with boolean flags for each permission.
@@ -452,7 +462,7 @@ def get_record_permissions(user, audit, record):
 
 # ==================== RECORD PERMISSION DECORATOR ====================
 
-def require_record_edit(record_type):
+def require_record_edit(record_type: str) -> Callable[[F], F]:
     """Decorator that checks if user can edit the specified record.
 
     Usage:
@@ -462,7 +472,7 @@ def require_record_edit(record_type):
         def update_risk(record_id):
             ...
     """
-    def decorator(f):
+    def decorator(f: F) -> F:
         @wraps(f)
         def decorated_function(*args, **kwargs):
             user = get_current_user()
@@ -500,7 +510,7 @@ def require_record_edit(record_type):
     return decorator
 
 
-def require_transition(record_type, action):
+def require_transition(record_type: str, action: str) -> Callable[[F], F]:
     """Decorator that checks if user can perform a state transition.
 
     Usage:
@@ -510,7 +520,7 @@ def require_transition(record_type, action):
         def submit_risk_for_review(record_id):
             ...
     """
-    def decorator(f):
+    def decorator(f: F) -> F:
         @wraps(f)
         def decorated_function(*args, **kwargs):
             user = get_current_user()

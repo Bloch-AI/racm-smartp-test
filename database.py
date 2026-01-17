@@ -728,24 +728,21 @@ class RACMDatabase:
 
     def get_all_risks(self) -> List[Dict]:
         """Get all risks/controls."""
-        conn = self._get_conn()
-        rows = conn.execute("SELECT * FROM risks ORDER BY risk_id").fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("SELECT * FROM risks ORDER BY risk_id").fetchall()
+            return [dict(row) for row in rows]
 
     def get_risk(self, risk_id: str) -> Optional[Dict]:
         """Get a single risk by risk_id (e.g., 'R001')."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM risks WHERE risk_id = ?", (risk_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM risks WHERE risk_id = ?", (risk_id,)).fetchone()
+            return dict(row) if row else None
 
     def get_risk_by_id(self, id: int) -> Optional[Dict]:
         """Get a single risk by database ID."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM risks WHERE id = ?", (id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM risks WHERE id = ?", (id,)).fetchone()
+            return dict(row) if row else None
 
     def create_risk(self, risk_id: str, risk: str = "", control_id: str = "",
                     control_owner: str = "", design_effectiveness_testing: str = "",
@@ -766,21 +763,18 @@ class RACMDatabase:
         elif ready_for_review:
             record_status = 'in_review'
 
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO risks (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
-                              design_effectiveness_conclusion, operational_effectiveness_test,
-                              operational_effectiveness_conclusion, status, ready_for_review,
-                              reviewer, raise_issue, closed, audit_id, record_status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
-              design_effectiveness_conclusion, operational_effectiveness_test,
-              operational_effectiveness_conclusion, status, ready_for_review,
-              reviewer, raise_issue, closed, audit_id, record_status, created_by))
-        conn.commit()
-        new_id = cursor.lastrowid
-        conn.close()
-        return new_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO risks (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
+                                  design_effectiveness_conclusion, operational_effectiveness_test,
+                                  operational_effectiveness_conclusion, status, ready_for_review,
+                                  reviewer, raise_issue, closed, audit_id, record_status, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (risk_id, risk, control_id, control_owner, design_effectiveness_testing,
+                  design_effectiveness_conclusion, operational_effectiveness_test,
+                  operational_effectiveness_conclusion, status, ready_for_review,
+                  reviewer, raise_issue, closed, audit_id, record_status, created_by))
+            return cursor.lastrowid
 
     def update_risk(self, risk_id: str, **kwargs) -> bool:
         """Update a risk. Pass fields to update as kwargs.
@@ -813,102 +807,88 @@ class RACMDatabase:
         updates['updated_at'] = datetime.now().isoformat()
         set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
 
-        conn = self._get_conn()
-        conn.execute(f"UPDATE risks SET {set_clause} WHERE risk_id = ?",
-                    (*updates.values(), risk_id))
-        conn.commit()
-        conn.close()
-        return True
+        with self._connection() as conn:
+            conn.execute(f"UPDATE risks SET {set_clause} WHERE risk_id = ?",
+                        (*updates.values(), risk_id))
+            return True
 
     def delete_risk(self, risk_id: str) -> bool:
         """Delete a risk by risk_id."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM risks WHERE risk_id = ?", (risk_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM risks WHERE risk_id = ?", (risk_id,))
+            return cursor.rowcount > 0
 
     def get_risks_by_status(self, status: str) -> List[Dict]:
         """Get all risks with a specific status."""
-        conn = self._get_conn()
-        rows = conn.execute("SELECT * FROM risks WHERE status = ?", (status,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("SELECT * FROM risks WHERE status = ?", (status,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_risk_summary(self) -> Dict:
         """Get summary statistics for risks."""
-        conn = self._get_conn()
-        total = conn.execute("SELECT COUNT(*) FROM risks").fetchone()[0]
-        by_status = conn.execute("""
-            SELECT status, COUNT(*) as count FROM risks GROUP BY status
-        """).fetchall()
-        conn.close()
-        return {
-            'total': total,
-            'by_status': {row['status']: row['count'] for row in by_status}
-        }
+        with self._connection() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM risks").fetchone()[0]
+            by_status = conn.execute("""
+                SELECT status, COUNT(*) as count FROM risks GROUP BY status
+            """).fetchall()
+            return {
+                'total': total,
+                'by_status': {row['status']: row['count'] for row in by_status}
+            }
 
     # ==================== TASKS (KANBAN) ====================
 
     def get_all_tasks(self) -> List[Dict]:
         """Get all tasks."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT t.*, r.risk_id as linked_risk_id
-            FROM tasks t
-            LEFT JOIN risks r ON t.risk_id = r.id
-            ORDER BY t.created_at
-        """).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT t.*, r.risk_id as linked_risk_id
+                FROM tasks t
+                LEFT JOIN risks r ON t.risk_id = r.id
+                ORDER BY t.created_at
+            """).fetchall()
+            return [dict(row) for row in rows]
 
     def get_tasks_by_column(self, column_id: str) -> List[Dict]:
         """Get tasks in a specific column."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT t.*, r.risk_id as linked_risk_id
-            FROM tasks t
-            LEFT JOIN risks r ON t.risk_id = r.id
-            WHERE t.column_id = ?
-            ORDER BY t.created_at
-        """, (column_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT t.*, r.risk_id as linked_risk_id
+                FROM tasks t
+                LEFT JOIN risks r ON t.risk_id = r.id
+                WHERE t.column_id = ?
+                ORDER BY t.created_at
+            """, (column_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_task(self, task_id: int) -> Optional[Dict]:
         """Get a single task by ID."""
-        conn = self._get_conn()
-        row = conn.execute("""
-            SELECT t.*, r.risk_id as linked_risk_id
-            FROM tasks t
-            LEFT JOIN risks r ON t.risk_id = r.id
-            WHERE t.id = ?
-        """, (task_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("""
+                SELECT t.*, r.risk_id as linked_risk_id
+                FROM tasks t
+                LEFT JOIN risks r ON t.risk_id = r.id
+                WHERE t.id = ?
+            """, (task_id,)).fetchone()
+            return dict(row) if row else None
 
     def create_task(self, title: str, description: str = "", priority: str = "medium",
                     assignee: str = "", column_id: str = "planning",
                     risk_id: Optional[str] = None) -> int:
         """Create a new task. risk_id can be the string ID (e.g., 'R001')."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            # Look up risk foreign key if provided
+            fk_risk_id = None
+            if risk_id:
+                row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_id,)).fetchone()
+                if row:
+                    fk_risk_id = row['id']
 
-        # Look up risk foreign key if provided
-        fk_risk_id = None
-        if risk_id:
-            row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_id,)).fetchone()
-            if row:
-                fk_risk_id = row['id']
-
-        cursor = conn.execute("""
-            INSERT INTO tasks (title, description, priority, assignee, column_id, risk_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (title, description, priority, assignee, column_id, fk_risk_id))
-        conn.commit()
-        new_id = cursor.lastrowid
-        conn.close()
-        return new_id
+            cursor = conn.execute("""
+                INSERT INTO tasks (title, description, priority, assignee, column_id, risk_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (title, description, priority, assignee, column_id, fk_risk_id))
+            return cursor.lastrowid
 
     def update_task(self, task_id: int, **kwargs) -> bool:
         """Update a task. Pass fields to update as kwargs."""
@@ -920,12 +900,10 @@ class RACMDatabase:
         updates['updated_at'] = datetime.now().isoformat()
         set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
 
-        conn = self._get_conn()
-        conn.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?",
-                    (*updates.values(), task_id))
-        conn.commit()
-        conn.close()
-        return True
+        with self._connection() as conn:
+            conn.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?",
+                        (*updates.values(), task_id))
+            return True
 
     def move_task(self, task_id: int, column_id: str) -> bool:
         """Move a task to a different column."""
@@ -933,60 +911,53 @@ class RACMDatabase:
 
     def delete_task(self, task_id: int) -> bool:
         """Delete a task."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            return cursor.rowcount > 0
 
     def get_task_summary(self) -> Dict:
         """Get summary statistics for tasks."""
-        conn = self._get_conn()
-        total = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-        by_column = conn.execute("""
-            SELECT column_id, COUNT(*) as count FROM tasks GROUP BY column_id
-        """).fetchall()
-        by_priority = conn.execute("""
-            SELECT priority, COUNT(*) as count FROM tasks GROUP BY priority
-        """).fetchall()
-        conn.close()
-        return {
-            'total': total,
-            'by_column': {row['column_id']: row['count'] for row in by_column},
-            'by_priority': {row['priority']: row['count'] for row in by_priority}
-        }
+        with self._connection() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+            by_column = conn.execute("""
+                SELECT column_id, COUNT(*) as count FROM tasks GROUP BY column_id
+            """).fetchall()
+            by_priority = conn.execute("""
+                SELECT priority, COUNT(*) as count FROM tasks GROUP BY priority
+            """).fetchall()
+            return {
+                'total': total,
+                'by_column': {row['column_id']: row['count'] for row in by_column},
+                'by_priority': {row['priority']: row['count'] for row in by_priority}
+            }
 
     # ==================== AUDITS (Annual Audit Plan) ====================
 
     def get_all_audits(self) -> List[Dict]:
         """Get all audits from the annual audit plan."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT * FROM audits ORDER BY
-                CASE quarter
-                    WHEN 'Q1' THEN 1
-                    WHEN 'Q2' THEN 2
-                    WHEN 'Q3' THEN 3
-                    WHEN 'Q4' THEN 4
-                    ELSE 5
-                END,
-                planned_start,
-                title
-        """).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM audits ORDER BY
+                    CASE quarter
+                        WHEN 'Q1' THEN 1
+                        WHEN 'Q2' THEN 2
+                        WHEN 'Q3' THEN 3
+                        WHEN 'Q4' THEN 4
+                        ELSE 5
+                    END,
+                    planned_start,
+                    title
+            """).fetchall()
+            return [dict(row) for row in rows]
 
     def get_audit(self, audit_id: int) -> Optional[Dict]:
         """Get a single audit by ID."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM audits WHERE id = ?", (audit_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM audits WHERE id = ?", (audit_id,)).fetchone()
+            return dict(row) if row else None
 
     def create_audit(self, title: str, **kwargs) -> int:
         """Create a new audit in the annual plan."""
-        conn = self._get_conn()
         allowed = {'description', 'audit_area', 'owner', 'planned_start', 'planned_end',
                    'actual_start', 'actual_end', 'quarter', 'status', 'priority',
                    'estimated_hours', 'actual_hours', 'risk_rating', 'notes'}
@@ -996,14 +967,12 @@ class RACMDatabase:
         placeholders = ['?'] * len(columns)
         values = [title] + list(filtered.values())
 
-        cursor = conn.execute(
-            f"INSERT INTO audits ({', '.join(columns)}) VALUES ({', '.join(placeholders)})",
-            values
-        )
-        conn.commit()
-        audit_id = cursor.lastrowid
-        conn.close()
-        return audit_id
+        with self._connection() as conn:
+            cursor = conn.execute(
+                f"INSERT INTO audits ({', '.join(columns)}) VALUES ({', '.join(placeholders)})",
+                values
+            )
+            return cursor.lastrowid
 
     def update_audit(self, audit_id: int, **kwargs) -> bool:
         """Update an audit. Pass fields to update as kwargs."""
@@ -1015,23 +984,18 @@ class RACMDatabase:
             return False
         updates['updated_at'] = 'CURRENT_TIMESTAMP'
 
-        conn = self._get_conn()
-        set_clause = ', '.join(f"{k} = ?" if k != 'updated_at' else f"{k} = CURRENT_TIMESTAMP"
-                               for k in updates.keys())
-        values = [v for k, v in updates.items() if k != 'updated_at']
-        conn.execute(f"UPDATE audits SET {set_clause} WHERE id = ?", (*values, audit_id))
-        conn.commit()
-        conn.close()
-        return True
+        with self._connection() as conn:
+            set_clause = ', '.join(f"{k} = ?" if k != 'updated_at' else f"{k} = CURRENT_TIMESTAMP"
+                                   for k in updates.keys())
+            values = [v for k, v in updates.items() if k != 'updated_at']
+            conn.execute(f"UPDATE audits SET {set_clause} WHERE id = ?", (*values, audit_id))
+            return True
 
     def delete_audit(self, audit_id: int) -> bool:
         """Delete an audit from the annual plan."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM audits WHERE id = ?", (audit_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM audits WHERE id = ?", (audit_id,))
+            return cursor.rowcount > 0
 
     def audits_to_spreadsheet_format(self, audits: List[Dict]) -> List[List]:
         """Convert audit dicts to spreadsheet format (array of arrays)."""
@@ -1060,53 +1024,52 @@ class RACMDatabase:
 
     def save_audits_from_spreadsheet(self, data: List[List]) -> Dict:
         """Save audits from spreadsheet format. Returns stats."""
-        conn = self._get_conn()
-        existing_ids = {row['id'] for row in conn.execute("SELECT id FROM audits").fetchall()}
-        seen_ids = set()
-        created = 0
-        updated = 0
+        with self._connection() as conn:
+            existing_ids = {row['id'] for row in conn.execute("SELECT id FROM audits").fetchall()}
+            seen_ids = set()
+            created = 0
+            updated = 0
 
-        for row in data:
-            if not row or len(row) < 2:
-                continue
+            for row in data:
+                if not row or len(row) < 2:
+                    continue
 
-            # Parse row data
-            audit_id = int(row[0]) if row[0] and str(row[0]).isdigit() else None
-            title = str(row[1]).strip() if len(row) > 1 and row[1] else ''
-            if not title:
-                continue
+                # Parse row data
+                audit_id = int(row[0]) if row[0] and str(row[0]).isdigit() else None
+                title = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+                if not title:
+                    continue
 
-            audit_data = {
-                'title': title,
-                'audit_area': str(row[2]).strip() if len(row) > 2 and row[2] else None,
-                'owner': str(row[3]).strip() if len(row) > 3 and row[3] else None,
-                'planned_start': str(row[4]).strip() if len(row) > 4 and row[4] else None,
-                'planned_end': str(row[5]).strip() if len(row) > 5 and row[5] else None,
-                'quarter': str(row[6]).strip() if len(row) > 6 and row[6] else None,
-                'status': str(row[7]).strip() if len(row) > 7 and row[7] else 'planning',
-                'priority': str(row[8]).strip() if len(row) > 8 and row[8] else 'medium',
-                'risk_rating': str(row[9]).strip() if len(row) > 9 and row[9] else None,
-                'estimated_hours': float(row[10]) if len(row) > 10 and row[10] else None,
-                'description': str(row[11]).strip() if len(row) > 11 and row[11] else None
-            }
+                audit_data = {
+                    'title': title,
+                    'audit_area': str(row[2]).strip() if len(row) > 2 and row[2] else None,
+                    'owner': str(row[3]).strip() if len(row) > 3 and row[3] else None,
+                    'planned_start': str(row[4]).strip() if len(row) > 4 and row[4] else None,
+                    'planned_end': str(row[5]).strip() if len(row) > 5 and row[5] else None,
+                    'quarter': str(row[6]).strip() if len(row) > 6 and row[6] else None,
+                    'status': str(row[7]).strip() if len(row) > 7 and row[7] else 'planning',
+                    'priority': str(row[8]).strip() if len(row) > 8 and row[8] else 'medium',
+                    'risk_rating': str(row[9]).strip() if len(row) > 9 and row[9] else None,
+                    'estimated_hours': float(row[10]) if len(row) > 10 and row[10] else None,
+                    'description': str(row[11]).strip() if len(row) > 11 and row[11] else None
+                }
 
-            if audit_id and audit_id in existing_ids:
-                self.update_audit(audit_id, **audit_data)
-                seen_ids.add(audit_id)
-                updated += 1
-            else:
-                new_id = self.create_audit(**audit_data)
-                seen_ids.add(new_id)
-                created += 1
+                if audit_id and audit_id in existing_ids:
+                    self.update_audit(audit_id, **audit_data)
+                    seen_ids.add(audit_id)
+                    updated += 1
+                else:
+                    new_id = self.create_audit(**audit_data)
+                    seen_ids.add(new_id)
+                    created += 1
 
-        # Delete audits that were removed from spreadsheet
-        deleted = 0
-        for audit_id in existing_ids - seen_ids:
-            self.delete_audit(audit_id)
-            deleted += 1
+            # Delete audits that were removed from spreadsheet
+            deleted = 0
+            for audit_id in existing_ids - seen_ids:
+                self.delete_audit(audit_id)
+                deleted += 1
 
-        conn.close()
-        return {'created': created, 'updated': updated, 'deleted': deleted}
+            return {'created': created, 'updated': updated, 'deleted': deleted}
 
     def audits_to_kanban_format(self, audits: List[Dict]) -> Dict:
         """Convert audit dicts to kanban board format."""
@@ -1154,172 +1117,153 @@ class RACMDatabase:
 
     def get_audit_summary(self) -> Dict:
         """Get summary statistics for annual audit plan."""
-        conn = self._get_conn()
-        total = conn.execute("SELECT COUNT(*) FROM audits").fetchone()[0]
-        by_status = conn.execute("""
-            SELECT status, COUNT(*) as count FROM audits GROUP BY status
-        """).fetchall()
-        by_quarter = conn.execute("""
-            SELECT quarter, COUNT(*) as count FROM audits GROUP BY quarter
-        """).fetchall()
-        by_area = conn.execute("""
-            SELECT audit_area, COUNT(*) as count FROM audits GROUP BY audit_area
-        """).fetchall()
-        conn.close()
-        return {
-            'total': total,
-            'by_status': {row['status'] or 'planning': row['count'] for row in by_status},
-            'by_quarter': {row['quarter']: row['count'] for row in by_quarter if row['quarter']},
-            'by_area': {row['audit_area']: row['count'] for row in by_area if row['audit_area']}
-        }
+        with self._connection() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM audits").fetchone()[0]
+            by_status = conn.execute("""
+                SELECT status, COUNT(*) as count FROM audits GROUP BY status
+            """).fetchall()
+            by_quarter = conn.execute("""
+                SELECT quarter, COUNT(*) as count FROM audits GROUP BY quarter
+            """).fetchall()
+            by_area = conn.execute("""
+                SELECT audit_area, COUNT(*) as count FROM audits GROUP BY audit_area
+            """).fetchall()
+            return {
+                'total': total,
+                'by_status': {row['status'] or 'planning': row['count'] for row in by_status},
+                'by_quarter': {row['quarter']: row['count'] for row in by_quarter if row['quarter']},
+                'by_area': {row['audit_area']: row['count'] for row in by_area if row['audit_area']}
+            }
 
     # ==================== FLOWCHARTS ====================
 
     def get_all_flowcharts(self) -> List[Dict]:
         """Get all flowcharts (metadata only, not full data)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT id, name, risk_id, created_at, updated_at
-            FROM flowcharts ORDER BY name
-        """).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT id, name, risk_id, created_at, updated_at
+                FROM flowcharts ORDER BY name
+            """).fetchall()
+            return [dict(row) for row in rows]
 
     def get_flowchart(self, name: str) -> Optional[Dict]:
         """Get a flowchart by name (includes full Drawflow data)."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM flowcharts WHERE name = ?", (name,)).fetchone()
-        conn.close()
-        if row:
-            result = dict(row)
-            result['data'] = json.loads(result['data'])
-            return result
-        return None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM flowcharts WHERE name = ?", (name,)).fetchone()
+            if row:
+                result = dict(row)
+                result['data'] = json.loads(result['data'])
+                return result
+            return None
 
     def save_flowchart(self, name: str, data: Dict, risk_id: Optional[str] = None, audit_id: Optional[int] = None) -> int:
         """Save/update a flowchart. Returns the ID.
 
         Flowcharts are unique per (audit_id, name) combination.
         """
-        conn = self._get_conn()
+        with self._connection() as conn:
+            # Look up risk foreign key if provided
+            fk_risk_id = None
+            if risk_id:
+                row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_id,)).fetchone()
+                if row:
+                    fk_risk_id = row['id']
 
-        # Look up risk foreign key if provided
-        fk_risk_id = None
-        if risk_id:
-            row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_id,)).fetchone()
-            if row:
-                fk_risk_id = row['id']
+            # Upsert - uniqueness is now (audit_id, name)
+            cursor = conn.execute("""
+                INSERT INTO flowcharts (name, data, risk_id, audit_id, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(audit_id, name) DO UPDATE SET
+                    data = excluded.data,
+                    risk_id = excluded.risk_id,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (name, json.dumps(data), fk_risk_id, audit_id))
 
-        # Upsert - uniqueness is now (audit_id, name)
-        cursor = conn.execute("""
-            INSERT INTO flowcharts (name, data, risk_id, audit_id, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(audit_id, name) DO UPDATE SET
-                data = excluded.data,
-                risk_id = excluded.risk_id,
-                updated_at = CURRENT_TIMESTAMP
-        """, (name, json.dumps(data), fk_risk_id, audit_id))
-        conn.commit()
-
-        # Get the ID
-        row = conn.execute(
-            "SELECT id FROM flowcharts WHERE name = ? AND (audit_id = ? OR (audit_id IS NULL AND ? IS NULL))",
-            (name, audit_id, audit_id)
-        ).fetchone()
-        flowchart_id = row['id'] if row else cursor.lastrowid
-        conn.close()
-        return flowchart_id
+            # Get the ID
+            row = conn.execute(
+                "SELECT id FROM flowcharts WHERE name = ? AND (audit_id = ? OR (audit_id IS NULL AND ? IS NULL))",
+                (name, audit_id, audit_id)
+            ).fetchone()
+            flowchart_id = row['id'] if row else cursor.lastrowid
+            return flowchart_id
 
     def delete_flowchart(self, name: str) -> bool:
         """Delete a flowchart by name."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM flowcharts WHERE name = ?", (name,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM flowcharts WHERE name = ?", (name,))
+            return cursor.rowcount > 0
 
     # ==================== TEST DOCUMENTS ====================
 
     def get_test_document(self, risk_id: int, doc_type: str) -> Optional[Dict]:
         """Get a test document by risk ID and type (de_testing or oe_testing)."""
-        conn = self._get_conn()
-        row = conn.execute(
-            "SELECT * FROM test_documents WHERE risk_id = ? AND doc_type = ?",
-            (risk_id, doc_type)
-        ).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+                (risk_id, doc_type)
+            ).fetchone()
+            return dict(row) if row else None
 
     def get_test_document_by_risk_code(self, risk_code: str, doc_type: str) -> Optional[Dict]:
         """Get a test document by risk code (e.g., 'R001') and type."""
-        conn = self._get_conn()
-        # First get the risk ID
-        risk_row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_code,)).fetchone()
-        if not risk_row:
-            conn.close()
-            return None
-        risk_id = risk_row['id']
-        row = conn.execute(
-            "SELECT * FROM test_documents WHERE risk_id = ? AND doc_type = ?",
-            (risk_id, doc_type)
-        ).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            # First get the risk ID
+            risk_row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_code,)).fetchone()
+            if not risk_row:
+                return None
+            risk_id = risk_row['id']
+            row = conn.execute(
+                "SELECT * FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+                (risk_id, doc_type)
+            ).fetchone()
+            return dict(row) if row else None
 
     def save_test_document(self, risk_id: int, doc_type: str, content: str) -> int:
         """Save/update a test document. Returns the ID."""
-        conn = self._get_conn()
-        # Get audit_id from the associated risk
-        risk_row = conn.execute("SELECT audit_id FROM risks WHERE id = ?", (risk_id,)).fetchone()
-        audit_id = risk_row['audit_id'] if risk_row else None
-        cursor = conn.execute("""
-            INSERT INTO test_documents (risk_id, doc_type, content, audit_id, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(risk_id, doc_type) DO UPDATE SET
-                content = excluded.content,
-                audit_id = excluded.audit_id,
-                updated_at = CURRENT_TIMESTAMP
-        """, (risk_id, doc_type, content, audit_id))
-        conn.commit()
-        row = conn.execute(
-            "SELECT id FROM test_documents WHERE risk_id = ? AND doc_type = ?",
-            (risk_id, doc_type)
-        ).fetchone()
-        doc_id = row['id'] if row else cursor.lastrowid
-        conn.close()
-        return doc_id
+        with self._connection() as conn:
+            # Get audit_id from the associated risk
+            risk_row = conn.execute("SELECT audit_id FROM risks WHERE id = ?", (risk_id,)).fetchone()
+            audit_id = risk_row['audit_id'] if risk_row else None
+            cursor = conn.execute("""
+                INSERT INTO test_documents (risk_id, doc_type, content, audit_id, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(risk_id, doc_type) DO UPDATE SET
+                    content = excluded.content,
+                    audit_id = excluded.audit_id,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (risk_id, doc_type, content, audit_id))
+            row = conn.execute(
+                "SELECT id FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+                (risk_id, doc_type)
+            ).fetchone()
+            doc_id = row['id'] if row else cursor.lastrowid
+            return doc_id
 
     def save_test_document_by_risk_code(self, risk_code: str, doc_type: str, content: str) -> Optional[int]:
         """Save/update a test document by risk code. Returns the ID or None if risk not found."""
-        conn = self._get_conn()
-        risk_row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_code,)).fetchone()
-        conn.close()
-        if not risk_row:
-            return None
+        with self._connection() as conn:
+            risk_row = conn.execute("SELECT id FROM risks WHERE risk_id = ?", (risk_code,)).fetchone()
+            if not risk_row:
+                return None
         return self.save_test_document(risk_row['id'], doc_type, content)
 
     def delete_test_document(self, risk_id: int, doc_type: str) -> bool:
         """Delete a test document."""
-        conn = self._get_conn()
-        cursor = conn.execute(
-            "DELETE FROM test_documents WHERE risk_id = ? AND doc_type = ?",
-            (risk_id, doc_type)
-        )
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM test_documents WHERE risk_id = ? AND doc_type = ?",
+                (risk_id, doc_type)
+            )
+            return cursor.rowcount > 0
 
     def get_test_documents_for_risk(self, risk_id: int) -> Dict[str, str]:
         """Get all test documents for a risk. Returns dict with doc_type as key."""
-        conn = self._get_conn()
-        rows = conn.execute(
-            "SELECT doc_type, content FROM test_documents WHERE risk_id = ?",
-            (risk_id,)
-        ).fetchall()
-        conn.close()
-        return {row['doc_type']: row['content'] for row in rows}
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT doc_type, content FROM test_documents WHERE risk_id = ?",
+                (risk_id,)
+            ).fetchall()
+            return {row['doc_type']: row['content'] for row in rows}
 
     def has_test_document(self, risk_code: str, doc_type: str) -> bool:
         """Check if a test document exists for a risk."""
@@ -1329,29 +1273,28 @@ class RACMDatabase:
     def get_all_test_documents_metadata(self) -> List[Dict]:
         """Get metadata about all test documents (without full content).
         Returns list of {risk_code, doc_type, has_content, word_count, updated_at}."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT r.risk_id as risk_code, td.doc_type, td.content, td.updated_at
-            FROM test_documents td
-            JOIN risks r ON td.risk_id = r.id
-            ORDER BY r.risk_id, td.doc_type
-        """).fetchall()
-        conn.close()
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT r.risk_id as risk_code, td.doc_type, td.content, td.updated_at
+                FROM test_documents td
+                JOIN risks r ON td.risk_id = r.id
+                ORDER BY r.risk_id, td.doc_type
+            """).fetchall()
 
-        result = []
-        for row in rows:
-            content = row['content'] or ''
-            # Strip HTML tags for word count approximation
-            text_only = re.sub(r'<[^>]+>', '', content)
-            word_count = len(text_only.split()) if text_only.strip() else 0
-            result.append({
-                'risk_code': row['risk_code'],
-                'doc_type': row['doc_type'],
-                'has_content': bool(content.strip()),
-                'word_count': word_count,
-                'updated_at': row['updated_at']
-            })
-        return result
+            result = []
+            for row in rows:
+                content = row['content'] or ''
+                # Strip HTML tags for word count approximation
+                text_only = re.sub(r'<[^>]+>', '', content)
+                word_count = len(text_only.split()) if text_only.strip() else 0
+                result.append({
+                    'risk_code': row['risk_code'],
+                    'doc_type': row['doc_type'],
+                    'has_content': bool(content.strip()),
+                    'word_count': word_count,
+                    'updated_at': row['updated_at']
+                })
+            return result
 
     def get_flowchart_with_details(self, name: str) -> Optional[Dict]:
         """Get flowchart with parsed node details for AI consumption."""
@@ -1385,11 +1328,10 @@ class RACMDatabase:
 
     def _generate_issue_id(self) -> str:
         """Generate next issue ID (ISS-001, ISS-002, etc.)."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT MAX(CAST(SUBSTR(issue_id, 5) AS INTEGER)) as max_num FROM issues").fetchone()
-        conn.close()
-        next_num = (row['max_num'] or 0) + 1
-        return f"ISS-{next_num:03d}"
+        with self._connection() as conn:
+            row = conn.execute("SELECT MAX(CAST(SUBSTR(issue_id, 5) AS INTEGER)) as max_num FROM issues").fetchone()
+            next_num = (row['max_num'] or 0) + 1
+            return f"ISS-{next_num:03d}"
 
     def create_issue(self, risk_id: str, title: str, description: str = '',
                      severity: str = 'Medium', status: str = 'Open',
@@ -1397,35 +1339,30 @@ class RACMDatabase:
                      documentation: str = '') -> str:
         """Create a new issue. Returns the issue_id."""
         issue_id = self._generate_issue_id()
-        conn = self._get_conn()
-        conn.execute("""
-            INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date, documentation)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (issue_id, risk_id.upper(), title, description, severity, status, assigned_to, due_date, documentation))
-        conn.commit()
-        conn.close()
-        return issue_id
+        with self._connection() as conn:
+            conn.execute("""
+                INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date, documentation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (issue_id, risk_id.upper(), title, description, severity, status, assigned_to, due_date, documentation))
+            return issue_id
 
     def get_all_issues(self) -> List[Dict]:
         """Get all issues."""
-        conn = self._get_conn()
-        rows = conn.execute("SELECT * FROM issues ORDER BY issue_id").fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("SELECT * FROM issues ORDER BY issue_id").fetchall()
+            return [dict(row) for row in rows]
 
     def get_issue(self, issue_id: str) -> Optional[Dict]:
         """Get a single issue by issue_id."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM issues WHERE issue_id = ?", (issue_id.upper(),)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM issues WHERE issue_id = ?", (issue_id.upper(),)).fetchone()
+            return dict(row) if row else None
 
     def get_issues_for_risk(self, risk_id: str) -> List[Dict]:
         """Get all issues for a specific risk."""
-        conn = self._get_conn()
-        rows = conn.execute("SELECT * FROM issues WHERE risk_id = ? ORDER BY issue_id", (risk_id.upper(),)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("SELECT * FROM issues WHERE risk_id = ? ORDER BY issue_id", (risk_id.upper(),)).fetchall()
+            return [dict(row) for row in rows]
 
     def update_issue(self, issue_id: str, **kwargs) -> bool:
         """Update an issue. Returns True if found and updated."""
@@ -1434,23 +1371,17 @@ class RACMDatabase:
         if not updates:
             return False
 
-        conn = self._get_conn()
-        set_clause = ', '.join(f"{k} = ?" for k in updates.keys())
-        values = list(updates.values()) + [issue_id.upper()]
-        cursor = conn.execute(f"UPDATE issues SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?", values)
-        conn.commit()
-        updated = cursor.rowcount > 0
-        conn.close()
-        return updated
+        with self._connection() as conn:
+            set_clause = ', '.join(f"{k} = ?" for k in updates.keys())
+            values = list(updates.values()) + [issue_id.upper()]
+            cursor = conn.execute(f"UPDATE issues SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?", values)
+            return cursor.rowcount > 0
 
     def delete_issue(self, issue_id: str) -> bool:
         """Delete an issue. Returns True if found and deleted."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM issues WHERE issue_id = ?", (issue_id.upper(),))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM issues WHERE issue_id = ?", (issue_id.upper(),))
+            return cursor.rowcount > 0
 
     def get_issues_as_spreadsheet(self) -> List[List]:
         """Get issues in spreadsheet format for jspreadsheet."""
@@ -1469,73 +1400,65 @@ class RACMDatabase:
             for issue in issues
         ]
 
-    def save_issues_from_spreadsheet(self, data: List[List]):
+    def save_issues_from_spreadsheet(self, data: List[List]) -> None:
         """Save issues from spreadsheet format."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            # Get existing issue IDs
+            existing = {row['issue_id'] for row in conn.execute("SELECT issue_id FROM issues").fetchall()}
+            seen = set()
 
-        # Get existing issue IDs
-        existing = {row['issue_id'] for row in conn.execute("SELECT issue_id FROM issues").fetchall()}
-        seen = set()
+            for row in data:
+                if not row or len(row) < 3:
+                    continue
 
-        for row in data:
-            if not row or len(row) < 3:
-                continue
+                issue_id = str(row[0]).strip().upper() if row[0] else ''
+                risk_id = str(row[1]).strip().upper() if row[1] else ''
+                title = str(row[2]).strip() if row[2] else ''
 
-            issue_id = str(row[0]).strip().upper() if row[0] else ''
-            risk_id = str(row[1]).strip().upper() if row[1] else ''
-            title = str(row[2]).strip() if row[2] else ''
+                if not title:  # Skip empty rows
+                    continue
 
-            if not title:  # Skip empty rows
-                continue
+                description = str(row[3]).strip() if len(row) > 3 and row[3] else ''
+                severity = str(row[4]).strip() if len(row) > 4 and row[4] else 'Medium'
+                status = str(row[5]).strip() if len(row) > 5 and row[5] else 'Open'
+                assigned_to = str(row[6]).strip() if len(row) > 6 and row[6] else ''
+                due_date = str(row[7]).strip() if len(row) > 7 and row[7] else None
 
-            description = str(row[3]).strip() if len(row) > 3 and row[3] else ''
-            severity = str(row[4]).strip() if len(row) > 4 and row[4] else 'Medium'
-            status = str(row[5]).strip() if len(row) > 5 and row[5] else 'Open'
-            assigned_to = str(row[6]).strip() if len(row) > 6 and row[6] else ''
-            due_date = str(row[7]).strip() if len(row) > 7 and row[7] else None
+                if issue_id and issue_id in existing:
+                    # Update existing
+                    conn.execute("""
+                        UPDATE issues SET risk_id=?, title=?, description=?, severity=?, status=?,
+                        assigned_to=?, due_date=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE issue_id=?
+                    """, (risk_id, title, description, severity, status, assigned_to, due_date, issue_id))
+                    seen.add(issue_id)
+                else:
+                    # Create new
+                    new_id = self._generate_issue_id()
+                    conn.execute("""
+                        INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (new_id, risk_id, title, description, severity, status, assigned_to, due_date))
+                    seen.add(new_id)
 
-            if issue_id and issue_id in existing:
-                # Update existing
-                conn.execute("""
-                    UPDATE issues SET risk_id=?, title=?, description=?, severity=?, status=?,
-                    assigned_to=?, due_date=?, updated_at=CURRENT_TIMESTAMP
-                    WHERE issue_id=?
-                """, (risk_id, title, description, severity, status, assigned_to, due_date, issue_id))
-                seen.add(issue_id)
-            else:
-                # Create new
-                new_id = self._generate_issue_id()
-                conn.execute("""
-                    INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (new_id, risk_id, title, description, severity, status, assigned_to, due_date))
-                seen.add(new_id)
-
-        # Delete removed issues (those in existing but not in seen)
-        for issue_id in existing - seen:
-            conn.execute("DELETE FROM issues WHERE issue_id = ?", (issue_id,))
-
-        conn.commit()
-        conn.close()
+            # Delete removed issues (those in existing but not in seen)
+            for issue_id in existing - seen:
+                conn.execute("DELETE FROM issues WHERE issue_id = ?", (issue_id,))
 
     def get_issue_documentation(self, issue_id: str) -> Optional[str]:
         """Get documentation for an issue."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT documentation FROM issues WHERE issue_id = ?", (issue_id.upper(),)).fetchone()
-        conn.close()
-        return row['documentation'] if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT documentation FROM issues WHERE issue_id = ?", (issue_id.upper(),)).fetchone()
+            return row['documentation'] if row else None
 
     def save_issue_documentation(self, issue_id: str, documentation: str) -> bool:
         """Save documentation for an issue."""
-        conn = self._get_conn()
-        cursor = conn.execute(
-            "UPDATE issues SET documentation = ?, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?",
-            (documentation, issue_id.upper())
-        )
-        conn.commit()
-        updated = cursor.rowcount > 0
-        conn.close()
-        return updated
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "UPDATE issues SET documentation = ?, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?",
+                (documentation, issue_id.upper())
+            )
+            return cursor.rowcount > 0
 
     def has_issue_documentation(self, issue_id: str) -> bool:
         """Check if an issue has documentation."""
@@ -1544,14 +1467,13 @@ class RACMDatabase:
 
     def get_issue_summary(self) -> Dict:
         """Get summary of issues by status."""
-        conn = self._get_conn()
-        rows = conn.execute("SELECT status, COUNT(*) as count FROM issues GROUP BY status").fetchall()
-        total = conn.execute("SELECT COUNT(*) as total FROM issues").fetchone()['total']
-        conn.close()
-        return {
-            'total': total,
-            'by_status': {row['status']: row['count'] for row in rows}
-        }
+        with self._connection() as conn:
+            rows = conn.execute("SELECT status, COUNT(*) as count FROM issues GROUP BY status").fetchall()
+            total = conn.execute("SELECT COUNT(*) as total FROM issues").fetchone()['total']
+            return {
+                'total': total,
+                'by_status': {row['status']: row['count'] for row in rows}
+            }
 
     # ==================== ISSUE ATTACHMENTS ====================
 
@@ -1559,58 +1481,48 @@ class RACMDatabase:
                        file_size: int, mime_type: str, description: str = '',
                        extracted_text: str = '') -> int:
         """Add an attachment record. Returns the attachment ID."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO issue_attachments (issue_id, filename, original_filename, file_size, mime_type, description, extracted_text)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (issue_id.upper(), filename, original_filename, file_size, mime_type, description, extracted_text))
-        conn.commit()
-        attachment_id = cursor.lastrowid
-        conn.close()
-        return attachment_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO issue_attachments (issue_id, filename, original_filename, file_size, mime_type, description, extracted_text)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (issue_id.upper(), filename, original_filename, file_size, mime_type, description, extracted_text))
+            return cursor.lastrowid
 
     def get_attachments_for_issue(self, issue_id: str) -> List[Dict]:
         """Get all attachments for an issue."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT * FROM issue_attachments WHERE issue_id = ? ORDER BY uploaded_at DESC
-        """, (issue_id.upper(),)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM issue_attachments WHERE issue_id = ? ORDER BY uploaded_at DESC
+            """, (issue_id.upper(),)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_attachment(self, attachment_id: int) -> Optional[Dict]:
         """Get a single attachment by ID."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM issue_attachments WHERE id = ?", (attachment_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM issue_attachments WHERE id = ?", (attachment_id,)).fetchone()
+            return dict(row) if row else None
 
     def delete_attachment(self, attachment_id: int) -> bool:
         """Delete an attachment record."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM issue_attachments WHERE id = ?", (attachment_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM issue_attachments WHERE id = ?", (attachment_id,))
+            return cursor.rowcount > 0
 
     def get_all_attachments_metadata(self) -> List[Dict]:
         """Get metadata for all attachments (for AI context)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT issue_id, original_filename, file_size, mime_type, description, uploaded_at
-            FROM issue_attachments ORDER BY issue_id, uploaded_at
-        """).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT issue_id, original_filename, file_size, mime_type, description, uploaded_at
+                FROM issue_attachments ORDER BY issue_id, uploaded_at
+            """).fetchall()
+            return [dict(row) for row in rows]
 
     def count_attachments_for_issue(self, issue_id: str) -> int:
         """Count attachments for an issue."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT COUNT(*) as count FROM issue_attachments WHERE issue_id = ?",
-                          (issue_id.upper(),)).fetchone()
-        conn.close()
-        return row['count'] if row else 0
+        with self._connection() as conn:
+            row = conn.execute("SELECT COUNT(*) as count FROM issue_attachments WHERE issue_id = ?",
+                              (issue_id.upper(),)).fetchone()
+            return row['count'] if row else 0
 
     # ==================== RISK ATTACHMENTS ====================
 
@@ -1620,58 +1532,48 @@ class RACMDatabase:
         """Add a risk attachment record. Returns the attachment ID.
         Category can be: 'planning', 'de', 'oe'
         """
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO risk_attachments (risk_id, category, filename, original_filename, file_size, mime_type, description, extracted_text)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (risk_id.upper(), category, filename, original_filename, file_size, mime_type, description, extracted_text))
-        conn.commit()
-        attachment_id = cursor.lastrowid
-        conn.close()
-        return attachment_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO risk_attachments (risk_id, category, filename, original_filename, file_size, mime_type, description, extracted_text)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (risk_id.upper(), category, filename, original_filename, file_size, mime_type, description, extracted_text))
+            return cursor.lastrowid
 
     def get_attachments_for_risk(self, risk_id: str) -> List[Dict]:
         """Get all attachments for a risk."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT * FROM risk_attachments WHERE risk_id = ? ORDER BY uploaded_at DESC
-        """, (risk_id.upper(),)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM risk_attachments WHERE risk_id = ? ORDER BY uploaded_at DESC
+            """, (risk_id.upper(),)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_risk_attachment(self, attachment_id: int) -> Optional[Dict]:
         """Get a single risk attachment by ID."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM risk_attachments WHERE id = ?", (attachment_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM risk_attachments WHERE id = ?", (attachment_id,)).fetchone()
+            return dict(row) if row else None
 
     def delete_risk_attachment(self, attachment_id: int) -> bool:
         """Delete a risk attachment record."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM risk_attachments WHERE id = ?", (attachment_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM risk_attachments WHERE id = ?", (attachment_id,))
+            return cursor.rowcount > 0
 
     def get_all_risk_attachments_metadata(self) -> List[Dict]:
         """Get metadata for all risk attachments (for AI context)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT risk_id, original_filename, file_size, mime_type, description, uploaded_at
-            FROM risk_attachments ORDER BY risk_id, uploaded_at
-        """).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT risk_id, original_filename, file_size, mime_type, description, uploaded_at
+                FROM risk_attachments ORDER BY risk_id, uploaded_at
+            """).fetchall()
+            return [dict(row) for row in rows]
 
     def count_attachments_for_risk(self, risk_id: str) -> int:
         """Count attachments for a risk."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT COUNT(*) as count FROM risk_attachments WHERE risk_id = ?",
-                          (risk_id.upper(),)).fetchone()
-        conn.close()
-        return row['count'] if row else 0
+        with self._connection() as conn:
+            row = conn.execute("SELECT COUNT(*) as count FROM risk_attachments WHERE risk_id = ?",
+                              (risk_id.upper(),)).fetchone()
+            return row['count'] if row else 0
 
     # ==================== AUDIT ATTACHMENTS ====================
 
@@ -1679,58 +1581,48 @@ class RACMDatabase:
                              file_size: int, mime_type: str, description: str = '',
                              extracted_text: str = '') -> int:
         """Add an audit attachment record. Returns the attachment ID."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO audit_attachments (audit_id, filename, original_filename, file_size, mime_type, description, extracted_text)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (audit_id, filename, original_filename, file_size, mime_type, description, extracted_text))
-        conn.commit()
-        attachment_id = cursor.lastrowid
-        conn.close()
-        return attachment_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO audit_attachments (audit_id, filename, original_filename, file_size, mime_type, description, extracted_text)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (audit_id, filename, original_filename, file_size, mime_type, description, extracted_text))
+            return cursor.lastrowid
 
     def get_attachments_for_audit(self, audit_id: int) -> List[Dict]:
         """Get all attachments for an audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT * FROM audit_attachments WHERE audit_id = ? ORDER BY uploaded_at DESC
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM audit_attachments WHERE audit_id = ? ORDER BY uploaded_at DESC
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_audit_attachment(self, attachment_id: int) -> Optional[Dict]:
         """Get a single audit attachment by ID."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM audit_attachments WHERE id = ?", (attachment_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM audit_attachments WHERE id = ?", (attachment_id,)).fetchone()
+            return dict(row) if row else None
 
     def delete_audit_attachment(self, attachment_id: int) -> bool:
         """Delete an audit attachment record."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM audit_attachments WHERE id = ?", (attachment_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM audit_attachments WHERE id = ?", (attachment_id,))
+            return cursor.rowcount > 0
 
     def get_all_audit_attachments_metadata(self) -> List[Dict]:
         """Get metadata for all audit attachments (for AI context)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT audit_id, original_filename, file_size, mime_type, description, uploaded_at
-            FROM audit_attachments ORDER BY audit_id, uploaded_at
-        """).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT audit_id, original_filename, file_size, mime_type, description, uploaded_at
+                FROM audit_attachments ORDER BY audit_id, uploaded_at
+            """).fetchall()
+            return [dict(row) for row in rows]
 
     def count_attachments_for_audit(self, audit_id: int) -> int:
         """Count attachments for an audit."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT COUNT(*) as count FROM audit_attachments WHERE audit_id = ?",
-                          (audit_id,)).fetchone()
-        conn.close()
-        return row['count'] if row else 0
+        with self._connection() as conn:
+            row = conn.execute("SELECT COUNT(*) as count FROM audit_attachments WHERE audit_id = ?",
+                              (audit_id,)).fetchone()
+            return row['count'] if row else 0
 
     # ==================== AUDIT LIBRARY ====================
 
@@ -1738,21 +1630,19 @@ class RACMDatabase:
         """Initialize sqlite-vec virtual table for vector search."""
         try:
             import sqlite_vec
-            conn = self._get_conn()
-            conn.enable_load_extension(True)
-            sqlite_vec.load(conn)
-            conn.enable_load_extension(False)
+            with self._connection() as conn:
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
 
-            # Create vec0 virtual table for embeddings (384 dimensions for all-MiniLM-L6-v2)
-            conn.execute("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS library_embeddings USING vec0(
-                    chunk_id INTEGER PRIMARY KEY,
-                    embedding float[384]
-                )
-            """)
-            conn.commit()
-            conn.close()
-            return True
+                # Create vec0 virtual table for embeddings (384 dimensions for all-MiniLM-L6-v2)
+                conn.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS library_embeddings USING vec0(
+                        chunk_id INTEGER PRIMARY KEY,
+                        embedding float[384]
+                    )
+                """)
+                return True
         except Exception as e:
             print(f"Warning: Could not initialize vector table: {e}")
             return False
@@ -1762,43 +1652,37 @@ class RACMDatabase:
                             description: str = None, file_size: int = None,
                             mime_type: str = None) -> int:
         """Add a new library document. Returns the document ID."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO library_documents (name, filename, original_filename, doc_type,
-                                          source, description, file_size, mime_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, filename, original_filename, doc_type, source, description,
-              file_size, mime_type))
-        conn.commit()
-        doc_id = cursor.lastrowid
-        conn.close()
-        return doc_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO library_documents (name, filename, original_filename, doc_type,
+                                              source, description, file_size, mime_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, filename, original_filename, doc_type, source, description,
+                  file_size, mime_type))
+            return cursor.lastrowid
 
     def get_library_document(self, doc_id: int) -> Optional[Dict]:
         """Get a library document by ID."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM library_documents WHERE id = ?", (doc_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM library_documents WHERE id = ?", (doc_id,)).fetchone()
+            return dict(row) if row else None
 
     def get_library_document_by_name(self, name: str) -> Optional[Dict]:
         """Get a library document by name."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM library_documents WHERE name = ?", (name,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM library_documents WHERE name = ?", (name,)).fetchone()
+            return dict(row) if row else None
 
     def list_library_documents(self, doc_type: str = None) -> List[Dict]:
         """List all library documents, optionally filtered by type."""
-        conn = self._get_conn()
-        if doc_type:
-            rows = conn.execute("""
-                SELECT * FROM library_documents WHERE doc_type = ? ORDER BY name
-            """, (doc_type,)).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM library_documents ORDER BY name").fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            if doc_type:
+                rows = conn.execute("""
+                    SELECT * FROM library_documents WHERE doc_type = ? ORDER BY name
+                """, (doc_type,)).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM library_documents ORDER BY name").fetchall()
+            return [dict(row) for row in rows]
 
     def update_library_document(self, doc_id: int, **kwargs) -> bool:
         """Update a library document's metadata."""
@@ -1814,87 +1698,76 @@ class RACMDatabase:
         set_clause = ', '.join(f"{k} = ?" for k in updates.keys())
         values = list(updates.values()) + [doc_id]
 
-        conn = self._get_conn()
-        cursor = conn.execute(f"""
-            UPDATE library_documents SET {set_clause}, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, values)
-        conn.commit()
-        updated = cursor.rowcount > 0
-        conn.close()
-        return updated
+        with self._connection() as conn:
+            cursor = conn.execute(f"""
+                UPDATE library_documents SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, values)
+            return cursor.rowcount > 0
 
     def delete_library_document(self, doc_id: int) -> bool:
         """Delete a library document and all its chunks."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            # Delete embeddings first (sqlite-vec virtual table)
+            try:
+                import sqlite_vec
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
 
-        # Delete embeddings first (sqlite-vec virtual table)
-        try:
-            import sqlite_vec
-            conn.enable_load_extension(True)
-            sqlite_vec.load(conn)
-            conn.enable_load_extension(False)
+                # Get chunk IDs for this document
+                chunk_ids = conn.execute(
+                    "SELECT id FROM library_chunks WHERE document_id = ?", (doc_id,)
+                ).fetchall()
 
-            # Get chunk IDs for this document
-            chunk_ids = conn.execute(
-                "SELECT id FROM library_chunks WHERE document_id = ?", (doc_id,)
-            ).fetchall()
+                for (chunk_id,) in chunk_ids:
+                    conn.execute("DELETE FROM library_embeddings WHERE chunk_id = ?", (chunk_id,))
+            except Exception as e:
+                print(f"Warning: Could not delete embeddings: {e}")
 
-            for (chunk_id,) in chunk_ids:
-                conn.execute("DELETE FROM library_embeddings WHERE chunk_id = ?", (chunk_id,))
-        except Exception as e:
-            print(f"Warning: Could not delete embeddings: {e}")
-
-        # Delete document (cascades to chunks)
-        cursor = conn.execute("DELETE FROM library_documents WHERE id = ?", (doc_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+            # Delete document (cascades to chunks)
+            cursor = conn.execute("DELETE FROM library_documents WHERE id = ?", (doc_id,))
+            return cursor.rowcount > 0
 
     def add_library_chunk(self, document_id: int, chunk_index: int, content: str,
                          section: str = None, token_count: int = None,
                          embedding: list = None) -> int:
         """Add a chunk to the library. Returns chunk ID."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            # Insert chunk
+            cursor = conn.execute("""
+                INSERT INTO library_chunks (document_id, chunk_index, section, content, token_count)
+                VALUES (?, ?, ?, ?, ?)
+            """, (document_id, chunk_index, section, content, token_count))
+            chunk_id = cursor.lastrowid
 
-        # Insert chunk
-        cursor = conn.execute("""
-            INSERT INTO library_chunks (document_id, chunk_index, section, content, token_count)
-            VALUES (?, ?, ?, ?, ?)
-        """, (document_id, chunk_index, section, content, token_count))
-        chunk_id = cursor.lastrowid
+            # Add embedding if provided
+            if embedding:
+                try:
+                    import sqlite_vec
+                    import struct
+                    conn.enable_load_extension(True)
+                    sqlite_vec.load(conn)
+                    conn.enable_load_extension(False)
 
-        # Add embedding if provided
-        if embedding:
-            try:
-                import sqlite_vec
-                import struct
-                conn.enable_load_extension(True)
-                sqlite_vec.load(conn)
-                conn.enable_load_extension(False)
+                    # Pack embedding as binary
+                    embedding_blob = struct.pack(f'{len(embedding)}f', *embedding)
+                    conn.execute("""
+                        INSERT INTO library_embeddings (chunk_id, embedding)
+                        VALUES (?, ?)
+                    """, (chunk_id, embedding_blob))
+                except Exception as e:
+                    print(f"Warning: Could not add embedding: {e}")
 
-                # Pack embedding as binary
-                embedding_blob = struct.pack(f'{len(embedding)}f', *embedding)
-                conn.execute("""
-                    INSERT INTO library_embeddings (chunk_id, embedding)
-                    VALUES (?, ?)
-                """, (chunk_id, embedding_blob))
-            except Exception as e:
-                print(f"Warning: Could not add embedding: {e}")
-
-        conn.commit()
-        conn.close()
-        return chunk_id
+            return chunk_id
 
     def get_library_chunks(self, document_id: int) -> List[Dict]:
         """Get all chunks for a document."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT * FROM library_chunks WHERE document_id = ? ORDER BY chunk_index
-        """, (document_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM library_chunks WHERE document_id = ? ORDER BY chunk_index
+            """, (document_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def search_library(self, query_embedding: list, limit: int = 5) -> List[Dict]:
         """Search the library using vector similarity. Returns relevant chunks with metadata."""
@@ -1902,36 +1775,35 @@ class RACMDatabase:
             import sqlite_vec
             import struct
 
-            conn = self._get_conn()
-            conn.enable_load_extension(True)
-            sqlite_vec.load(conn)
-            conn.enable_load_extension(False)
+            with self._connection() as conn:
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
 
-            # Pack query embedding
-            query_blob = struct.pack(f'{len(query_embedding)}f', *query_embedding)
+                # Pack query embedding
+                query_blob = struct.pack(f'{len(query_embedding)}f', *query_embedding)
 
-            # Vector search with join to get full context
-            rows = conn.execute("""
-                SELECT
-                    c.id as chunk_id,
-                    c.content,
-                    c.section,
-                    c.chunk_index,
-                    d.id as document_id,
-                    d.name as document_name,
-                    d.source,
-                    d.doc_type,
-                    e.distance
-                FROM library_embeddings e
-                JOIN library_chunks c ON e.chunk_id = c.id
-                JOIN library_documents d ON c.document_id = d.id
-                WHERE e.embedding MATCH ?
-                ORDER BY e.distance
-                LIMIT ?
-            """, (query_blob, limit)).fetchall()
+                # Vector search with join to get full context
+                rows = conn.execute("""
+                    SELECT
+                        c.id as chunk_id,
+                        c.content,
+                        c.section,
+                        c.chunk_index,
+                        d.id as document_id,
+                        d.name as document_name,
+                        d.source,
+                        d.doc_type,
+                        e.distance
+                    FROM library_embeddings e
+                    JOIN library_chunks c ON e.chunk_id = c.id
+                    JOIN library_documents d ON c.document_id = d.id
+                    WHERE e.embedding MATCH ?
+                    ORDER BY e.distance
+                    LIMIT ?
+                """, (query_blob, limit)).fetchall()
 
-            conn.close()
-            return [dict(row) for row in rows]
+                return [dict(row) for row in rows]
         except Exception as e:
             print(f"Error in library search: {e}")
             return []
@@ -1941,91 +1813,85 @@ class RACMDatabase:
 
         Searches for any of the words in the query (OR logic) and ranks by match count.
         """
-        conn = self._get_conn()
+        with self._connection() as conn:
+            # Split query into words, filter out short/common words
+            words = [w.strip().lower() for w in keyword.split() if len(w.strip()) > 2]
+            if not words:
+                words = [keyword.lower()]
 
-        # Split query into words, filter out short/common words
-        words = [w.strip().lower() for w in keyword.split() if len(w.strip()) > 2]
-        if not words:
-            words = [keyword.lower()]
+            # Build query with OR conditions for each word
+            conditions = []
+            params = []
+            for word in words:
+                conditions.append("(LOWER(c.content) LIKE ? OR LOWER(c.section) LIKE ?)")
+                params.extend([f'%{word}%', f'%{word}%'])
 
-        # Build query with OR conditions for each word
-        conditions = []
-        params = []
-        for word in words:
-            conditions.append("(LOWER(c.content) LIKE ? OR LOWER(c.section) LIKE ?)")
-            params.extend([f'%{word}%', f'%{word}%'])
+            where_clause = " OR ".join(conditions)
+            params.append(limit)
 
-        where_clause = " OR ".join(conditions)
-        params.append(limit)
-
-        rows = conn.execute(f"""
-            SELECT
-                c.id as chunk_id,
-                c.content,
-                c.section,
-                c.chunk_index,
-                d.id as document_id,
-                d.name as document_name,
-                d.source,
-                d.doc_type
-            FROM library_chunks c
-            JOIN library_documents d ON c.document_id = d.id
-            WHERE {where_clause}
-            ORDER BY d.name, c.chunk_index
-            LIMIT ?
-        """, params).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+            rows = conn.execute(f"""
+                SELECT
+                    c.id as chunk_id,
+                    c.content,
+                    c.section,
+                    c.chunk_index,
+                    d.id as document_id,
+                    d.name as document_name,
+                    d.source,
+                    d.doc_type
+                FROM library_chunks c
+                JOIN library_documents d ON c.document_id = d.id
+                WHERE {where_clause}
+                ORDER BY d.name, c.chunk_index
+                LIMIT ?
+            """, params).fetchall()
+            return [dict(row) for row in rows]
 
     def get_library_stats(self) -> Dict:
         """Get library statistics."""
-        conn = self._get_conn()
-        doc_count = conn.execute("SELECT COUNT(*) FROM library_documents").fetchone()[0]
-        chunk_count = conn.execute("SELECT COUNT(*) FROM library_chunks").fetchone()[0]
+        with self._connection() as conn:
+            doc_count = conn.execute("SELECT COUNT(*) FROM library_documents").fetchone()[0]
+            chunk_count = conn.execute("SELECT COUNT(*) FROM library_chunks").fetchone()[0]
 
-        # Get counts by type
-        type_counts = conn.execute("""
-            SELECT doc_type, COUNT(*) as count FROM library_documents GROUP BY doc_type
-        """).fetchall()
+            # Get counts by type
+            type_counts = conn.execute("""
+                SELECT doc_type, COUNT(*) as count FROM library_documents GROUP BY doc_type
+            """).fetchall()
 
-        conn.close()
-        return {
-            'total_documents': doc_count,
-            'total_chunks': chunk_count,
-            'by_type': {row['doc_type']: row['count'] for row in type_counts}
-        }
+            return {
+                'total_documents': doc_count,
+                'total_chunks': chunk_count,
+                'by_type': {row['doc_type']: row['count'] for row in type_counts}
+            }
 
     # ==================== USERS ====================
 
     def get_all_users(self) -> List[Dict]:
         """Get all users."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT id, email, name, is_active, is_admin, created_at, updated_at
-            FROM users ORDER BY name
-        """).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT id, email, name, is_active, is_admin, created_at, updated_at
+                FROM users ORDER BY name
+            """).fetchall()
+            return [dict(row) for row in rows]
 
     def get_user_by_id(self, user_id: int) -> Optional[Dict]:
         """Get a user by ID."""
-        conn = self._get_conn()
-        row = conn.execute("""
-            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at, role
-            FROM users WHERE id = ?
-        """, (user_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("""
+                SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at, role
+                FROM users WHERE id = ?
+            """, (user_id,)).fetchone()
+            return dict(row) if row else None
 
     def get_user_by_email(self, email: str) -> Optional[Dict]:
         """Get a user by email (for login)."""
-        conn = self._get_conn()
-        row = conn.execute("""
-            SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at, role
-            FROM users WHERE email = ?
-        """, (email.lower(),)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("""
+                SELECT id, email, name, password_hash, is_active, is_admin, created_at, updated_at, role
+                FROM users WHERE email = ?
+            """, (email.lower(),)).fetchone()
+            return dict(row) if row else None
 
     def create_user(self, email: str, name: str, password_hash: str,
                     is_active: int = 1, is_admin: int = 0) -> int:
@@ -2036,15 +1902,12 @@ class RACMDatabase:
         Per-audit reviewer assignments are handled via audit_team table.
         """
         role = 'admin' if is_admin else 'auditor'
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO users (email, name, password_hash, is_active, is_admin, role)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (email.lower(), name, password_hash, is_active, is_admin, role))
-        conn.commit()
-        user_id = cursor.lastrowid
-        conn.close()
-        return user_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO users (email, name, password_hash, is_active, is_admin, role)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (email.lower(), name, password_hash, is_active, is_admin, role))
+            return cursor.lastrowid
 
     def update_user(self, user_id: int, **kwargs) -> bool:
         """Update a user. Allowed fields: name, email, password_hash, is_active, is_admin.
@@ -2069,139 +1932,117 @@ class RACMDatabase:
         updates['updated_at'] = datetime.now().isoformat()
         set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
 
-        conn = self._get_conn()
-        cursor = conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?",
-                              (*updates.values(), user_id))
-        conn.commit()
-        updated = cursor.rowcount > 0
-        conn.close()
-        return updated
+        with self._connection() as conn:
+            cursor = conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?",
+                                  (*updates.values(), user_id))
+            return cursor.rowcount > 0
 
     def delete_user(self, user_id: int) -> bool:
         """Delete a user (also removes their memberships via CASCADE)."""
-        conn = self._get_conn()
-        cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            return cursor.rowcount > 0
 
     # ==================== ROLES ====================
 
     def get_all_roles(self) -> List[Dict]:
         """Get all roles."""
-        conn = self._get_conn()
-        rows = conn.execute("SELECT * FROM roles ORDER BY id").fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("SELECT * FROM roles ORDER BY id").fetchall()
+            return [dict(row) for row in rows]
 
     def get_role_by_id(self, role_id: int) -> Optional[Dict]:
         """Get a role by ID."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM roles WHERE id = ?", (role_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM roles WHERE id = ?", (role_id,)).fetchone()
+            return dict(row) if row else None
 
     def get_role_by_name(self, name: str) -> Optional[Dict]:
         """Get a role by name."""
-        conn = self._get_conn()
-        row = conn.execute("SELECT * FROM roles WHERE name = ?", (name.lower(),)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM roles WHERE name = ?", (name.lower(),)).fetchone()
+            return dict(row) if row else None
 
     # ==================== AUDIT MEMBERSHIPS ====================
 
     def get_audit_memberships(self, audit_id: int) -> List[Dict]:
         """Get all memberships for an audit with user and role details."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT
-                am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
-                u.email, u.name as user_name, u.is_active,
-                r.name as role_name, r.description as role_description
-            FROM audit_memberships am
-            JOIN users u ON am.user_id = u.id
-            JOIN roles r ON am.role_id = r.id
-            WHERE am.audit_id = ?
-            ORDER BY r.id, u.name
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
+                    u.email, u.name as user_name, u.is_active,
+                    r.name as role_name, r.description as role_description
+                FROM audit_memberships am
+                JOIN users u ON am.user_id = u.id
+                JOIN roles r ON am.role_id = r.id
+                WHERE am.audit_id = ?
+                ORDER BY r.id, u.name
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_audit_membership(self, user_id: int, audit_id: int) -> Optional[Dict]:
         """Get a specific user's membership for an audit."""
-        conn = self._get_conn()
-        row = conn.execute("""
-            SELECT
-                am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
-                r.name as role_name
-            FROM audit_memberships am
-            JOIN roles r ON am.role_id = r.id
-            WHERE am.user_id = ? AND am.audit_id = ?
-        """, (user_id, audit_id)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute("""
+                SELECT
+                    am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
+                    r.name as role_name
+                FROM audit_memberships am
+                JOIN roles r ON am.role_id = r.id
+                WHERE am.user_id = ? AND am.audit_id = ?
+            """, (user_id, audit_id)).fetchone()
+            return dict(row) if row else None
 
     def get_user_audit_ids(self, user_id: int) -> List[int]:
         """Get list of audit IDs a user has access to."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT audit_id FROM audit_memberships WHERE user_id = ?
-        """, (user_id,)).fetchall()
-        conn.close()
-        return [row['audit_id'] for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT audit_id FROM audit_memberships WHERE user_id = ?
+            """, (user_id,)).fetchall()
+            return [row['audit_id'] for row in rows]
 
     def get_user_memberships(self, user_id: int) -> List[Dict]:
         """Get all audit memberships for a user with audit and role details."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT
-                am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
-                a.title as audit_title, a.status as audit_status,
-                r.name as role_name
-            FROM audit_memberships am
-            JOIN audits a ON am.audit_id = a.id
-            JOIN roles r ON am.role_id = r.id
-            WHERE am.user_id = ?
-            ORDER BY a.title
-        """, (user_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    am.id, am.audit_id, am.user_id, am.role_id, am.created_at,
+                    a.title as audit_title, a.status as audit_status,
+                    r.name as role_name
+                FROM audit_memberships am
+                JOIN audits a ON am.audit_id = a.id
+                JOIN roles r ON am.role_id = r.id
+                WHERE am.user_id = ?
+                ORDER BY a.title
+            """, (user_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def add_audit_membership(self, audit_id: int, user_id: int, role_id: int) -> int:
         """Add a user to an audit with a role. Returns membership ID."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO audit_memberships (audit_id, user_id, role_id)
-            VALUES (?, ?, ?)
-        """, (audit_id, user_id, role_id))
-        conn.commit()
-        membership_id = cursor.lastrowid
-        conn.close()
-        return membership_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO audit_memberships (audit_id, user_id, role_id)
+                VALUES (?, ?, ?)
+            """, (audit_id, user_id, role_id))
+            return cursor.lastrowid
 
     def update_audit_membership(self, audit_id: int, user_id: int, role_id: int) -> bool:
         """Update a user's role in an audit."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            UPDATE audit_memberships SET role_id = ?
-            WHERE audit_id = ? AND user_id = ?
-        """, (role_id, audit_id, user_id))
-        conn.commit()
-        updated = cursor.rowcount > 0
-        conn.close()
-        return updated
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                UPDATE audit_memberships SET role_id = ?
+                WHERE audit_id = ? AND user_id = ?
+            """, (role_id, audit_id, user_id))
+            return cursor.rowcount > 0
 
     def remove_audit_membership(self, audit_id: int, user_id: int) -> bool:
         """Remove a user from an audit."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            DELETE FROM audit_memberships WHERE audit_id = ? AND user_id = ?
-        """, (audit_id, user_id))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                DELETE FROM audit_memberships WHERE audit_id = ? AND user_id = ?
+            """, (audit_id, user_id))
+            return cursor.rowcount > 0
 
     def user_has_audit_access(self, user_id: int, audit_id: int, min_role: str = 'viewer') -> bool:
         """Check if a user has at least the specified role level for an audit.
@@ -2219,128 +2060,116 @@ class RACMDatabase:
         role_hierarchy = {'admin': 1, 'auditor': 2, 'reviewer': 3, 'viewer': 4}
         required_level = role_hierarchy.get(min_role, 999)
 
-        conn = self._get_conn()
-
-        # Check audit_team table (authoritative for auditor/reviewer)
-        team_row = conn.execute("""
-            SELECT team_role FROM audit_team
-            WHERE user_id = ? AND audit_id = ?
-        """, (user_id, audit_id)).fetchone()
-
-        if team_row:
-            user_level = role_hierarchy.get(team_row[0], 999)
-            if user_level <= required_level:
-                conn.close()
-                return True
-
-        # Check audit_viewers table for viewer-level access
-        if required_level >= 4:  # viewer level or lower requirement
-            viewer_row = conn.execute("""
-                SELECT id FROM audit_viewers
-                WHERE viewer_user_id = ? AND audit_id = ?
+        with self._connection() as conn:
+            # Check audit_team table (authoritative for auditor/reviewer)
+            team_row = conn.execute("""
+                SELECT team_role FROM audit_team
+                WHERE user_id = ? AND audit_id = ?
             """, (user_id, audit_id)).fetchone()
-            if viewer_row:
-                conn.close()
-                return True
 
-        conn.close()
-        return False
+            if team_row:
+                user_level = role_hierarchy.get(team_row[0], 999)
+                if user_level <= required_level:
+                    return True
+
+            # Check audit_viewers table for viewer-level access
+            if required_level >= 4:  # viewer level or lower requirement
+                viewer_row = conn.execute("""
+                    SELECT id FROM audit_viewers
+                    WHERE viewer_user_id = ? AND audit_id = ?
+                """, (user_id, audit_id)).fetchone()
+                if viewer_row:
+                    return True
+
+            return False
 
     # ==================== SCOPED QUERIES (BY AUDIT) ====================
 
     def get_risks_by_audit(self, audit_id: int) -> List[Dict]:
         """Get all risks for a specific audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT * FROM risks WHERE audit_id = ? ORDER BY risk_id
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM risks WHERE audit_id = ? ORDER BY risk_id
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_risks_by_audits(self, audit_ids: List[int]) -> List[Dict]:
         """Get all risks for multiple audits."""
         if not audit_ids:
             return []
-        conn = self._get_conn()
-        placeholders = ','.join('?' * len(audit_ids))
-        rows = conn.execute(f"""
-            SELECT * FROM risks WHERE audit_id IN ({placeholders}) ORDER BY risk_id
-        """, audit_ids).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            placeholders = ','.join('?' * len(audit_ids))
+            rows = conn.execute(f"""
+                SELECT * FROM risks WHERE audit_id IN ({placeholders}) ORDER BY risk_id
+            """, audit_ids).fetchall()
+            return [dict(row) for row in rows]
 
     def get_issues_by_audit(self, audit_id: int) -> List[Dict]:
         """Get all issues for a specific audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT * FROM issues WHERE audit_id = ? ORDER BY issue_id
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM issues WHERE audit_id = ? ORDER BY issue_id
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_issues_by_audits(self, audit_ids: List[int]) -> List[Dict]:
         """Get all issues for multiple audits."""
         if not audit_ids:
             return []
-        conn = self._get_conn()
-        placeholders = ','.join('?' * len(audit_ids))
-        rows = conn.execute(f"""
-            SELECT * FROM issues WHERE audit_id IN ({placeholders}) ORDER BY issue_id
-        """, audit_ids).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            placeholders = ','.join('?' * len(audit_ids))
+            rows = conn.execute(f"""
+                SELECT * FROM issues WHERE audit_id IN ({placeholders}) ORDER BY issue_id
+            """, audit_ids).fetchall()
+            return [dict(row) for row in rows]
 
     def get_tasks_by_audit(self, audit_id: int) -> List[Dict]:
         """Get all tasks for a specific audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT t.*, r.risk_id as linked_risk_id
-            FROM tasks t
-            LEFT JOIN risks r ON t.risk_id = r.id
-            WHERE t.audit_id = ?
-            ORDER BY t.created_at
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT t.*, r.risk_id as linked_risk_id
+                FROM tasks t
+                LEFT JOIN risks r ON t.risk_id = r.id
+                WHERE t.audit_id = ?
+                ORDER BY t.created_at
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_tasks_by_audits(self, audit_ids: List[int]) -> List[Dict]:
         """Get all tasks for multiple audits."""
         if not audit_ids:
             return []
-        conn = self._get_conn()
-        placeholders = ','.join('?' * len(audit_ids))
-        rows = conn.execute(f"""
-            SELECT t.*, r.risk_id as linked_risk_id
-            FROM tasks t
-            LEFT JOIN risks r ON t.risk_id = r.id
-            WHERE t.audit_id IN ({placeholders})
-            ORDER BY t.created_at
-        """, audit_ids).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            placeholders = ','.join('?' * len(audit_ids))
+            rows = conn.execute(f"""
+                SELECT t.*, r.risk_id as linked_risk_id
+                FROM tasks t
+                LEFT JOIN risks r ON t.risk_id = r.id
+                WHERE t.audit_id IN ({placeholders})
+                ORDER BY t.created_at
+            """, audit_ids).fetchall()
+            return [dict(row) for row in rows]
 
     def get_flowcharts_by_audit(self, audit_id: int) -> List[Dict]:
         """Get all flowcharts for a specific audit (metadata only)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT id, name, risk_id, created_at, updated_at
-            FROM flowcharts WHERE audit_id = ? ORDER BY name
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT id, name, risk_id, created_at, updated_at
+                FROM flowcharts WHERE audit_id = ? ORDER BY name
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_test_documents_by_audit(self, audit_id: int) -> List[Dict]:
         """Get all test document metadata for a specific audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT td.*, r.risk_id as risk_code
-            FROM test_documents td
-            JOIN risks r ON td.risk_id = r.id
-            WHERE td.audit_id = ?
-            ORDER BY r.risk_id, td.doc_type
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT td.*, r.risk_id as risk_code
+                FROM test_documents td
+                JOIN risks r ON td.risk_id = r.id
+                WHERE td.audit_id = ?
+                ORDER BY r.risk_id, td.doc_type
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_context_for_audit(self, audit_id: int) -> Dict:
         """Get full context for a specific audit (for AI)."""
@@ -2351,14 +2180,13 @@ class RACMDatabase:
         flowcharts = self.get_flowcharts_by_audit(audit_id)
 
         # Get attachment counts
-        conn = self._get_conn()
-        risk_attachment_count = conn.execute(
-            "SELECT COUNT(*) FROM risk_attachments WHERE audit_id = ?", (audit_id,)
-        ).fetchone()[0]
-        issue_attachment_count = conn.execute(
-            "SELECT COUNT(*) FROM issue_attachments WHERE audit_id = ?", (audit_id,)
-        ).fetchone()[0]
-        conn.close()
+        with self._connection() as conn:
+            risk_attachment_count = conn.execute(
+                "SELECT COUNT(*) FROM risk_attachments WHERE audit_id = ?", (audit_id,)
+            ).fetchone()[0]
+            issue_attachment_count = conn.execute(
+                "SELECT COUNT(*) FROM issue_attachments WHERE audit_id = ?", (audit_id,)
+            ).fetchone()[0]
 
         # Add documentation status to issues
         issues_with_doc_status = []
@@ -2403,47 +2231,44 @@ class RACMDatabase:
                 'schema': self.get_schema()
             }
 
-        conn = self._get_conn()
+        with self._connection() as conn:
+            # Get audits
+            placeholders = ','.join('?' * len(audit_ids))
+            audits = [dict(row) for row in conn.execute(f"""
+                SELECT * FROM audits WHERE id IN ({placeholders})
+            """, audit_ids).fetchall()]
 
-        # Get audits
-        placeholders = ','.join('?' * len(audit_ids))
-        audits = [dict(row) for row in conn.execute(f"""
-            SELECT * FROM audits WHERE id IN ({placeholders})
-        """, audit_ids).fetchall()]
+            # Get risks
+            risks = [dict(row) for row in conn.execute(f"""
+                SELECT * FROM risks WHERE audit_id IN ({placeholders}) ORDER BY risk_id
+            """, audit_ids).fetchall()]
 
-        # Get risks
-        risks = [dict(row) for row in conn.execute(f"""
-            SELECT * FROM risks WHERE audit_id IN ({placeholders}) ORDER BY risk_id
-        """, audit_ids).fetchall()]
+            # Get issues
+            issues_raw = conn.execute(f"""
+                SELECT * FROM issues WHERE audit_id IN ({placeholders}) ORDER BY issue_id
+            """, audit_ids).fetchall()
+            issues = []
+            for row in issues_raw:
+                issue = dict(row)
+                issue['has_documentation'] = bool(issue.get('documentation', '').strip())
+                if 'documentation' in issue:
+                    del issue['documentation']
+                issues.append(issue)
 
-        # Get issues
-        issues_raw = conn.execute(f"""
-            SELECT * FROM issues WHERE audit_id IN ({placeholders}) ORDER BY issue_id
-        """, audit_ids).fetchall()
-        issues = []
-        for row in issues_raw:
-            issue = dict(row)
-            issue['has_documentation'] = bool(issue.get('documentation', '').strip())
-            if 'documentation' in issue:
-                del issue['documentation']
-            issues.append(issue)
+            # Get tasks
+            tasks = [dict(row) for row in conn.execute(f"""
+                SELECT t.*, r.risk_id as linked_risk_id
+                FROM tasks t
+                LEFT JOIN risks r ON t.risk_id = r.id
+                WHERE t.audit_id IN ({placeholders})
+                ORDER BY t.created_at
+            """, audit_ids).fetchall()]
 
-        # Get tasks
-        tasks = [dict(row) for row in conn.execute(f"""
-            SELECT t.*, r.risk_id as linked_risk_id
-            FROM tasks t
-            LEFT JOIN risks r ON t.risk_id = r.id
-            WHERE t.audit_id IN ({placeholders})
-            ORDER BY t.created_at
-        """, audit_ids).fetchall()]
-
-        # Get flowcharts
-        flowcharts = [dict(row) for row in conn.execute(f"""
-            SELECT id, name, risk_id FROM flowcharts
-            WHERE audit_id IN ({placeholders}) ORDER BY name
-        """, audit_ids).fetchall()]
-
-        conn.close()
+            # Get flowcharts
+            flowcharts = [dict(row) for row in conn.execute(f"""
+                SELECT id, name, risk_id FROM flowcharts
+                WHERE audit_id IN ({placeholders}) ORDER BY name
+            """, audit_ids).fetchall()]
 
         return {
             'schema': self.get_schema(),
@@ -2491,16 +2316,15 @@ class RACMDatabase:
             return self.get_all_audits()
 
         # Viewers see only assigned audits (via audit_team or audit_viewers)
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT DISTINCT a.* FROM audits a
-            LEFT JOIN audit_team at ON a.id = at.audit_id AND at.user_id = ?
-            LEFT JOIN audit_viewers av ON a.id = av.audit_id AND av.viewer_user_id = ?
-            WHERE at.user_id IS NOT NULL OR av.viewer_user_id IS NOT NULL
-            ORDER BY a.title
-        """, (user_id, user_id)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT DISTINCT a.* FROM audits a
+                LEFT JOIN audit_team at ON a.id = at.audit_id AND at.user_id = ?
+                LEFT JOIN audit_viewers av ON a.id = av.audit_id AND av.viewer_user_id = ?
+                WHERE at.user_id IS NOT NULL OR av.viewer_user_id IS NOT NULL
+                ORDER BY a.title
+            """, (user_id, user_id)).fetchall()
+            return [dict(row) for row in rows]
 
     # ==================== AI QUERY HELPERS ====================
 
@@ -2711,62 +2535,56 @@ RELATIONSHIPS:
 
     def export_all(self) -> Dict:
         """Export entire database as JSON (for backup)."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            risks = [dict(r) for r in conn.execute("SELECT * FROM risks").fetchall()]
+            tasks = [dict(t) for t in conn.execute("SELECT * FROM tasks").fetchall()]
+            flowcharts = []
+            for row in conn.execute("SELECT * FROM flowcharts").fetchall():
+                f = dict(row)
+                f['data'] = json.loads(f['data'])
+                flowcharts.append(f)
 
-        risks = [dict(r) for r in conn.execute("SELECT * FROM risks").fetchall()]
-        tasks = [dict(t) for t in conn.execute("SELECT * FROM tasks").fetchall()]
-        flowcharts = []
-        for row in conn.execute("SELECT * FROM flowcharts").fetchall():
-            f = dict(row)
-            f['data'] = json.loads(f['data'])
-            flowcharts.append(f)
+            return {
+                'exported_at': datetime.now().isoformat(),
+                'risks': risks,
+                'tasks': tasks,
+                'flowcharts': flowcharts
+            }
 
-        conn.close()
-        return {
-            'exported_at': datetime.now().isoformat(),
-            'risks': risks,
-            'tasks': tasks,
-            'flowcharts': flowcharts
-        }
-
-    def import_all(self, data: Dict, clear_existing: bool = False):
+    def import_all(self, data: Dict, clear_existing: bool = False) -> None:
         """Import data from JSON export."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            if clear_existing:
+                conn.execute("DELETE FROM flowcharts")
+                conn.execute("DELETE FROM tasks")
+                conn.execute("DELETE FROM risks")
 
-        if clear_existing:
-            conn.execute("DELETE FROM flowcharts")
-            conn.execute("DELETE FROM tasks")
-            conn.execute("DELETE FROM risks")
+            # Import risks
+            for risk in data.get('risks', []):
+                conn.execute("""
+                    INSERT OR REPLACE INTO risks
+                    (id, risk_id, risk_description, control_description, control_owner, frequency, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (risk.get('id'), risk['risk_id'], risk.get('risk_description', ''),
+                      risk.get('control_description', ''), risk.get('control_owner', ''),
+                      risk.get('frequency', ''), risk.get('status', 'Not Tested')))
 
-        # Import risks
-        for risk in data.get('risks', []):
-            conn.execute("""
-                INSERT OR REPLACE INTO risks
-                (id, risk_id, risk_description, control_description, control_owner, frequency, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (risk.get('id'), risk['risk_id'], risk.get('risk_description', ''),
-                  risk.get('control_description', ''), risk.get('control_owner', ''),
-                  risk.get('frequency', ''), risk.get('status', 'Not Tested')))
+            # Import tasks
+            for task in data.get('tasks', []):
+                conn.execute("""
+                    INSERT OR REPLACE INTO tasks
+                    (id, title, description, priority, assignee, column_id, risk_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (task.get('id'), task['title'], task.get('description', ''),
+                      task.get('priority', 'medium'), task.get('assignee', ''),
+                      task.get('column_id', 'planning'), task.get('risk_id')))
 
-        # Import tasks
-        for task in data.get('tasks', []):
-            conn.execute("""
-                INSERT OR REPLACE INTO tasks
-                (id, title, description, priority, assignee, column_id, risk_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (task.get('id'), task['title'], task.get('description', ''),
-                  task.get('priority', 'medium'), task.get('assignee', ''),
-                  task.get('column_id', 'planning'), task.get('risk_id')))
-
-        # Import flowcharts
-        for fc in data.get('flowcharts', []):
-            conn.execute("""
-                INSERT OR REPLACE INTO flowcharts (id, name, data, risk_id)
-                VALUES (?, ?, ?, ?)
-            """, (fc.get('id'), fc['name'], json.dumps(fc['data']), fc.get('risk_id')))
-
-        conn.commit()
-        conn.close()
+            # Import flowcharts
+            for fc in data.get('flowcharts', []):
+                conn.execute("""
+                    INSERT OR REPLACE INTO flowcharts (id, name, data, risk_id)
+                    VALUES (?, ?, ?, ?)
+                """, (fc.get('id'), fc['name'], json.dumps(fc['data']), fc.get('risk_id')))
 
     # ==================== SPREADSHEET COMPATIBILITY ====================
 
@@ -2778,14 +2596,21 @@ RELATIONSHIPS:
         """
         risks = self.get_all_risks()
 
+        # Batch load flowcharts and tasks to avoid N+1 queries
+        with self._connection() as conn:
+            flowcharts = conn.execute(
+                "SELECT risk_id, name FROM flowcharts WHERE risk_id IS NOT NULL"
+            ).fetchall()
+            tasks = conn.execute(
+                "SELECT risk_id, title FROM tasks WHERE risk_id IS NOT NULL"
+            ).fetchall()
+
+        # Build lookup dictionaries
+        fc_by_risk = {row['risk_id']: row['name'] for row in flowcharts}
+        task_by_risk = {row['risk_id']: row['title'] for row in tasks}
+
         rows = []
         for r in risks:
-            # Find linked flowchart and task
-            conn = self._get_conn()
-            fc = conn.execute("SELECT name FROM flowcharts WHERE risk_id = ?", (r['id'],)).fetchone()
-            task = conn.execute("SELECT title FROM tasks WHERE risk_id = ?", (r['id'],)).fetchone()
-            conn.close()
-
             rows.append([
                 r['risk_id'],
                 r['risk'] or '',
@@ -2796,12 +2621,12 @@ RELATIONSHIPS:
                 r['operational_effectiveness_test'] or '',
                 r['operational_effectiveness_conclusion'] or '',
                 r['status'] or 'Not Complete',
-                fc['name'] if fc else '',
-                task['title'] if task else ''
+                fc_by_risk.get(r['id'], ''),
+                task_by_risk.get(r['id'], '')
             ])
         return rows
 
-    def save_from_spreadsheet(self, data: List[List]):
+    def save_from_spreadsheet(self, data: List[List]) -> None:
         """Save risks from spreadsheet format.
 
         Columns saved: 0-8 (Risk ID through Status)
@@ -2873,15 +2698,14 @@ RELATIONSHIPS:
     def get_record_with_audit(self, record_type: str, record_id: int) -> Optional[Dict]:
         """Get a record with its associated audit data."""
         table = 'risks' if record_type == 'risk' else 'issues'
-        conn = self._get_conn()
-        row = conn.execute(f"""
-            SELECT r.*, a.auditor_id, a.reviewer_id, a.title as audit_title
-            FROM {table} r
-            LEFT JOIN audits a ON r.audit_id = a.id
-            WHERE r.id = ?
-        """, (record_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with self._connection() as conn:
+            row = conn.execute(f"""
+                SELECT r.*, a.auditor_id, a.reviewer_id, a.title as audit_title
+                FROM {table} r
+                LEFT JOIN audits a ON r.audit_id = a.id
+                WHERE r.id = ?
+            """, (record_id,)).fetchone()
+            return dict(row) if row else None
 
     def update_record_status(self, record_type: str, record_id: int,
                             new_status: str, new_owner_role: str,
@@ -2912,31 +2736,27 @@ RELATIONSHIPS:
                             action: str, performed_by: int,
                             notes: str = None, reason: str = None) -> int:
         """Create a state history entry."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            INSERT INTO record_state_history
-                (record_type, record_id, from_status, to_status, action,
-                 performed_by, notes, reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (record_type, record_id, from_status, to_status, action,
-              performed_by, notes, reason))
-        conn.commit()
-        history_id = cursor.lastrowid
-        conn.close()
-        return history_id
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO record_state_history
+                    (record_type, record_id, from_status, to_status, action,
+                     performed_by, notes, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (record_type, record_id, from_status, to_status, action,
+                  performed_by, notes, reason))
+            return cursor.lastrowid
 
     def get_record_history(self, record_type: str, record_id: int) -> List[Dict]:
         """Get the state transition history for a record."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT h.*, u.name as performed_by_name, u.email as performed_by_email
-            FROM record_state_history h
-            LEFT JOIN users u ON h.performed_by = u.id
-            WHERE h.record_type = ? AND h.record_id = ?
-            ORDER BY h.performed_at DESC
-        """, (record_type, record_id)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT h.*, u.name as performed_by_name, u.email as performed_by_email
+                FROM record_state_history h
+                LEFT JOIN users u ON h.performed_by = u.id
+                WHERE h.record_type = ? AND h.record_id = ?
+                ORDER BY h.performed_at DESC
+            """, (record_type, record_id)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_all_state_history(self, filters: Dict = None) -> List[Dict]:
         """Get all state history entries with optional filters."""
@@ -2967,27 +2787,25 @@ RELATIONSHIPS:
 
         query += " ORDER BY h.performed_at DESC"
 
-        conn = self._get_conn()
-        rows = conn.execute(query, params).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
 
     # ==================== AUDIT VIEWERS ====================
 
     def get_audit_viewers(self, audit_id: int) -> List[Dict]:
         """Get all viewers for an audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT av.*, u.name as viewer_name, u.email as viewer_email,
-                   g.name as granted_by_name
-            FROM audit_viewers av
-            JOIN users u ON av.viewer_user_id = u.id
-            LEFT JOIN users g ON av.granted_by = g.id
-            WHERE av.audit_id = ?
-            ORDER BY av.granted_at DESC
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT av.*, u.name as viewer_name, u.email as viewer_email,
+                       g.name as granted_by_name
+                FROM audit_viewers av
+                JOIN users u ON av.viewer_user_id = u.id
+                LEFT JOIN users g ON av.granted_by = g.id
+                WHERE av.audit_id = ?
+                ORDER BY av.granted_at DESC
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def add_audit_viewer(self, audit_id: int, viewer_user_id: int,
                         granted_by: int) -> int:
@@ -2995,106 +2813,90 @@ RELATIONSHIPS:
 
         Adds to both audit_team (authoritative) and audit_viewers (legacy compatibility).
         """
-        conn = self._get_conn()
-        # Add to audit_team (authoritative)
-        cursor = conn.execute("""
-            INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role, granted_by, granted_at)
-            VALUES (?, ?, 'viewer', ?, CURRENT_TIMESTAMP)
-        """, (audit_id, viewer_user_id, granted_by))
-        # Also add to audit_viewers for legacy compatibility
-        conn.execute("""
-            INSERT OR IGNORE INTO audit_viewers (audit_id, viewer_user_id, granted_by)
-            VALUES (?, ?, ?)
-        """, (audit_id, viewer_user_id, granted_by))
-        conn.commit()
-        viewer_id = cursor.lastrowid
-        conn.close()
-        return viewer_id
+        with self._connection() as conn:
+            # Add to audit_team (authoritative)
+            cursor = conn.execute("""
+                INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role, granted_by, granted_at)
+                VALUES (?, ?, 'viewer', ?, CURRENT_TIMESTAMP)
+            """, (audit_id, viewer_user_id, granted_by))
+            # Also add to audit_viewers for legacy compatibility
+            conn.execute("""
+                INSERT OR IGNORE INTO audit_viewers (audit_id, viewer_user_id, granted_by)
+                VALUES (?, ?, ?)
+            """, (audit_id, viewer_user_id, granted_by))
+            return cursor.lastrowid
 
     def remove_audit_viewer(self, audit_id: int, viewer_user_id: int) -> bool:
         """Remove a viewer from an audit.
 
         Removes from both audit_team (authoritative) and audit_viewers (legacy).
         """
-        conn = self._get_conn()
-        # Remove from audit_team (authoritative)
-        cursor = conn.execute("""
-            DELETE FROM audit_team
-            WHERE audit_id = ? AND user_id = ? AND team_role = 'viewer'
-        """, (audit_id, viewer_user_id))
-        # Also remove from audit_viewers (legacy)
-        conn.execute("""
-            DELETE FROM audit_viewers
-            WHERE audit_id = ? AND viewer_user_id = ?
-        """, (audit_id, viewer_user_id))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            # Remove from audit_team (authoritative)
+            cursor = conn.execute("""
+                DELETE FROM audit_team
+                WHERE audit_id = ? AND user_id = ? AND team_role = 'viewer'
+            """, (audit_id, viewer_user_id))
+            # Also remove from audit_viewers (legacy)
+            conn.execute("""
+                DELETE FROM audit_viewers
+                WHERE audit_id = ? AND viewer_user_id = ?
+            """, (audit_id, viewer_user_id))
+            return cursor.rowcount > 0
 
     def is_viewer_of_audit(self, user_id: int, audit_id: int) -> bool:
         """Check if a user is a viewer of an audit.
 
         Checks audit_team (authoritative) and audit_viewers (legacy fallback).
         """
-        conn = self._get_conn()
-        # Check audit_team first (authoritative after migration)
-        row = conn.execute("""
-            SELECT 1 FROM audit_team
-            WHERE audit_id = ? AND user_id = ? AND team_role = 'viewer'
-        """, (audit_id, user_id)).fetchone()
-        if row:
-            conn.close()
-            return True
-        # Fallback to audit_viewers (legacy, for unmigrated data)
-        row = conn.execute("""
-            SELECT 1 FROM audit_viewers
-            WHERE audit_id = ? AND viewer_user_id = ?
-        """, (audit_id, user_id)).fetchone()
-        conn.close()
-        return row is not None
+        with self._connection() as conn:
+            # Check audit_team first (authoritative after migration)
+            row = conn.execute("""
+                SELECT 1 FROM audit_team
+                WHERE audit_id = ? AND user_id = ? AND team_role = 'viewer'
+            """, (audit_id, user_id)).fetchone()
+            if row:
+                return True
+            # Fallback to audit_viewers (legacy, for unmigrated data)
+            row = conn.execute("""
+                SELECT 1 FROM audit_viewers
+                WHERE audit_id = ? AND viewer_user_id = ?
+            """, (audit_id, user_id)).fetchone()
+            return row is not None
 
     def get_audit_viewers_list(self, audit_id: int) -> List[Dict]:
         """Get all viewers assigned to an audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT av.id, av.viewer_user_id as user_id, av.granted_at,
-                   u.name as user_name, u.email as user_email
-            FROM audit_viewers av
-            JOIN users u ON av.viewer_user_id = u.id
-            WHERE av.audit_id = ?
-            ORDER BY u.name
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT av.id, av.viewer_user_id as user_id, av.granted_at,
+                       u.name as user_name, u.email as user_email
+                FROM audit_viewers av
+                JOIN users u ON av.viewer_user_id = u.id
+                WHERE av.audit_id = ?
+                ORDER BY u.name
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def add_viewer_to_audit(self, audit_id: int, user_id: int, granted_by: int = None) -> int:
         """Add a viewer to an audit. Returns new ID or -1 if already exists."""
-        conn = self._get_conn()
         try:
-            cursor = conn.execute("""
-                INSERT INTO audit_viewers (audit_id, viewer_user_id, granted_by)
-                VALUES (?, ?, ?)
-            """, (audit_id, user_id, granted_by))
-            conn.commit()
-            new_id = cursor.lastrowid
-            conn.close()
-            return new_id
+            with self._connection() as conn:
+                cursor = conn.execute("""
+                    INSERT INTO audit_viewers (audit_id, viewer_user_id, granted_by)
+                    VALUES (?, ?, ?)
+                """, (audit_id, user_id, granted_by))
+                return cursor.lastrowid
         except sqlite3.IntegrityError:
-            conn.close()
             return -1  # Already exists
 
     def remove_viewer_from_audit(self, audit_id: int, user_id: int) -> bool:
         """Remove a viewer from an audit."""
-        conn = self._get_conn()
-        cursor = conn.execute("""
-            DELETE FROM audit_viewers
-            WHERE audit_id = ? AND viewer_user_id = ?
-        """, (audit_id, user_id))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            cursor = conn.execute("""
+                DELETE FROM audit_viewers
+                WHERE audit_id = ? AND viewer_user_id = ?
+            """, (audit_id, user_id))
+            return cursor.rowcount > 0
 
     # ==================== AUDIT ASSIGNMENTS ====================
 
@@ -3112,81 +2914,73 @@ RELATIONSHIPS:
 
         set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
 
-        conn = self._get_conn()
-        cursor = conn.execute(
-            f"UPDATE audits SET {set_clause} WHERE id = ?",
-            (*updates.values(), audit_id)
-        )
-        conn.commit()
-        updated = cursor.rowcount > 0
-        conn.close()
-        return updated
+        with self._connection() as conn:
+            cursor = conn.execute(
+                f"UPDATE audits SET {set_clause} WHERE id = ?",
+                (*updates.values(), audit_id)
+            )
+            return cursor.rowcount > 0
 
     def get_audits_by_auditor(self, auditor_id: int) -> List[Dict]:
         """Get all audits where user is assigned as auditor (via audit_team)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT DISTINCT a.* FROM audits a
-            JOIN audit_team at ON a.id = at.audit_id
-            WHERE at.user_id = ? AND at.team_role = 'auditor'
-            ORDER BY a.title
-        """, (auditor_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT DISTINCT a.* FROM audits a
+                JOIN audit_team at ON a.id = at.audit_id
+                WHERE at.user_id = ? AND at.team_role = 'auditor'
+                ORDER BY a.title
+            """, (auditor_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_audits_by_reviewer(self, reviewer_id: int) -> List[Dict]:
         """Get all audits where user is assigned as reviewer (via audit_team)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT DISTINCT a.* FROM audits a
-            JOIN audit_team at ON a.id = at.audit_id
-            WHERE at.user_id = ? AND at.team_role = 'reviewer'
-            ORDER BY a.title
-        """, (reviewer_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT DISTINCT a.* FROM audits a
+                JOIN audit_team at ON a.id = at.audit_id
+                WHERE at.user_id = ? AND at.team_role = 'reviewer'
+                ORDER BY a.title
+            """, (reviewer_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     # ==================== AUDIT TEAM (MULTI-ASSIGNMENT) ====================
 
     def get_audit_team(self, audit_id: int) -> List[Dict]:
         """Get all team members (auditors and reviewers) for an audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT at.id, at.audit_id, at.user_id, at.team_role, at.assigned_at,
-                   u.name as user_name, u.email as user_email
-            FROM audit_team at
-            JOIN users u ON at.user_id = u.id
-            WHERE at.audit_id = ?
-            ORDER BY at.team_role, u.name
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT at.id, at.audit_id, at.user_id, at.team_role, at.assigned_at,
+                       u.name as user_name, u.email as user_email
+                FROM audit_team at
+                JOIN users u ON at.user_id = u.id
+                WHERE at.audit_id = ?
+                ORDER BY at.team_role, u.name
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_audit_auditors(self, audit_id: int) -> List[Dict]:
         """Get all auditors assigned to an audit."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT at.id, at.user_id, u.name as user_name, u.email as user_email
-            FROM audit_team at
-            JOIN users u ON at.user_id = u.id
-            WHERE at.audit_id = ? AND at.team_role = 'auditor'
-            ORDER BY u.name
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT at.id, at.user_id, u.name as user_name, u.email as user_email
+                FROM audit_team at
+                JOIN users u ON at.user_id = u.id
+                WHERE at.audit_id = ? AND at.team_role = 'auditor'
+                ORDER BY u.name
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_audit_reviewers(self, audit_id: int) -> List[Dict]:
         """Get all reviewers assigned to an audit (for reviewer selection dropdown)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT at.id, at.user_id, u.name as user_name, u.email as user_email
-            FROM audit_team at
-            JOIN users u ON at.user_id = u.id
-            WHERE at.audit_id = ? AND at.team_role = 'reviewer'
-            ORDER BY u.name
-        """, (audit_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT at.id, at.user_id, u.name as user_name, u.email as user_email
+                FROM audit_team at
+                JOIN users u ON at.user_id = u.id
+                WHERE at.audit_id = ? AND at.team_role = 'reviewer'
+                ORDER BY u.name
+            """, (audit_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def add_to_audit_team(self, audit_id: int, user_id: int, team_role: str,
                          assigned_by: int = None) -> int:
@@ -3194,67 +2988,57 @@ RELATIONSHIPS:
         if team_role not in ('auditor', 'reviewer'):
             raise ValueError("team_role must be 'auditor' or 'reviewer'")
 
-        conn = self._get_conn()
         try:
-            cursor = conn.execute("""
-                INSERT INTO audit_team (audit_id, user_id, team_role, assigned_by)
-                VALUES (?, ?, ?, ?)
-            """, (audit_id, user_id, team_role, assigned_by))
-            conn.commit()
-            new_id = cursor.lastrowid
-            conn.close()
-            return new_id
+            with self._connection() as conn:
+                cursor = conn.execute("""
+                    INSERT INTO audit_team (audit_id, user_id, team_role, assigned_by)
+                    VALUES (?, ?, ?, ?)
+                """, (audit_id, user_id, team_role, assigned_by))
+                return cursor.lastrowid
         except sqlite3.IntegrityError:
-            conn.close()
             return -1  # Already exists
 
     def remove_from_audit_team(self, audit_id: int, user_id: int, team_role: str = None) -> bool:
         """Remove a user from an audit team. If team_role is None, removes all roles."""
-        conn = self._get_conn()
-        if team_role:
-            cursor = conn.execute("""
-                DELETE FROM audit_team
-                WHERE audit_id = ? AND user_id = ? AND team_role = ?
-            """, (audit_id, user_id, team_role))
-        else:
-            cursor = conn.execute("""
-                DELETE FROM audit_team
-                WHERE audit_id = ? AND user_id = ?
-            """, (audit_id, user_id))
-        conn.commit()
-        deleted = cursor.rowcount > 0
-        conn.close()
-        return deleted
+        with self._connection() as conn:
+            if team_role:
+                cursor = conn.execute("""
+                    DELETE FROM audit_team
+                    WHERE audit_id = ? AND user_id = ? AND team_role = ?
+                """, (audit_id, user_id, team_role))
+            else:
+                cursor = conn.execute("""
+                    DELETE FROM audit_team
+                    WHERE audit_id = ? AND user_id = ?
+                """, (audit_id, user_id))
+            return cursor.rowcount > 0
 
     def is_auditor_on_audit(self, user_id: int, audit_id: int) -> bool:
         """Check if a user is assigned as auditor on an audit."""
-        conn = self._get_conn()
-        row = conn.execute("""
-            SELECT 1 FROM audit_team
-            WHERE audit_id = ? AND user_id = ? AND team_role = 'auditor'
-        """, (audit_id, user_id)).fetchone()
-        conn.close()
-        return row is not None
+        with self._connection() as conn:
+            row = conn.execute("""
+                SELECT 1 FROM audit_team
+                WHERE audit_id = ? AND user_id = ? AND team_role = 'auditor'
+            """, (audit_id, user_id)).fetchone()
+            return row is not None
 
     def is_reviewer_on_audit(self, user_id: int, audit_id: int) -> bool:
         """Check if a user is assigned as reviewer on an audit."""
-        conn = self._get_conn()
-        row = conn.execute("""
-            SELECT 1 FROM audit_team
-            WHERE audit_id = ? AND user_id = ? AND team_role = 'reviewer'
-        """, (audit_id, user_id)).fetchone()
-        conn.close()
-        return row is not None
+        with self._connection() as conn:
+            row = conn.execute("""
+                SELECT 1 FROM audit_team
+                WHERE audit_id = ? AND user_id = ? AND team_role = 'reviewer'
+            """, (audit_id, user_id)).fetchone()
+            return row is not None
 
     def is_team_member_on_audit(self, user_id: int, audit_id: int) -> bool:
         """Check if a user is assigned as either auditor or reviewer on an audit."""
-        conn = self._get_conn()
-        row = conn.execute("""
-            SELECT 1 FROM audit_team
-            WHERE audit_id = ? AND user_id = ?
-        """, (audit_id, user_id)).fetchone()
-        conn.close()
-        return row is not None
+        with self._connection() as conn:
+            row = conn.execute("""
+                SELECT 1 FROM audit_team
+                WHERE audit_id = ? AND user_id = ?
+            """, (audit_id, user_id)).fetchone()
+            return row is not None
 
     def get_audits_for_user_role(self, user_id: int, user_role: str, is_admin: bool = False) -> List[Dict]:
         """Get audits based on user's global role.
@@ -3275,25 +3059,23 @@ RELATIONSHIPS:
             return self.get_all_audits()
 
         # Viewers can only see audits they're explicitly assigned to
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT DISTINCT a.* FROM audits a
-            JOIN audit_viewers av ON a.id = av.audit_id
-            WHERE av.viewer_user_id = ?
-            ORDER BY a.title
-        """, (user_id,)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT DISTINCT a.* FROM audits a
+                JOIN audit_viewers av ON a.id = av.audit_id
+                WHERE av.viewer_user_id = ?
+                ORDER BY a.title
+            """, (user_id,)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_user_team_roles_on_audit(self, user_id: int, audit_id: int) -> List[str]:
         """Get all team roles a user has on an audit (can be both auditor and reviewer)."""
-        conn = self._get_conn()
-        rows = conn.execute("""
-            SELECT team_role FROM audit_team
-            WHERE audit_id = ? AND user_id = ?
-        """, (audit_id, user_id)).fetchall()
-        conn.close()
-        return [row['team_role'] for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute("""
+                SELECT team_role FROM audit_team
+                WHERE audit_id = ? AND user_id = ?
+            """, (audit_id, user_id)).fetchall()
+            return [row['team_role'] for row in rows]
 
     # ==================== WORKFLOW QUERIES ====================
 
@@ -3301,123 +3083,112 @@ RELATIONSHIPS:
                              status: str) -> List[Dict]:
         """Get all records of a type with a specific status."""
         table = 'risks' if record_type == 'risk' else 'issues'
-        conn = self._get_conn()
-        rows = conn.execute(f"""
-            SELECT * FROM {table}
-            WHERE audit_id = ? AND record_status = ?
-            ORDER BY id
-        """, (audit_id, status)).fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
+        with self._connection() as conn:
+            rows = conn.execute(f"""
+                SELECT * FROM {table}
+                WHERE audit_id = ? AND record_status = ?
+                ORDER BY id
+            """, (audit_id, status)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_records_in_review(self, reviewer_id: int) -> Dict[str, List[Dict]]:
         """Get all records in review for a specific reviewer."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            risks = conn.execute("""
+                SELECT r.*, a.title as audit_title
+                FROM risks r
+                JOIN audits a ON r.audit_id = a.id
+                WHERE a.reviewer_id = ? AND r.record_status = 'in_review'
+                ORDER BY r.audit_id, r.id
+            """, (reviewer_id,)).fetchall()
 
-        risks = conn.execute("""
-            SELECT r.*, a.title as audit_title
-            FROM risks r
-            JOIN audits a ON r.audit_id = a.id
-            WHERE a.reviewer_id = ? AND r.record_status = 'in_review'
-            ORDER BY r.audit_id, r.id
-        """, (reviewer_id,)).fetchall()
+            issues = conn.execute("""
+                SELECT i.*, a.title as audit_title
+                FROM issues i
+                JOIN audits a ON i.audit_id = a.id
+                WHERE a.reviewer_id = ? AND i.record_status = 'in_review'
+                ORDER BY i.audit_id, i.id
+            """, (reviewer_id,)).fetchall()
 
-        issues = conn.execute("""
-            SELECT i.*, a.title as audit_title
-            FROM issues i
-            JOIN audits a ON i.audit_id = a.id
-            WHERE a.reviewer_id = ? AND i.record_status = 'in_review'
-            ORDER BY i.audit_id, i.id
-        """, (reviewer_id,)).fetchall()
-
-        conn.close()
-        return {
-            'risks': [dict(row) for row in risks],
-            'issues': [dict(row) for row in issues]
-        }
+            return {
+                'risks': [dict(row) for row in risks],
+                'issues': [dict(row) for row in issues]
+            }
 
     def get_records_in_admin_hold(self) -> Dict[str, List[Dict]]:
         """Get all records currently in admin hold."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            risks = conn.execute("""
+                SELECT r.*, a.title as audit_title,
+                       u.name as locked_by_name
+                FROM risks r
+                JOIN audits a ON r.audit_id = a.id
+                LEFT JOIN users u ON r.admin_locked_by = u.id
+                WHERE r.record_status = 'admin_hold'
+                ORDER BY r.admin_locked_at DESC
+            """).fetchall()
 
-        risks = conn.execute("""
-            SELECT r.*, a.title as audit_title,
-                   u.name as locked_by_name
-            FROM risks r
-            JOIN audits a ON r.audit_id = a.id
-            LEFT JOIN users u ON r.admin_locked_by = u.id
-            WHERE r.record_status = 'admin_hold'
-            ORDER BY r.admin_locked_at DESC
-        """).fetchall()
+            issues = conn.execute("""
+                SELECT i.*, a.title as audit_title,
+                       u.name as locked_by_name
+                FROM issues i
+                JOIN audits a ON i.audit_id = a.id
+                LEFT JOIN users u ON i.admin_locked_by = u.id
+                WHERE i.record_status = 'admin_hold'
+                ORDER BY i.admin_locked_at DESC
+            """).fetchall()
 
-        issues = conn.execute("""
-            SELECT i.*, a.title as audit_title,
-                   u.name as locked_by_name
-            FROM issues i
-            JOIN audits a ON i.audit_id = a.id
-            LEFT JOIN users u ON i.admin_locked_by = u.id
-            WHERE i.record_status = 'admin_hold'
-            ORDER BY i.admin_locked_at DESC
-        """).fetchall()
-
-        conn.close()
-        return {
-            'risks': [dict(row) for row in risks],
-            'issues': [dict(row) for row in issues]
-        }
+            return {
+                'risks': [dict(row) for row in risks],
+                'issues': [dict(row) for row in issues]
+            }
 
     def get_workflow_summary(self, audit_id: int) -> Dict:
         """Get a summary of workflow status for an audit."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            risk_summary = conn.execute("""
+                SELECT record_status, COUNT(*) as count
+                FROM risks WHERE audit_id = ?
+                GROUP BY record_status
+            """, (audit_id,)).fetchall()
 
-        risk_summary = conn.execute("""
-            SELECT record_status, COUNT(*) as count
-            FROM risks WHERE audit_id = ?
-            GROUP BY record_status
-        """, (audit_id,)).fetchall()
+            issue_summary = conn.execute("""
+                SELECT record_status, COUNT(*) as count
+                FROM issues WHERE audit_id = ?
+                GROUP BY record_status
+            """, (audit_id,)).fetchall()
 
-        issue_summary = conn.execute("""
-            SELECT record_status, COUNT(*) as count
-            FROM issues WHERE audit_id = ?
-            GROUP BY record_status
-        """, (audit_id,)).fetchall()
-
-        conn.close()
-
-        return {
-            'risks': {row['record_status'] or 'draft': row['count'] for row in risk_summary},
-            'issues': {row['record_status'] or 'draft': row['count'] for row in issue_summary}
-        }
+            return {
+                'risks': {row['record_status'] or 'draft': row['count'] for row in risk_summary},
+                'issues': {row['record_status'] or 'draft': row['count'] for row in issue_summary}
+            }
 
     def get_all_records_by_status(self, status: str) -> List[Dict]:
         """Get all records with a specific status across all audits."""
-        conn = self._get_conn()
+        with self._connection() as conn:
+            risks = conn.execute("""
+                SELECT r.*, a.title as audit_title,
+                       u.name as signed_off_by_name,
+                       'risk' as record_type
+                FROM risks r
+                JOIN audits a ON r.audit_id = a.id
+                LEFT JOIN users u ON r.signed_off_by = u.id
+                WHERE r.record_status = ?
+                ORDER BY r.signed_off_at DESC
+            """, (status,)).fetchall()
 
-        risks = conn.execute("""
-            SELECT r.*, a.title as audit_title,
-                   u.name as signed_off_by_name,
-                   'risk' as record_type
-            FROM risks r
-            JOIN audits a ON r.audit_id = a.id
-            LEFT JOIN users u ON r.signed_off_by = u.id
-            WHERE r.record_status = ?
-            ORDER BY r.signed_off_at DESC
-        """, (status,)).fetchall()
+            issues = conn.execute("""
+                SELECT i.*, a.title as audit_title,
+                       u.name as signed_off_by_name,
+                       'issue' as record_type
+                FROM issues i
+                JOIN audits a ON i.audit_id = a.id
+                LEFT JOIN users u ON i.signed_off_by = u.id
+                WHERE i.record_status = ?
+                ORDER BY i.signed_off_at DESC
+            """, (status,)).fetchall()
 
-        issues = conn.execute("""
-            SELECT i.*, a.title as audit_title,
-                   u.name as signed_off_by_name,
-                   'issue' as record_type
-            FROM issues i
-            JOIN audits a ON i.audit_id = a.id
-            LEFT JOIN users u ON i.signed_off_by = u.id
-            WHERE i.record_status = ?
-            ORDER BY i.signed_off_at DESC
-        """, (status,)).fetchall()
-
-        conn.close()
-
-        return [dict(row) for row in risks] + [dict(row) for row in issues]
+            return [dict(row) for row in risks] + [dict(row) for row in issues]
 
 
 # Singleton instance for easy import
