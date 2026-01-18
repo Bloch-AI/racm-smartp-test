@@ -48,11 +48,25 @@ def client(test_db, tmp_path):
 
 
 @pytest.fixture
-def auth_client(client, test_db):
+def test_audit(test_db):
+    """Create a test audit and return its ID."""
+    audit_id = test_db.create_audit(
+        title='Test Audit',
+        description='Audit for testing',
+        status='In Progress',
+        risk_rating='Medium'
+    )
+    return audit_id
+
+
+@pytest.fixture
+def auth_client(client, test_db, test_audit):
     """Create authenticated test client with admin user."""
     # Use the default admin user created by the database
     # or create a new one with a unique email
     from werkzeug.security import generate_password_hash
+    import database as database_module
+    import auth as auth_module
 
     # Check if default admin exists
     user = test_db.get_user_by_email('admin@localhost')
@@ -65,41 +79,55 @@ def auth_client(client, test_db):
             ''', ('admin@test.com', 'Test Admin', generate_password_hash('testpass123', method='pbkdf2:sha256')))
         user = test_db.get_user_by_email('admin@test.com')
 
+    # Add user to audit team as auditor
+    with test_db._connection() as conn:
+        conn.execute("""
+            INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role)
+            VALUES (?, ?, 'auditor')
+        """, (test_audit, user['id']))
+
+    # Patch get_db in all modules
+    test_get_db = lambda db_path=None: test_db
+    app_module.get_db = test_get_db
+    database_module.get_db = test_get_db
+    auth_module.get_db = test_get_db
+
     # Login with the found/created user
     with client.session_transaction() as sess:
         sess['user_id'] = user['id']
         sess['email'] = user['email']
         sess['name'] = user['name']
         sess['is_admin'] = user['is_admin']
+        sess['active_audit_id'] = test_audit
 
     return client
 
 
 @pytest.fixture
-def sample_data(test_db, auth_client):
+def sample_data(test_db, auth_client, test_audit):
     """Create comprehensive sample data for testing."""
-    # Create audit
-    with test_db._connection() as conn:
-        cursor = conn.execute('''
-            INSERT INTO audits (title, description, status, quarter)
-            VALUES (?, ?, ?, ?)
-        ''', ('Test Audit 2026', 'Annual IT audit', 'in_progress', 'Q1'))
-        audit_id = cursor.lastrowid
+    # Get the user ID from the session
+    with auth_client.session_transaction() as sess:
+        user_id = sess.get('user_id', 1)
 
-    # Create risks
+    # Create risks with audit_id and created_by
     test_db.create_risk(
         risk_id='R001',
         risk='Access control weakness',
         control_id='C001',
         control_owner='IT Security',
-        status='Not Complete'
+        status='Not Complete',
+        audit_id=test_audit,
+        created_by=user_id
     )
     test_db.create_risk(
         risk_id='R002',
         risk='Data backup failure',
         control_id='C002',
         control_owner='IT Operations',
-        status='Effective'
+        status='Effective',
+        audit_id=test_audit,
+        created_by=user_id
     )
 
     # Create tasks
@@ -116,13 +144,15 @@ def sample_data(test_db, auth_client):
         priority='medium'
     )
 
-    # Create issue
+    # Create issue with audit_id and created_by
     issue_id = test_db.create_issue(
         risk_id='R001',
         title='Excessive admin access',
         description='Multiple users have admin privileges without business need',
         severity='High',
-        status='Open'
+        status='Open',
+        audit_id=test_audit,
+        created_by=user_id
     )
 
     # Create flowchart
@@ -130,12 +160,8 @@ def sample_data(test_db, auth_client):
         'drawflow': {'Home': {'data': {'1': {'id': 1, 'name': 'start'}}}}
     })
 
-    # Set active audit
-    with auth_client.session_transaction() as sess:
-        sess['active_audit_id'] = audit_id
-
     return {
-        'audit_id': audit_id,
+        'audit_id': test_audit,
         'task_ids': [task1_id, task2_id],
         'issue_id': issue_id
     }

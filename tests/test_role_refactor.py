@@ -32,6 +32,8 @@ def test_db(tmp_path):
 @pytest.fixture
 def client(test_db, tmp_path):
     """Create test client with isolated database."""
+    import auth as auth_module
+
     app_module.app.config['TESTING'] = True
     app_module.app.config['WTF_CSRF_ENABLED'] = False
     uploads_dir = tmp_path / 'uploads'
@@ -42,9 +44,13 @@ def client(test_db, tmp_path):
     original_app_db = app_module.db
     original_db_instance = db_module._db_instance
 
-    # Set test_db in both places
+    # Patch get_db in all modules
+    test_get_db = lambda db_path=None: test_db
+    app_module.get_db = test_get_db
     app_module.db = test_db
     db_module._db_instance = test_db
+    db_module.get_db = test_get_db
+    auth_module.get_db = test_get_db
 
     with app_module.app.test_client() as client:
         yield client
@@ -80,17 +86,26 @@ def create_audit(db, title, description='Test audit'):
         return cursor.lastrowid
 
 
-def create_risk_with_audit(db, audit_id, risk_id, record_status='draft'):
+def create_risk_with_audit(db, audit_id, risk_id, record_status='draft', created_by=None):
     """Helper to create a risk associated with an audit."""
     with db._connection() as conn:
         cursor = conn.execute('''
-            INSERT INTO risks (risk_id, risk, control_id, control_owner, status, audit_id, record_status)
-            VALUES (?, 'Test risk', 'C001', 'Test Owner', 'Not Complete', ?, ?)
-        ''', (risk_id, audit_id, record_status))
+            INSERT INTO risks (risk_id, risk, control_id, control_owner, status, audit_id, record_status, created_by)
+            VALUES (?, 'Test risk', 'C001', 'Test Owner', 'Not Complete', ?, ?, ?)
+        ''', (risk_id, audit_id, record_status, created_by))
         return cursor.lastrowid
 
 
-def login_user(client, db, user_id):
+def add_user_to_audit_team(db, audit_id, user_id, team_role='auditor'):
+    """Helper to add a user to an audit team."""
+    with db._connection() as conn:
+        conn.execute('''
+            INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role)
+            VALUES (?, ?, ?)
+        ''', (audit_id, user_id, team_role))
+
+
+def login_user(client, db, user_id, audit_id=None):
     """Helper to log in a user."""
     user = db.get_user_by_id(user_id)
     with client.session_transaction() as sess:
@@ -98,6 +113,8 @@ def login_user(client, db, user_id):
         sess['user_email'] = user['email']
         sess['user_name'] = user['name']
         sess['is_admin'] = bool(user['is_admin'])
+        if audit_id:
+            sess['active_audit_id'] = audit_id
 
 
 # ==================== TEST CURRENT ROLE BEHAVIOR ====================
@@ -176,11 +193,11 @@ class TestCurrentRoleBehavior:
         audit_id = create_audit(test_db, 'Test Audit')
         test_db.add_viewer_to_audit(audit_id, viewer_id)
 
-        # Create a risk
-        risk_id = create_risk_with_audit(test_db, audit_id, 'R001')
+        # Create a risk (created by someone else, viewer still can't edit)
+        risk_id = create_risk_with_audit(test_db, audit_id, 'R001', created_by=None)
 
-        # Login as viewer
-        login_user(client, test_db, viewer_id)
+        # Login as viewer with active audit
+        login_user(client, test_db, viewer_id, audit_id=audit_id)
 
         # Try to edit risk - should be denied
         response = client.put(f'/api/risks/R001',
@@ -206,11 +223,11 @@ class TestWorkflowTransitions:
         test_db.add_to_audit_team(audit_id, auditor_id, 'auditor')
         test_db.add_to_audit_team(audit_id, reviewer_id, 'reviewer')
 
-        # Create a draft risk
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'draft')
+        # Create a draft risk (created by the auditor)
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'draft', created_by=auditor_id)
 
-        # Login as auditor
-        login_user(client, test_db, auditor_id)
+        # Login as auditor with active audit
+        login_user(client, test_db, auditor_id, audit_id=audit_id)
 
         # Submit for review
         response = client.post(f'/api/records/risk/{risk_pk}/submit-for-review',
@@ -235,16 +252,16 @@ class TestWorkflowTransitions:
         test_db.add_to_audit_team(audit_id, auditor_id, 'auditor')
         test_db.add_to_audit_team(audit_id, reviewer_id, 'reviewer')
 
-        # Create a risk in review
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review')
+        # Create a risk in review (created by the auditor)
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review', created_by=auditor_id)
 
         # Set assigned reviewer
         with test_db._connection() as conn:
             conn.execute('UPDATE risks SET assigned_reviewer_id = ? WHERE id = ?',
                         (reviewer_id, risk_pk))
 
-        # Login as reviewer
-        login_user(client, test_db, reviewer_id)
+        # Login as reviewer with active audit
+        login_user(client, test_db, reviewer_id, audit_id=audit_id)
 
         # Return to auditor
         response = client.post(f'/api/records/risk/{risk_pk}/return-to-auditor',
@@ -269,16 +286,16 @@ class TestWorkflowTransitions:
         test_db.add_to_audit_team(audit_id, auditor_id, 'auditor')
         test_db.add_to_audit_team(audit_id, reviewer_id, 'reviewer')
 
-        # Create a risk in review
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review')
+        # Create a risk in review (created by the auditor)
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review', created_by=auditor_id)
 
         # Set assigned reviewer
         with test_db._connection() as conn:
             conn.execute('UPDATE risks SET assigned_reviewer_id = ? WHERE id = ?',
                         (reviewer_id, risk_pk))
 
-        # Login as reviewer
-        login_user(client, test_db, reviewer_id)
+        # Login as reviewer with active audit
+        login_user(client, test_db, reviewer_id, audit_id=audit_id)
 
         # Sign off
         response = client.post(f'/api/records/risk/{risk_pk}/sign-off',
@@ -295,12 +312,12 @@ class TestWorkflowTransitions:
         # Create admin user
         admin_id = create_user(test_db, unique_email('admin'), 'Admin User', role='admin', is_admin=True)
 
-        # Create audit and risk
+        # Create audit and risk (created by admin)
         audit_id = create_audit(test_db, 'Test Audit')
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'draft')
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'draft', created_by=admin_id)
 
-        # Login as admin
-        login_user(client, test_db, admin_id)
+        # Login as admin with active audit
+        login_user(client, test_db, admin_id, audit_id=audit_id)
 
         # Lock the record
         response = client.post(f'/api/admin/records/risk/{risk_pk}/lock',
@@ -346,8 +363,8 @@ class TestAuditTeamWorkflow:
         test_db.add_to_audit_team(audit_id, user_id, 'reviewer')
         test_db.add_to_audit_team(audit_id, creator_id, 'auditor')
 
-        # Create a risk in review, assigned to our user
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review')
+        # Create a risk in review, assigned to our user (created by creator)
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review', created_by=creator_id)
 
         # Set assigned reviewer to our user
         with test_db._connection() as conn:
@@ -359,8 +376,8 @@ class TestAuditTeamWorkflow:
         assert user['role'] == 'auditor'  # Global role is auditor
         assert test_db.is_reviewer_on_audit(user_id, audit_id)  # But reviewer on audit_team
 
-        # Login as the user
-        login_user(client, test_db, user_id)
+        # Login as the user with active audit
+        login_user(client, test_db, user_id, audit_id=audit_id)
 
         # Sign off should succeed because user is assigned reviewer on audit_team
         response = client.post(f'/api/records/risk/{risk_pk}/sign-off',
@@ -388,16 +405,16 @@ class TestAuditTeamWorkflow:
         test_db.add_to_audit_team(audit_id, user_id, 'reviewer')
         test_db.add_to_audit_team(audit_id, creator_id, 'auditor')
 
-        # Create a risk in review, assigned to our user
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review')
+        # Create a risk in review (created by creator)
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review', created_by=creator_id)
 
         # Set assigned reviewer
         with test_db._connection() as conn:
             conn.execute('UPDATE risks SET assigned_reviewer_id = ? WHERE id = ?',
                         (user_id, risk_pk))
 
-        # Login as the user
-        login_user(client, test_db, user_id)
+        # Login as the user with active audit
+        login_user(client, test_db, user_id, audit_id=audit_id)
 
         # Return to auditor should succeed
         response = client.post(f'/api/records/risk/{risk_pk}/return-to-auditor',
@@ -423,16 +440,16 @@ class TestAuditTeamWorkflow:
         test_db.add_to_audit_team(audit_id, user_id, 'auditor')
         test_db.add_to_audit_team(audit_id, other_reviewer_id, 'reviewer')
 
-        # Create a risk in review, assigned to other_reviewer
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review')
+        # Create a risk in review (created by user)
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'in_review', created_by=user_id)
 
         # Set assigned reviewer to other user
         with test_db._connection() as conn:
             conn.execute('UPDATE risks SET assigned_reviewer_id = ? WHERE id = ?',
                         (other_reviewer_id, risk_pk))
 
-        # Login as auditor (not the assigned reviewer)
-        login_user(client, test_db, user_id)
+        # Login as auditor (not the assigned reviewer) with active audit
+        login_user(client, test_db, user_id, audit_id=audit_id)
 
         # Sign off should fail
         response = client.post(f'/api/records/risk/{risk_pk}/sign-off',
@@ -453,11 +470,11 @@ class TestAuditTeamWorkflow:
         test_db.add_to_audit_team(audit_id, auditor_id, 'auditor')
         test_db.add_to_audit_team(audit_id, reviewer_id, 'reviewer')
 
-        # Create a draft risk
-        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'draft')
+        # Create a draft risk (created by auditor)
+        risk_pk = create_risk_with_audit(test_db, audit_id, 'R001', 'draft', created_by=auditor_id)
 
-        # Login as auditor
-        login_user(client, test_db, auditor_id)
+        # Login as auditor with active audit
+        login_user(client, test_db, auditor_id, audit_id=audit_id)
 
         # Submit for review should succeed
         response = client.post(f'/api/records/risk/{risk_pk}/submit-for-review',

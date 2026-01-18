@@ -23,29 +23,54 @@ def test_db(tmp_path):
     db_path = tmp_path / "test.db"
     db = RACMDatabase(str(db_path))
 
-    # Add sample data for testing
+    # Get the default admin user (created by migrations)
+    user = db.get_user_by_email('admin@localhost')
+    user_id = user['id'] if user else 1
+
+    # Create a test audit first
+    audit_id = db.create_audit(
+        title='Test Audit',
+        description='Audit for testing',
+        audit_type='Test',
+        status='In Progress'
+    )
+
+    # Add user to audit team as auditor
+    with db._connection() as conn:
+        conn.execute("""
+            INSERT OR IGNORE INTO audit_team (audit_id, user_id, team_role)
+            VALUES (?, ?, 'auditor')
+        """, (audit_id, user_id))
+
+    # Add sample data for testing with audit_id and created_by
     db.create_risk(
         risk_id='R001',
         risk='Test Risk Description',
         control_id='C001',
         control_owner='Test Owner',
-        status='Not Complete'
+        status='Not Complete',
+        audit_id=audit_id,
+        created_by=user_id
     )
     db.create_risk(
         risk_id='R002',
         risk='Another Risk Description',
         control_id='C002',
         control_owner='Another Owner',
-        status='Not Complete'
+        status='Not Complete',
+        audit_id=audit_id,
+        created_by=user_id
     )
 
-    # Create an issue
+    # Create an issue with audit_id and created_by
     db.create_issue(
         risk_id='R001',
         title='Test Issue',
         description='Test issue description',
         severity='Medium',
-        status='Open'
+        status='Open',
+        audit_id=audit_id,
+        created_by=user_id
     )
 
     # Create tasks for kanban
@@ -55,12 +80,23 @@ def test_db(tmp_path):
         column_id='planning'
     )
 
+    # Associate tasks with the test audit
+    with db._connection() as conn:
+        conn.execute("UPDATE tasks SET audit_id = ?", (audit_id,))
+
+    # Store audit_id and user_id for client fixture to use
+    db._test_audit_id = audit_id
+    db._test_user_id = user_id
+
     return db
 
 
 @pytest.fixture
 def client(test_db, tmp_path):
     """Create authenticated test client with isolated database."""
+    import database as database_module
+    import auth as auth_module
+
     app_module.app.config['TESTING'] = True
     uploads_dir = tmp_path / 'uploads'
     uploads_dir.mkdir()
@@ -68,16 +104,22 @@ def client(test_db, tmp_path):
 
     original_get_db = app_module.get_db
     original_db = app_module.db
-    app_module.get_db = lambda: test_db
+
+    # Patch get_db in all modules
+    test_get_db = lambda db_path=None: test_db
+    app_module.get_db = test_get_db
     app_module.db = test_db
+    database_module.get_db = test_get_db
+    auth_module.get_db = test_get_db
 
     with app_module.app.test_client() as client:
-        # Set up authenticated session using default admin (user_id=1)
+        # Set up authenticated session using default admin
         with client.session_transaction() as sess:
-            sess['user_id'] = 1
+            sess['user_id'] = test_db._test_user_id
             sess['user_email'] = 'admin@localhost'
             sess['user_name'] = 'Default Admin'
             sess['is_admin'] = True
+            sess['active_audit_id'] = test_db._test_audit_id
         yield client
 
     app_module.get_db = original_get_db
@@ -130,10 +172,11 @@ class TestPageLoading:
         assert 'kanban' in html.lower()
 
     def test_kanban_page_has_drag_support(self, client):
-        """Kanban page should support drag and drop."""
+        """Kanban page should support drag and drop via jKanban."""
         response = client.get('/kanban')
         html = response.data.decode()
-        assert 'drag' in html.lower()
+        # jKanban library provides drag-drop functionality
+        assert 'jkanban' in html.lower()
 
     def test_flowchart_page_loads(self, client):
         """Flowchart editor page should load with 200 status."""

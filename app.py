@@ -743,25 +743,19 @@ def save_data():
     """Save all spreadsheet data from multi-tab view."""
     data = request.json
     audit_id = get_active_audit_id()
+    user = get_current_user()
+    user_id = user.get('id') if user else None
 
     # Handle both old format (array) and new format (object with racm/issues)
     if isinstance(data, list):
         # Old format - just RACM data
-        db.save_from_spreadsheet(data)
+        db.save_from_spreadsheet(data, audit_id=audit_id, created_by=user_id)
     else:
         # New format - both sheets
         if 'racm' in data:
-            db.save_from_spreadsheet(data['racm'])
+            db.save_from_spreadsheet(data['racm'], audit_id=audit_id, created_by=user_id)
         if 'issues' in data:
             db.save_issues_from_spreadsheet(data['issues'])
-
-    # Associate all risks and issues without audit_id to the active audit
-    if audit_id:
-        conn = db._get_conn()
-        conn.execute("UPDATE risks SET audit_id = ? WHERE audit_id IS NULL", (audit_id,))
-        conn.execute("UPDATE issues SET audit_id = ? WHERE audit_id IS NULL", (audit_id,))
-        conn.commit()
-        conn.close()
 
     increment_data_version()
     return jsonify({'status': 'saved'})
@@ -771,8 +765,11 @@ def save_data():
 @app.route('/api/risks', methods=['GET'])
 @require_login
 def get_risks():
-    """Get all risks as JSON."""
-    return jsonify(db.get_all_risks())
+    """Get all risks for the active audit as JSON."""
+    audit_id = get_active_audit_id()
+    if not audit_id:
+        return jsonify({'error': 'No active audit selected'}), 400
+    return jsonify(db.get_risks_by_audit(audit_id))
 
 @app.route('/api/risks/<risk_id>', methods=['GET'])
 @require_login
@@ -793,22 +790,29 @@ def create_risk():
     if not risk_id:
         return jsonify({'error': 'risk_id is required'}), 400
 
+    # Get audit and user context
+    audit_id = get_active_audit_id()
+    user = get_current_user()
+    user_id = user.get('id') if user else None
+
     # Thread-safe data version update
     new_id = db.create_risk(
         risk_id=risk_id,
         risk=data.get('risk', data.get('risk_description', '')),
         control_id=data.get('control_id', data.get('control_description', '')),
         control_owner=data.get('control_owner', ''),
-        status=data.get('status', 'Not Complete')
+        status=data.get('status', 'Not Complete'),
+        audit_id=audit_id,
+        created_by=user_id
     )
     increment_data_version()
     return jsonify({'status': 'created', 'id': new_id})
 
 @app.route('/api/risks/<risk_id>', methods=['PUT'])
 @require_login
-@require_non_viewer
+@require_record_edit('risk')
 def update_risk(risk_id):
-    """Update a risk."""
+    """Update a risk (enforces workflow rules)."""
     # Thread-safe data version update
     db.update_risk(risk_id, **request.json)
     increment_data_version()
@@ -816,9 +820,9 @@ def update_risk(risk_id):
 
 @app.route('/api/risks/<risk_id>', methods=['DELETE'])
 @require_login
-@require_non_viewer
+@require_record_edit('risk')
 def delete_risk(risk_id):
-    """Delete a risk."""
+    """Delete a risk (enforces workflow rules)."""
     if db.delete_risk(risk_id):
         increment_data_version()
         return jsonify({'status': 'deleted'})
@@ -1974,8 +1978,14 @@ def get_issue(issue_id):
 @require_non_viewer
 def create_issue():
     """Create a new issue."""
-    # Thread-safe data version update
     data = request.json
+
+    # Get audit and user context
+    audit_id = get_active_audit_id()
+    user = get_current_user()
+    user_id = user.get('id') if user else None
+
+    # Thread-safe data version update
     issue_id = db.create_issue(
         risk_id=data.get('risk_id', ''),
         title=data.get('title', ''),
@@ -1983,16 +1993,18 @@ def create_issue():
         severity=data.get('severity', 'Medium'),
         status=data.get('status', 'Open'),
         assigned_to=data.get('assigned_to', ''),
-        due_date=data.get('due_date')
+        due_date=data.get('due_date'),
+        audit_id=audit_id,
+        created_by=user_id
     )
     increment_data_version()
     return jsonify({'status': 'created', 'issue_id': issue_id})
 
 @app.route('/api/issues/<issue_id>', methods=['PUT'])
 @require_login
-@require_non_viewer
+@require_record_edit('issue')
 def update_issue(issue_id):
-    """Update an issue."""
+    """Update an issue (enforces workflow rules)."""
     if db.update_issue(issue_id, **request.json):
         increment_data_version()
         return jsonify({'status': 'updated'})
@@ -2000,9 +2012,9 @@ def update_issue(issue_id):
 
 @app.route('/api/issues/<issue_id>', methods=['DELETE'])
 @require_login
-@require_non_viewer
+@require_record_edit('issue')
 def delete_issue(issue_id):
-    """Delete an issue."""
+    """Delete an issue (enforces workflow rules)."""
     if db.delete_issue(issue_id):
         increment_data_version()
         return jsonify({'status': 'deleted'})
@@ -2361,9 +2373,10 @@ def delete_audit_attachment(attachment_id):
     return jsonify({'status': 'deleted'})
 
 @app.route('/api/issues/from-risk/<risk_id>', methods=['POST'])
+@require_login
+@require_non_viewer
 def create_issue_from_risk(risk_id):
     """Create an issue from a RACM risk (used when checkbox is ticked)."""
-    # Thread-safe data version update
     risk = db.get_risk(risk_id)
     if not risk:
         return jsonify({'error': 'Risk not found'}), 404
@@ -2373,13 +2386,20 @@ def create_issue_from_risk(risk_id):
     if existing:
         return jsonify({'status': 'exists', 'issue_id': existing[0]['issue_id']})
 
+    # Get audit_id from risk or active session
+    audit_id = risk.get('audit_id') or get_active_audit_id()
+    user = get_current_user()
+    user_id = user.get('id') if user else None
+
     # Create new issue with risk details
     issue_id = db.create_issue(
         risk_id=risk_id,
         title=f"Issue for {risk_id}: {risk.get('risk', 'No description')[:50]}",
         description=f"Risk: {risk.get('risk', '')}\nControl: {risk.get('control_id', '')}",
         severity='Medium',
-        status='Open'
+        status='Open',
+        audit_id=audit_id,
+        created_by=user_id
     )
     increment_data_version()
     return jsonify({'status': 'created', 'issue_id': issue_id})

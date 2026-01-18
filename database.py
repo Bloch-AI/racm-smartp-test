@@ -1370,14 +1370,17 @@ class RACMDatabase:
     def create_issue(self, risk_id: str, title: str, description: str = '',
                      severity: str = 'Medium', status: str = 'Open',
                      assigned_to: str = '', due_date: str = None,
-                     documentation: str = '') -> str:
+                     documentation: str = '', audit_id: int = None,
+                     created_by: int = None) -> str:
         """Create a new issue. Returns the issue_id."""
         issue_id = self._generate_issue_id()
         with self._connection() as conn:
             conn.execute("""
-                INSERT INTO issues (issue_id, risk_id, title, description, severity, status, assigned_to, due_date, documentation)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (issue_id, risk_id.upper(), title, description, severity, status, assigned_to, due_date, documentation))
+                INSERT INTO issues (issue_id, risk_id, title, description, severity, status,
+                                  assigned_to, due_date, documentation, audit_id, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (issue_id, risk_id.upper(), title, description, severity, status,
+                  assigned_to, due_date, documentation, audit_id, created_by))
             return issue_id
 
     def get_all_issues(self) -> List[Dict]:
@@ -2660,11 +2663,17 @@ RELATIONSHIPS:
             ])
         return rows
 
-    def save_from_spreadsheet(self, data: List[List]) -> None:
+    def save_from_spreadsheet(self, data: List[List], audit_id: int = None,
+                              created_by: int = None) -> None:
         """Save risks from spreadsheet format.
 
         Columns saved: 0-8 (Risk ID through Status)
         Columns 9+ (Flowchart, Task, Evidence) are read-only UI columns.
+
+        Args:
+            data: List of rows, each row is a list of column values
+            audit_id: Optional audit ID to associate with new risks
+            created_by: Optional user ID who created the risks
         """
         if not data or len(data) < 1:
             return
@@ -2696,7 +2705,9 @@ RELATIONSHIPS:
                         design_effectiveness_conclusion=row[5] if len(row) > 5 else '',
                         operational_effectiveness_test=row[6] if len(row) > 6 else '',
                         operational_effectiveness_conclusion=row[7] if len(row) > 7 else '',
-                        status=row[8] if len(row) > 8 else 'Not Complete'
+                        status=row[8] if len(row) > 8 else 'Not Complete',
+                        audit_id=audit_id,
+                        created_by=created_by
                     )
 
     def get_kanban_format(self) -> Dict:
@@ -2729,16 +2740,34 @@ RELATIONSHIPS:
 
     # ==================== WORKFLOW STATE TRANSITIONS ====================
 
-    def get_record_with_audit(self, record_type: str, record_id: int) -> Optional[Dict]:
-        """Get a record with its associated audit data."""
+    def get_record_with_audit(self, record_type: str, record_id) -> Optional[Dict]:
+        """Get a record with its associated audit data.
+
+        Args:
+            record_type: 'risk' or 'issue'
+            record_id: String identifier (e.g., 'R001', 'ISS-001') or numeric ID
+        """
         table = 'risks' if record_type == 'risk' else 'issues'
+        id_column = 'risk_id' if record_type == 'risk' else 'issue_id'
+
         with self._connection() as conn:
+            # Try string identifier first, then numeric ID
             row = conn.execute(f"""
                 SELECT r.*, a.auditor_id, a.reviewer_id, a.title as audit_title
                 FROM {table} r
                 LEFT JOIN audits a ON r.audit_id = a.id
-                WHERE r.id = ?
+                WHERE r.{id_column} = ?
             """, (record_id,)).fetchone()
+
+            # Fallback to numeric ID if string lookup fails
+            if not row and str(record_id).isdigit():
+                row = conn.execute(f"""
+                    SELECT r.*, a.auditor_id, a.reviewer_id, a.title as audit_title
+                    FROM {table} r
+                    LEFT JOIN audits a ON r.audit_id = a.id
+                    WHERE r.id = ?
+                """, (int(record_id),)).fetchone()
+
             return dict(row) if row else None
 
     def update_record_status(self, record_type: str, record_id: int,
